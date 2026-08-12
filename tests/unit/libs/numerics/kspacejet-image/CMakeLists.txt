@@ -1,0 +1,19 @@
+ksj_add_gtest(
+  ksj_image_tests
+  MODULE
+  numerics.kspacejet-image
+  SOURCES
+  image_arithmetic_tests.cpp
+  image_components_tests.cpp
+  image_filter_tests.cpp
+  image_geometry_tests.cpp
+  image_measurement_tests.cpp
+  image_morphology_tests.cpp
+  image_resize_tests.cpp
+  image_threshold_tests.cpp
+  image_volume_tests.cpp
+  LINK_LIBS
+  KSpaceJet::image
+  LABELS
+  numerics
+  kspacejet-image)

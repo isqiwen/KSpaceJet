@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_nufft_tests
+  MODULE
+  numerics.kspacejet-nufft
+  SOURCES
+  nufft_tests.cpp
+  LINK_LIBS
+  KSpaceJet::nufft
+  LABELS
+  numerics
+  kspacejet-nufft)

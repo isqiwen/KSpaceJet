@@ -1,0 +1,17 @@
+[settings]
+os=Windows
+arch=x86_64
+compiler=msvc
+compiler.version=194
+compiler.cppstd=20
+compiler.runtime=dynamic
+compiler.runtime_type=Debug
+build_type=Debug
+
+[options]
+# Keep Debug dependencies as DLLs as well; ``compiler.runtime=dynamic`` only
+# controls the MSVC CRT selection.
+*:shared=True
+
+[conf]
+tools.cmake.cmaketoolchain:generator=Visual Studio 17 2022

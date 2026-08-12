@@ -1,0 +1,7 @@
+include(linux-gcc14-release)
+
+[conf]
+# Conan 2 only evaluates the recipe's test requirements when test execution
+# is enabled.  Keep GTest out of product graphs while making it explicit for
+# the dedicated `linux-release-unit-tests` build tree.
+tools.build:skip_test=False

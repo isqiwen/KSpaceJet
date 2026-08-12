@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/v1/machine-policy-v1.schema.json",
+  "title": "KSpaceJet MachinePolicy v1",
+  "description": "Deployment-owned capacity and profile policy. It declares reusable resource domains, never a pipeline's task count, queue sizing, or scan-specific placement.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "machine",
+    "allowed_profiles",
+    "resource_capacity",
+    "numa_domain_count",
+    "allowed_memory_domains",
+    "scheduler_policy"
+  ],
+  "properties": {
+    "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+    "schema_version": { "const": "kspacejet.machine-policy/v1" },
+    "kind": { "const": "MachinePolicy" },
+    "machine": { "$ref": "#/$defs/identity" },
+    "allowed_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/executionProfile" }
+    },
+    "resource_capacity": { "$ref": "#/$defs/resourceVectorCapacity" },
+    "numa_domain_count": { "$ref": "#/$defs/positiveSafeInteger" },
+    "allowed_memory_domains": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["host", "pinned_host", "device", "shared"] }
+    },
+    "scheduler_policy": { "enum": ["fifo", "fair", "deadline_aware"] }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "qualifiedIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "executionProfile": {
+      "type": "string",
+      "enum": [
+        "offline",
+        "bounded-online",
+        "isolated-strict-online",
+        "deadline-qualified-online",
+        "research-unbounded"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "$ref": "#/$defs/qualifiedIdentifier" },
+        "revision": { "$ref": "#/$defs/semver" }
+      },
+      "additionalProperties": false
+    },
+    "deviceResourceSlot": {
+      "type": "object",
+      "required": ["device_id", "device_bytes", "gpu_stream_slots", "copy_engine_slots"],
+      "properties": {
+        "device_id": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "device_bytes": { "$ref": "#/$defs/safeInteger" },
+        "gpu_stream_slots": { "$ref": "#/$defs/safeInteger" },
+        "copy_engine_slots": { "$ref": "#/$defs/safeInteger" }
+      },
+      "additionalProperties": false
+    },
+    "resourceVector": {
+      "type": "object",
+      "required": [
+        "host_normal_bytes",
+        "host_pinned_bytes",
+        "host_hugepage_bytes",
+        "shared_host_bytes",
+        "spool_bytes",
+        "transport_bytes",
+        "descriptor_count",
+        "async_token_count",
+        "cpu_leaf_permits",
+        "backend_gang_permits",
+        "provider_private_permits",
+        "io_slots",
+        "devices"
+      ],
+      "properties": {
+        "host_normal_bytes": { "$ref": "#/$defs/safeInteger" },
+        "host_pinned_bytes": { "$ref": "#/$defs/safeInteger" },
+        "host_hugepage_bytes": { "$ref": "#/$defs/safeInteger" },
+        "shared_host_bytes": { "$ref": "#/$defs/safeInteger" },
+        "spool_bytes": { "$ref": "#/$defs/safeInteger" },
+        "transport_bytes": { "$ref": "#/$defs/safeInteger" },
+        "descriptor_count": { "$ref": "#/$defs/safeInteger" },
+        "async_token_count": { "$ref": "#/$defs/safeInteger" },
+        "cpu_leaf_permits": { "$ref": "#/$defs/safeInteger" },
+        "backend_gang_permits": { "$ref": "#/$defs/safeInteger" },
+        "provider_private_permits": { "$ref": "#/$defs/safeInteger" },
+        "io_slots": { "$ref": "#/$defs/safeInteger" },
+        "devices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/deviceResourceSlot" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "resourceVectorCapacity": {
+      "type": "object",
+      "required": ["domains", "host_total_cap_bytes"],
+      "properties": {
+        "domains": { "$ref": "#/$defs/resourceVector" },
+        "host_total_cap_bytes": { "$ref": "#/$defs/positiveSafeInteger" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

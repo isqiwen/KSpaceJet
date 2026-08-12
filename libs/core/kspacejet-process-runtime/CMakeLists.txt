@@ -1,0 +1,15 @@
+ksj_add_core_component(
+  process_runtime
+  INCLUDE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  SOURCES
+  src/cleanup_registry.cpp
+  src/executable_layout.cpp
+  src/external_procedure.cpp
+  src/logging.cpp
+  src/message_loop.cpp
+  src/runtime_config.cpp
+  src/state_paths.cpp
+  src/crash.cpp
+  PRIVATE_LINK_LIBS
+  KSpaceJet::platform_runtime_libraries)

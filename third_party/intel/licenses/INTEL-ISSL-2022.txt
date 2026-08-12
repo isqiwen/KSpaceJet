@@ -1,0 +1,20 @@
+Intel Simplified Software License (Version October 2022)
+
+Intel(R) Integrated Performance Primitives (Intel(R) IPP): Copyright (C) 1997
+Intel Corporation
+
+Intel(R) oneAPI Math Kernel Library: Copyright (C) 1985 Intel Corporation
+
+Use and Redistribution. You may use and redistribute the software, which is
+provided in binary form only, without modification, provided that
+redistributions reproduce the applicable copyright notice and these terms in
+the software and accompanying documentation or materials; neither Intel nor
+its suppliers may be used to endorse or promote derived products without prior
+written permission; and the software is not reverse engineered, decompiled,
+disassembled, modified or altered.
+
+Third-party software included with the distribution may be governed by separate
+terms. The complete license and all component-specific third-party notices
+shipped with the staged Intel payload must be copied into this directory before
+each release. The Intel license bundled with the exact downloaded component
+controls if it differs from this notice.

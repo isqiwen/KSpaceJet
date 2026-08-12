@@ -1,0 +1,8 @@
+add_subdirectory(kspacejet-base)
+add_subdirectory(kspacejet-config)
+add_subdirectory(kspacejet-crash)
+add_subdirectory(kspacejet-logging)
+add_subdirectory(kspacejet-platform)
+add_subdirectory(kspacejet-process-runtime)
+add_subdirectory(kspacejet-threading)
+add_subdirectory(kspacejet-memory)

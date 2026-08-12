@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_sparse_tests
+  MODULE
+  numerics.kspacejet-sparse
+  SOURCES
+  sparse_tests.cpp
+  LINK_LIBS
+  KSpaceJet::sparse
+  LABELS
+  numerics
+  kspacejet-sparse)

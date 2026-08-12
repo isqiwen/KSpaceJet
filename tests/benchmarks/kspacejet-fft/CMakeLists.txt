@@ -1,0 +1,13 @@
+add_executable(ksj_fft_backend_benchmark fft_backend_benchmark.cpp)
+
+ksj_target_enable_benchmark_defaults(ksj_fft_backend_benchmark)
+target_include_directories(ksj_fft_backend_benchmark PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
+target_link_libraries(ksj_fft_backend_benchmark PRIVATE KSpaceJet::fft)
+ksj_set_executable_runtime_path(ksj_fft_backend_benchmark)
+
+add_executable(ksj_runtime_fft_benchmark runtime_fft_benchmark.cpp)
+
+ksj_target_enable_benchmark_defaults(ksj_runtime_fft_benchmark)
+target_include_directories(ksj_runtime_fft_benchmark PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
+target_link_libraries(ksj_runtime_fft_benchmark PRIVATE KSpaceJet::fft)
+ksj_set_executable_runtime_path(ksj_runtime_fft_benchmark)

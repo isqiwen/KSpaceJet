@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_signal_tests
+  MODULE
+  numerics.kspacejet-signal
+  SOURCES
+  signal_tests.cpp
+  LINK_LIBS
+  KSpaceJet::signal
+  LABELS
+  numerics
+  kspacejet-signal)

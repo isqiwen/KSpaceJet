@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_threading_tests
+  MODULE
+  core.kspacejet-threading
+  SOURCES
+  thread_pool_tests.cpp
+  LINK_LIBS
+  KSpaceJet::core
+  LABELS
+  core
+  kspacejet-threading)

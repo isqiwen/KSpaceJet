@@ -1,0 +1,109 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "KSJ: debug ksj (Linux)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/out/build/linux-debug/bin/ksj",
+      "args": [
+        "--help"
+      ],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "preLaunchTask": "KSJ: build Linux Debug applications"
+    },
+    {
+      "name": "KSJ: debug gateway (Linux)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/out/build/linux-debug/bin/ksj-gateway",
+      "args": [
+        "--help"
+      ],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "preLaunchTask": "KSJ: build Linux Debug applications"
+    },
+    {
+      "name": "KSJ: debug recon (Linux)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/out/build/linux-debug/bin/ksj-recon",
+      "args": [
+        "--help"
+      ],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "preLaunchTask": "KSJ: build Linux Debug applications"
+    },
+    {
+      "name": "KSJ: debug ksj-research (Linux)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/out/build/linux-debug/bin/ksj-research",
+      "args": [
+        "--help"
+      ],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "preLaunchTask": "KSJ: build Linux Debug applications"
+    },
+    {
+      "name": "KSJ: debug ksj (Windows)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}\\out\\build\\windows-vs2022-debug\\bin\\ksj.exe",
+      "args": [
+        "--help"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "KSJ: build Windows Debug applications"
+    },
+    {
+      "name": "KSJ: debug gateway (Windows)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}\\out\\build\\windows-vs2022-debug\\bin\\ksj-gateway.exe",
+      "args": [
+        "--help"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "KSJ: build Windows Debug applications"
+    },
+    {
+      "name": "KSJ: debug recon (Windows)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}\\out\\build\\windows-vs2022-debug\\bin\\ksj-recon.exe",
+      "args": [
+        "--help"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "KSJ: build Windows Debug applications"
+    },
+    {
+      "name": "KSJ: debug ksj-research (Windows)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}\\out\\build\\windows-vs2022-debug\\bin\\ksj-research.exe",
+      "args": [
+        "--help"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "KSJ: build Windows Debug applications"
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+# KSpaceJet
+
+KSpaceJet 是面向高吞吐、低延迟 MRI 重建的开源 C++20 框架。它以
+[ISMRMRD](https://ismrmrd.github.io/) 作为唯一原始采集数据语义：离线输入使用标准
+ISMRMRD HDF5，在线输入和图像交付使用冻结的公开 MRD/ISMRMRD streaming-session
+binding。框架不定义私有 wire protocol，也不包含旧回放格式、私有操作队列或任何
+专有重建算法。
+
+## 设计重点
+
+- 流式读取 ISMRMRD acquisition，回调内以零额外复制的 `std::span` 暴露样本和轨迹。
+- 以 `KSpaceJet::` CMake target、`ksj` C++ namespace 和 `kspacejet/` public
+  include 根提供稳定基础 API。
+- 使用 Eigen 作为可移植数值基线，并可通过仓库内 Intel IPP/MKL/OpenMP payload
+  加速；使用者不必安装 oneAPI。
+- 支持 Linux x86_64 与 Windows x86_64/MSVC。
+
+## 主要模块
+
+- `libs/io/kspacejet-ismrmrd`：ISMRMRD 流式输入 facade，target `KSpaceJet::ismrmrd`。
+- `libs/numerics`：数组、FFT、线性代数、图像、稀疏和优化原语。
+- `libs/core`：内存、线程、日志、平台和进程基础设施。
+- `libs/mri/kspacejet-mri-debug`：与具体重建 provider 无关的 MRI 数据诊断工具。
+- `apps`：统一命名的四个应用工程：`ksj`、`ksj-gateway`、`ksj-recon` 和
+  `ksj-research`；四者均默认构建并安装。`ksj-research` 用于跨框架实验、证据冻结和
+  论文制品，但不进入正常重建 runtime 或数据面依赖。每个扩展重建算法以独立
+  `.so`/`.dll` Provider 插件发布，由 `ksj-recon` 加载。具体边界见
+  [apps/README.md](apps/README.md)。
+
+## 构建
+
+### 首次准备开发工具
+
+先准备项目级开发工具环境，再使用 VS Code 或命令行构建。Linux x86_64 的宿主机需要
+Git、Git LFS，以及默认的 GCC/G++ 14；Windows x86_64 的宿主机需要 Git、Git LFS、
+Visual Studio 2022 的 v143 C++ 工具和 Windows SDK。这些与操作系统/SDK 集成的工具保留在
+宿主机上；Conan、CMake、Ninja、`clang-format` 和 `cmake-format` 由固定版本的 `uv` 环境
+安装到本仓库，不会修改全局 Python 或 shell `PATH`。
+
+Linux 首次 bootstrap 还需要普通的宿主下载/解包工具：`curl` 或 `wget`、`tar`、`sha256sum` 或
+`shasum`。Linux 的 VS Code 调试另需宿主 `gdb`；仅 `linux-release-static-analysis` 需要宿主
+`clang++`。这些都不影响普通构建。
+
+Linux：
+
+```bash
+bash tools/devenv/linux/bootstrap.sh
+```
+
+Windows PowerShell：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
+```
+
+希望在 bootstrap 后立刻准备 Release 构建目录时，使用 `--prepare linux-release`，或 Windows
+的 `-Prepare windows-vs2022-release`；缺失的 Intel Git-LFS payload 会自动取得。`--pull-lfs`
+（Windows 为 `-PullLfs`）只用于不准备构建目录时单独预取 payload。完整的工具归属、离线验证和
+维护规则见 [开发环境说明](tools/devenv/README.md)。
+
+下文所有命令行示例都通过平台 wrapper 调用项目锁定的工具。不要直接依赖系统 PATH 中的
+`conan`、`cmake` 或格式化工具。
+
+先导出本仓库的本地 Conan recipes：
+
+```bash
+tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
+tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
+```
+
+Linux：
+
+```bash
+tools/devenv/linux/run.sh conan install . --output-folder=out/build/linux-release \
+  --profile:host=conan/profiles/linux-gcc14-release --build=missing
+tools/devenv/linux/run.sh cmake --preset linux-release
+tools/devenv/linux/run.sh cmake --build --preset linux-release --target ksj_ismrmrd
+tools/devenv/linux/run.sh cmake --build --preset linux-release --target ksj_cli ksj_gateway ksj_recon ksj_research
+```
+
+Windows：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export third_party/intel --user=kspacejet --channel=stable
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan install . --output-folder=out/build/windows-vs2022-release `
+  --profile:host=conan/profiles/windows-msvc2022-release --build=missing
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --preset windows-vs2022-release
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-release --target ksj_ismrmrd
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-release --target ksj_cli ksj_gateway ksj_recon ksj_research
+```
+
+Intel payload 位于 `third_party/intel/payload/`，由 Git LFS 管理。发布前执行
+`git lfs pull`，以获得 Linux 和 Windows 运行时文件。
+
+标准 Conan profile 为所有提供 `shared` 选项的依赖固定使用动态库；Linux 同时启用
+PIC。不要在 KSpaceJet 构建中以 `*:shared=False` 覆盖此策略。
+
+### VS Code 工作流
+
+在 VS Code 中，也可以通过 **Tasks: Run Task** 先运行可见的
+`KSJ: bootstrap developer environment` 任务；它会按当前平台调用同一 bootstrap。完成 bootstrap
+后，首次使用某个“平台 + 配置”组合时，再运行对应的准备任务：
+
+- `KSJ: prepare Linux Debug environment`
+- `KSJ: prepare Linux Release environment`
+- `KSJ: prepare Windows Debug environment`
+- `KSJ: prepare Windows Release environment`
+
+准备任务调用与命令行相同的项目 bootstrap：它先确保 Intel Git-LFS payload 完整、全量校验 manifest，
+再导出仓库内的 Conan recipe、执行 `conan install`，并运行 CMake configure，从而生成该配置的
+`conan_toolchain.cmake` 和构建系统。仅在首次使用、对应 `out/build/`
+目录被删除，或依赖、本地 Conan recipe/Intel payload、CMake 配置或 Conan profile 发生变化时，
+才需要重新运行准备任务。
+
+日常修改 C++ 源码后，运行对应的 `KSJ: build … applications` 任务即可。它只执行 CMake
+增量构建，并构建四个可执行程序：`ksj`、`ksj-gateway`、`ksj-recon` 和 `ksj-research`；不会
+重新 export、下载/解析 Conan 依赖或 configure。F5 的调试前构建也遵循同一规则，不会自动准备
+环境。若尚未准备该配置，先运行匹配的 `KSJ: prepare … environment`。
+
+要安装四个已构建的程序，运行对应的可见安装任务。每个安装任务只依赖同一平台和配置的
+`KSJ: build … applications` 增量构建任务，不会运行 prepare、Conan export/install 或 CMake
+configure：
+
+| 平台与配置 | VS Code 安装任务 | CMake install preset | 安装目录 |
+| --- | --- | --- | --- |
+| Linux Debug | `KSJ: install Linux Debug applications` | `linux-debug-install` | `out/install/linux-debug` |
+| Linux Release | `KSJ: install Linux Release applications` | `linux-release-install` | `out/install/linux-release` |
+| Windows Debug | `KSJ: install Windows Debug applications` | `windows-vs2022-debug-install` | `out/install/windows-vs2022-debug` |
+| Windows Release | `KSJ: install Windows Release applications` | `windows-vs2022-release-install` | `out/install/windows-vs2022-release` |
+
+安装前缀由匹配的 CMake configure preset 的 `CMAKE_INSTALL_PREFIX` 决定；不要将安装任务
+用作环境准备的替代步骤。
+
+`ksj-research` 是随应用安装的实验工具，但不得成为 `ksj`、`ksj-gateway` 或 `ksj-recon` 的
+runtime/data-plane 依赖。`KSJ_BUILD_RESEARCH` 仍只控制 `tests/research` 中的测试和实验
+target，不控制这个可执行程序。
+
+## Provider 输入边界
+
+runtime 拥有 HDF5/在线 source，并将 host-owned `AcquisitionFrame` 传给 Provider
+plugin。底层 reader 的样本布局为 `sample + channel * number_of_samples`；trajectory
+布局为 `sample * trajectory_dimensions + dimension`。借用的 reader view 在 callback
+返回后失效；runtime 会在异步调用 Provider 前将 frame materialize 到 host-managed
+buffer。plugin 不得自行打开 source、保留借用 view 或创建未记账的 buffer pool。
+
+旧私有采集格式和队列格式不属于 KSpaceJet，也没有兼容开关。

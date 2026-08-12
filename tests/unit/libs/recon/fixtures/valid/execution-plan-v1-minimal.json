@@ -1,0 +1,56 @@
+{
+  "schema_version": "kspacejet.execution-plan/v1",
+  "kind": "ExecutionPlan",
+  "input_digests": {
+    "resolved_pipeline": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "scan_descriptor": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "target_envelope": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "machine_policy": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "provider_contracts": [
+      "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    ]
+  },
+  "execution_profile": "bounded-online",
+  "key_slot_tables": [
+    {
+      "node_id": "reconstruct",
+      "dense_dimensions": [],
+      "mapping_algorithm_id": "dense-mixed-radix/v1",
+      "storage_accounting_id": "kspacejet.key-slot-storage/dense-v1",
+      "key_domain_bound": 1,
+      "max_distinct_keys": 1,
+      "max_live_keys": 1,
+      "slot_count": 1,
+      "generation_policy": "monotonic-u64/v1",
+      "initial_generation": 1,
+      "seal_on_completion": true,
+      "eviction_policy": "completed-only",
+      "late_event_policy": "fail",
+      "host_metadata_charged_bytes": 32,
+      "max_items_per_activation": 1,
+      "max_charged_bytes_per_activation": 1048576
+    }
+  ],
+  "reorder_plans": [],
+  "edge_capacities": [],
+  "resource_vector": {
+    "host_normal_bytes": 33554432,
+    "host_pinned_bytes": 0,
+    "host_hugepage_bytes": 0,
+    "shared_host_bytes": 0,
+    "spool_bytes": 0,
+    "transport_bytes": 0,
+    "descriptor_count": 16,
+    "async_token_count": 0,
+    "cpu_leaf_permits": 1,
+    "backend_gang_permits": 0,
+    "provider_private_permits": 0,
+    "io_slots": 1,
+    "devices": []
+  },
+  "terminal_occurrences": 2,
+  "proof_obligations": [
+    "M0.profile_attestation",
+    "M0.finite_terminal_occurrences"
+  ]
+}

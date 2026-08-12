@@ -1,0 +1,12 @@
+ksj_add_gtest(
+  ksj_process_runtime_tests
+  MODULE
+  core.kspacejet-process-runtime
+  SOURCES
+  cleanup_registry_tests.cpp
+  executable_layout_tests.cpp
+  LINK_LIBS
+  KSpaceJet::core
+  LABELS
+  core
+  kspacejet-process-runtime)

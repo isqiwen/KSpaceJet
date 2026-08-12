@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+if command -v git-lfs >/dev/null 2>&1; then
+  git lfs pre-push "$@"
+fi
+
+# pre-push is intentionally disabled by default because it is heavier than the
+# normal edit/commit loop. Run it manually when you want a local smoke before
+# pushing:
+#
+#   "${repo_root}/tools/checks/linux/pre_push.sh"
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${repo_root}/tools/checks/windows/pre_push.ps1"

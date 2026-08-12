@@ -1,0 +1,15 @@
+ksj_add_gtest(
+  ksj_base_tests
+  MODULE
+  core.kspacejet-base
+  SOURCES
+  crc32c_tests.cpp
+  file_tests.cpp
+  path_tests.cpp
+  status_tests.cpp
+  types_tests.cpp
+  LINK_LIBS
+  KSpaceJet::core
+  LABELS
+  core
+  kspacejet-base)

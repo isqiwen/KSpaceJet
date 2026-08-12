@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_crash_tests
+  MODULE
+  core.kspacejet-crash
+  SOURCES
+  ring_buffer_tests.cpp
+  LINK_LIBS
+  KSpaceJet::core
+  LABELS
+  core
+  kspacejet-crash)

@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_fft_tests
+  MODULE
+  numerics.kspacejet-fft
+  SOURCES
+  fft_tests.cpp
+  LINK_LIBS
+  KSpaceJet::fft
+  LABELS
+  numerics
+  kspacejet-fft)

@@ -1,0 +1,9 @@
+ksj_add_core_component(
+  crash
+  INCLUDE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  SOURCES
+  src/ring_buffer.cpp
+  src/handler.cpp
+  PUBLIC_LINK_LIBS
+  KSpaceJet::platform_runtime_libraries)

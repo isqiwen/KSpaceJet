@@ -1,0 +1,17 @@
+[settings]
+os=Windows
+arch=x86_64
+compiler=msvc
+compiler.version=194
+compiler.cppstd=20
+compiler.runtime=dynamic
+compiler.runtime_type=Release
+build_type=Release
+
+[options]
+# ``compiler.runtime=dynamic`` selects the MSVC CRT.  This option separately
+# requires DLL variants of Conan dependencies.
+*:shared=True
+
+[conf]
+tools.cmake.cmaketoolchain:generator=Visual Studio 17 2022

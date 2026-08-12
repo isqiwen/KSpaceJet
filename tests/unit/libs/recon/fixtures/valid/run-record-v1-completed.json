@@ -1,0 +1,14 @@
+{
+  "schema_version": "kspacejet.run-record/v1",
+  "kind": "RunRecord",
+  "run_id": "scan.20260812.0001",
+  "execution_profile": "bounded-online",
+  "execution_plan_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "verification_record_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "admission_record_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "outcome": "completed",
+  "recovery_class": "fail_stop_no_resume",
+  "egress_visibility": "flushed",
+  "last_committed_ordinal": 41,
+  "secondary_causes": []
+}

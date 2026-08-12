@@ -1,0 +1,12 @@
+ksj_add_gtest(
+  ksj_matio_tests
+  MODULE
+  io.kspacejet-matio
+  SOURCES
+  mat_file_tests.cpp
+  LINK_LIBS
+  KSpaceJet::matio
+  KSpaceJet::core
+  LABELS
+  io
+  kspacejet-matio)

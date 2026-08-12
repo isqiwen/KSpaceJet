@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_optimization_tests
+  MODULE
+  numerics.kspacejet-optimization
+  SOURCES
+  optimization_tests.cpp
+  LINK_LIBS
+  KSpaceJet::optimization
+  LABELS
+  numerics
+  kspacejet-optimization)

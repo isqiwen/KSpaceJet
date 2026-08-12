@@ -1,0 +1,23 @@
+[project]
+name = "kspacejet-development-tools"
+version = "0.0.0"
+description = "Reproducible development tooling for the KSpaceJet source tree"
+requires-python = "==3.13.*"
+dependencies = []
+
+[dependency-groups]
+# Keep this group deliberately small.  Add a tool only when a checked-in script
+# or documented workflow uses it; `uv.lock` records the full resolved graph.
+dev = [
+  "clang-format==19.1.7",
+  "cmake==3.31.6",
+  "cmakelang==0.6.13",
+  "conan==2.31.2",
+  "ninja==1.13.0",
+]
+
+[tool.uv]
+# This repository is a C++ project.  uv manages its tooling environment, not a
+# Python package built from the repository root.
+package = false
+default-groups = ["dev"]

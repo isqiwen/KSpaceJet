@@ -1,0 +1,39 @@
+{
+  "schema_version": "kspacejet.pipeline/v1",
+  "kind": "PipelineDefinition",
+  "pipeline": {
+    "id": "org.example.reference-cartesian",
+    "revision": "1.0.0",
+    "display_name": "Reference Cartesian reconstruction"
+  },
+  "allowed_profiles": ["bounded-online"],
+  "parameters": {},
+  "provider_requirements": [
+    {
+      "alias": "reference",
+      "provider_id": "org.kspacejet.reference",
+      "version_requirement": ">=1.0.0 <2.0.0",
+      "required_abi_major": 1
+    }
+  ],
+  "nodes": [
+    {
+      "id": "reconstruct",
+      "operator": { "provider": "reference", "id": "reference_reconstruct" },
+      "config": {},
+      "ports": []
+    }
+  ],
+  "edges": [],
+  "bindings": {
+    "ingress": [
+      { "id": "acquisitions", "type": "ismrmrd.acquisition/v1", "to": { "node": "reconstruct", "port": "acquisition" } }
+    ],
+    "egress": [
+      { "id": "images", "type": "ismrmrd.image/v1", "from": { "node": "reconstruct", "port": "image" } }
+    ],
+    "calibration": [],
+    "merge": []
+  },
+  "annotations": {}
+}

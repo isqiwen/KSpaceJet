@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_stats_tests
+  MODULE
+  numerics.kspacejet-stats
+  SOURCES
+  stats_tests.cpp
+  LINK_LIBS
+  KSpaceJet::stats
+  LABELS
+  numerics
+  kspacejet-stats)

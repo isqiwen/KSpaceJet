@@ -1,0 +1,271 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "KSJ: bootstrap developer environment",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/tools/devenv/linux/bootstrap.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "windows": {
+        "command": "powershell",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\tools\\devenv\\windows\\bootstrap.ps1"
+        ]
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "KSJ: prepare Linux Debug environment",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/tools/devenv/linux/bootstrap.sh",
+        "--prepare",
+        "linux-debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "KSJ: build Linux Debug applications",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "args": [
+        "cmake",
+        "--build",
+        "--preset",
+        "linux-debug",
+        "--target",
+        "ksj_cli",
+        "ksj_gateway",
+        "ksj_recon",
+        "ksj_research"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "KSJ: install Linux Debug applications",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "args": [
+        "cmake",
+        "--build",
+        "--preset",
+        "linux-debug-install"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "KSJ: build Linux Debug applications",
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "KSJ: prepare Linux Release environment",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/tools/devenv/linux/bootstrap.sh",
+        "--prepare",
+        "linux-release"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "KSJ: build Linux Release applications",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "args": [
+        "cmake",
+        "--build",
+        "--preset",
+        "linux-release",
+        "--target",
+        "ksj_cli",
+        "ksj_gateway",
+        "ksj_recon",
+        "ksj_research"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "KSJ: install Linux Release applications",
+      "type": "process",
+      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "args": [
+        "cmake",
+        "--build",
+        "--preset",
+        "linux-release-install"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "KSJ: build Linux Release applications",
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "KSJ: prepare Windows Debug environment",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\devenv\\windows\\bootstrap.ps1",
+        "-Prepare",
+        "windows-vs2022-debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "KSJ: build Windows Debug applications",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
+        "cmake",
+        "--build",
+        "--preset",
+        "windows-vs2022-debug",
+        "--target",
+        "ksj_cli",
+        "ksj_gateway",
+        "ksj_recon",
+        "ksj_research"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$msCompile"
+      ]
+    },
+    {
+      "label": "KSJ: install Windows Debug applications",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
+        "cmake",
+        "--build",
+        "--preset",
+        "windows-vs2022-debug-install"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "KSJ: build Windows Debug applications",
+      "problemMatcher": [
+        "$msCompile"
+      ]
+    },
+    {
+      "label": "KSJ: prepare Windows Release environment",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\devenv\\windows\\bootstrap.ps1",
+        "-Prepare",
+        "windows-vs2022-release"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "KSJ: build Windows Release applications",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
+        "cmake",
+        "--build",
+        "--preset",
+        "windows-vs2022-release",
+        "--target",
+        "ksj_cli",
+        "ksj_gateway",
+        "ksj_recon",
+        "ksj_research"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$msCompile"
+      ]
+    },
+    {
+      "label": "KSJ: install Windows Release applications",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
+        "cmake",
+        "--build",
+        "--preset",
+        "windows-vs2022-release-install"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "KSJ: build Windows Release applications",
+      "problemMatcher": [
+        "$msCompile"
+      ]
+    }
+  ]
+}

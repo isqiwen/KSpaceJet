@@ -1,0 +1,5 @@
+add_executable(ksj_memory_benchmark memory_pool_benchmark.cpp)
+
+ksj_target_enable_benchmark_defaults(ksj_memory_benchmark)
+target_link_libraries(ksj_memory_benchmark PRIVATE KSpaceJet::core)
+ksj_set_executable_runtime_path(ksj_memory_benchmark)

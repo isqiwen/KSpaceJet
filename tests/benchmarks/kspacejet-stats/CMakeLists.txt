@@ -1,0 +1,6 @@
+add_executable(ksj_stats_backend_benchmark stats_backend_benchmark.cpp)
+
+ksj_target_enable_benchmark_defaults(ksj_stats_backend_benchmark)
+target_include_directories(ksj_stats_backend_benchmark PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
+target_link_libraries(ksj_stats_backend_benchmark PRIVATE KSpaceJet::stats)
+ksj_set_executable_runtime_path(ksj_stats_backend_benchmark)

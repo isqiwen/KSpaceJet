@@ -1,0 +1,9 @@
+ksj_add_core_component(
+  config
+  INCLUDE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  SOURCES
+  src/key_value_config.cpp
+  src/parameter_document.cpp
+  src/runtime_config.cpp
+  src/site_config.cpp)

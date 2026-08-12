@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/v1/plan-build-request-v1.schema.json",
+  "title": "KSpaceJet PlanBuildRequest v1",
+  "description": "The scan-specific request that chooses one execution profile for a profile-neutral ResolvedPipeline. It is an immutable compiler input, not a replacement for ExecutionPlan.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "resolved_pipeline_digest",
+    "requested_profile",
+    "scan_descriptor_digest",
+    "target_envelope_digest",
+    "machine_policy_digest",
+    "operator_contracts"
+  ],
+  "properties": {
+    "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+    "schema_version": { "const": "kspacejet.plan-build-request/v1" },
+    "kind": { "const": "PlanBuildRequest" },
+    "resolved_pipeline_digest": { "$ref": "#/$defs/digest" },
+    "requested_profile": { "$ref": "#/$defs/executionProfile" },
+    "scan_descriptor_digest": { "$ref": "#/$defs/digest" },
+    "target_envelope_digest": { "$ref": "#/$defs/digest" },
+    "machine_policy_digest": { "$ref": "#/$defs/digest" },
+    "operator_contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/operatorContractBinding" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "executionProfile": {
+      "type": "string",
+      "enum": [
+        "offline",
+        "bounded-online",
+        "isolated-strict-online",
+        "deadline-qualified-online",
+        "research-unbounded"
+      ]
+    },
+    "operatorContractBinding": {
+      "type": "object",
+      "required": ["node_id", "contract_digest"],
+      "properties": {
+        "node_id": { "$ref": "#/$defs/identifier" },
+        "contract_digest": { "$ref": "#/$defs/digest" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

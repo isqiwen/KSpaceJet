@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_logging_tests
+  MODULE
+  core.kspacejet-logging
+  SOURCES
+  logging_tests.cpp
+  LINK_LIBS
+  KSpaceJet::core
+  LABELS
+  core
+  kspacejet-logging)

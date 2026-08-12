@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+if command -v uname >/dev/null 2>&1; then
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if command -v cygpath >/dev/null 2>&1; then
+        ps_script="$(cygpath -w "${repo_root}/tools/checks/windows/pre_commit.ps1")"
+      else
+        ps_script="${repo_root}/tools/checks/windows/pre_commit.ps1"
+      fi
+      if command -v pwsh >/dev/null 2>&1; then
+        exec pwsh -NoProfile -ExecutionPolicy Bypass -File "${ps_script}"
+      fi
+      if command -v powershell.exe >/dev/null 2>&1; then
+        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${ps_script}"
+      fi
+      ;;
+  esac
+fi
+
+exec "${repo_root}/tools/checks/linux/pre_commit.sh"

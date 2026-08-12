@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+if command -v uname >/dev/null 2>&1; then
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if command -v cygpath >/dev/null 2>&1; then
+        ps_script="$(cygpath -w "${repo_root}/tools/checks/windows/commit_msg_check.ps1")"
+        ps_args=()
+        for arg in "$@"; do
+          if [[ -e "${arg}" ]]; then
+            ps_args+=("$(cygpath -w "${arg}")")
+          else
+            ps_args+=("${arg}")
+          fi
+        done
+      else
+        ps_script="${repo_root}/tools/checks/windows/commit_msg_check.ps1"
+        ps_args=("$@")
+      fi
+      if command -v pwsh >/dev/null 2>&1; then
+        exec pwsh -NoProfile -ExecutionPolicy Bypass -File "${ps_script}" "${ps_args[@]}"
+      fi
+      if command -v powershell.exe >/dev/null 2>&1; then
+        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${ps_script}" "${ps_args[@]}"
+      fi
+      ;;
+  esac
+fi
+
+exec "${repo_root}/tools/checks/linux/commit_msg_check.sh" "$@"

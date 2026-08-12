@@ -1,0 +1,15 @@
+ksj_add_core_component(
+  platform
+  INCLUDE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  SOURCES
+  src/archive.cpp
+  src/dynamic_library.cpp
+  src/process.cpp
+  src/socket.cpp
+  src/socket_subsystem.cpp
+  src/system.cpp
+  PRIVATE_LINK_LIBS
+  KSpaceJet::platform_runtime_libraries
+  $<$<PLATFORM_ID:Windows>:ws2_32>
+  $<$<PLATFORM_ID:Windows>:psapi>)

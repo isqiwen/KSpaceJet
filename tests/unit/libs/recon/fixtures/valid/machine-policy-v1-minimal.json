@@ -1,0 +1,30 @@
+{
+  "schema_version": "kspacejet.machine-policy/v1",
+  "kind": "MachinePolicy",
+  "machine": {
+    "id": "org.example.dev-host",
+    "revision": "1.0.0"
+  },
+  "allowed_profiles": ["offline", "bounded-online"],
+  "resource_capacity": {
+    "domains": {
+      "host_normal_bytes": 17179869184,
+      "host_pinned_bytes": 0,
+      "host_hugepage_bytes": 0,
+      "shared_host_bytes": 0,
+      "spool_bytes": 0,
+      "transport_bytes": 0,
+      "descriptor_count": 65536,
+      "async_token_count": 4096,
+      "cpu_leaf_permits": 8,
+      "backend_gang_permits": 0,
+      "provider_private_permits": 0,
+      "io_slots": 4,
+      "devices": []
+    },
+    "host_total_cap_bytes": 17179869184
+  },
+  "numa_domain_count": 1,
+  "allowed_memory_domains": ["host"],
+  "scheduler_policy": "fair"
+}

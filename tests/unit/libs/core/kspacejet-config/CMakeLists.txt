@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_config_tests
+  MODULE
+  core.kspacejet-config
+  SOURCES
+  site_config_tests.cpp
+  LINK_LIBS
+  KSpaceJet::core
+  LABELS
+  core
+  kspacejet-config)

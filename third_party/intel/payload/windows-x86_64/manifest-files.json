@@ -1,0 +1,2449 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "sha256": "3677b20071527002986d4999cc0a0ca476eec9129f43bb1eee6f0148761abd5d",
+      "path": "oneapi/compiler/2026.1/include/omp-tools.h"
+    },
+    {
+      "sha256": "22041b8763121b44287bc7a9e6e1978d5f435274f4750828a93d8814ccaad171",
+      "path": "oneapi/compiler/2026.1/include/omp.h"
+    },
+    {
+      "sha256": "1c72f594fcebdf68b523f7ba55f05691a8a5196c9387a54b2f45e384afbeac82",
+      "path": "oneapi/compiler/2026.1/include/omp_lib.h"
+    },
+    {
+      "sha256": "ee527c978999653eb18edc3ef372b4e95d4ad9a7691b6d08817be9d38c7d0a02",
+      "path": "oneapi/compiler/2026.1/lib/libiomp5md.dll"
+    },
+    {
+      "sha256": "f282d5c65dd65ff089de7047bd5adf901ad2356e14a9333f7bb122859f8f1ebf",
+      "path": "oneapi/compiler/2026.1/lib/libiomp5md.lib"
+    },
+    {
+      "sha256": "3d5837e458b16783bff795ca98146fa66a35cdec84b3604b57713921f5fa03cb",
+      "path": "oneapi/compiler/2026.1/lib/libiomp5md.pdb"
+    },
+    {
+      "sha256": "af599d161d9d0c6d08706ecd45167727aa528bad8a96a52e579a5b3e69926aef",
+      "path": "oneapi/compiler/2026.1/lib/libiomp5md_db.dll"
+    },
+    {
+      "sha256": "6920b610c0bd16b3acfc247791e986bfc36f247994ef0f6713fbbe1fb0e49214",
+      "path": "oneapi/compiler/2026.1/lib/libiompstubs5md.dll"
+    },
+    {
+      "sha256": "b96ad8ece9fe16cda34b5bdb9a1b8b13872ebb0f0924a046c7c5c9ca59eaf185",
+      "path": "oneapi/compiler/2026.1/lib/libiompstubs5md.lib"
+    },
+    {
+      "sha256": "a467b7d0ee65850bb8e60280e15e80f9e5b59d2b94ada84f34055e4f7f4388c6",
+      "path": "oneapi/ipp/2026.0/include/ipp.h"
+    },
+    {
+      "sha256": "f4e5de91c2f0db99e6d8886a280722d569649e8249fb532ba5a51ebf05a5e8a1",
+      "path": "oneapi/ipp/2026.0/include/ipp/ipp.h"
+    },
+    {
+      "sha256": "858cda6bab6c322edd650ba1c67ce8185a3dcf04d08e54901f4626419e68f942",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippbase.h"
+    },
+    {
+      "sha256": "176279ddcafe7205191569854e3e83ec2460956608e02ffe8dfbe383037b040e",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcc.h"
+    },
+    {
+      "sha256": "9fc4a3e6f3dddfe4de2b3e25cf523b3bcc8df0a44f29abee9c98f5ee379af4ba",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcc_l.h"
+    },
+    {
+      "sha256": "381e5eed61b53f00d01cc3b5fc04af822f8f67ec9549d5b2b7d31702ce672eb7",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcc_tl.h"
+    },
+    {
+      "sha256": "5253cb5c99ea8f4692c78044278dabce9b81602065ac1a1194816cf0c0ee48fa",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcc_tl_redefs.h"
+    },
+    {
+      "sha256": "6df93bc3407f45aac0ec5ab8ed91cc2c121aab5e72e84678c585c011994416bd",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcore.h"
+    },
+    {
+      "sha256": "fcd8a8b60147c38bf107c05bb488cc4901b4a17d499636cdf92742e876c9b4f0",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcore_l.h"
+    },
+    {
+      "sha256": "c0f76fa47afa27b1d6e9eb157f23d698342774cc88f2a7f373ccbda6d9b42322",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcore_tl.h"
+    },
+    {
+      "sha256": "139d0750d8ef59452a94a02193dbc4870760d29c52271e4d5e6882d5d62088ca",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcv.h"
+    },
+    {
+      "sha256": "dbec1331182a24aea8ea6b3960d63f2b540a71adfb24b6b7957f187ae3f60968",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcv_l.h"
+    },
+    {
+      "sha256": "f1af7b544e7191d627dec5609ac2de170283f1d4867fa7c074e7416dc89f24b1",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcv_tl.h"
+    },
+    {
+      "sha256": "61653ddd46247f4bddb39ab424ca7f36a60746be1acb1103487346a839c0c74c",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippcv_tl_redefs.h"
+    },
+    {
+      "sha256": "be5b5a3a7ab4db62c663329d9a75afdb07c7ea18ad54025497e2b1af1154f269",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippdc.h"
+    },
+    {
+      "sha256": "3a21a56fa91b031dbc1cca93b42ae75ef401cdfa4813e1109b4307a97f0bea70",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippdefs.h"
+    },
+    {
+      "sha256": "279e8769ebdc73aeb7785c96e2b62ef563cd858d42f90c4dd7253ff2d0940b9d",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippdefs_l.h"
+    },
+    {
+      "sha256": "d888b4928cedd2a4f0a9b773371fdc4c512ccb236ce261759f1018848e6f4327",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippe.h"
+    },
+    {
+      "sha256": "21db8ea60a98a25f01e8728f35c20c4d7682142f2016692371ba0c4ed9b047ee",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippi.h"
+    },
+    {
+      "sha256": "d229594e787b25d3966fc5b6df8a77251aa5f41e5cc4cf4a491e17d579a6407d",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippi_l.h"
+    },
+    {
+      "sha256": "a9b4e4949d939e432df8a34ca8f96f075b2a05cd227ad09a7e843c35640975e7",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippi_tl.h"
+    },
+    {
+      "sha256": "ec86f39240aa4d028ef6247a6658f95009cd9a25216c43448fdc9feaccdfbcf2",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippi_tl_redefs.h"
+    },
+    {
+      "sha256": "908b2398fc40c096a1f8d419fec8f434085f0675c59e171489bad2c650f9d63d",
+      "path": "oneapi/ipp/2026.0/include/ipp/ipps.h"
+    },
+    {
+      "sha256": "5ce8483a17d9fd4c60cda902b9e3dbff7587eaf11eadded9cabc276a6fdc25f0",
+      "path": "oneapi/ipp/2026.0/include/ipp/ipps_l.h"
+    },
+    {
+      "sha256": "395bf07c919942a576ade5f7f5226621524cf2f8ea0b9719a993bc83233d5af7",
+      "path": "oneapi/ipp/2026.0/include/ipp/ipptypes.h"
+    },
+    {
+      "sha256": "bb273c0709a7d13da9c47ba6ec0e0be993375715d08bfe21a7e489c6f8ba114f",
+      "path": "oneapi/ipp/2026.0/include/ipp/ipptypes_l.h"
+    },
+    {
+      "sha256": "53dc24a44314c983bf14c92f352d6cd6c28ceefbae222d4283aa7c9697734a33",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippversion.h"
+    },
+    {
+      "sha256": "c30fdcd243a0beedbcede3647450dc936bf7af9b5447318a8ef60dbe41989f0c",
+      "path": "oneapi/ipp/2026.0/include/ipp/ippvm.h"
+    },
+    {
+      "sha256": "e10d5a651a85fda3b4af865e5cdd19d2dd3fefc45aebc441a3f96c84ae431beb",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw.hpp"
+    },
+    {
+      "sha256": "d2739cca232d3f1ca89071d5d9e1b954582089858f57094b78409807e4c49dea",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw_core.hpp"
+    },
+    {
+      "sha256": "09792b204d744745f9ced79d61698b9260a258564ae7b970a9378862393bce26",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw_image.hpp"
+    },
+    {
+      "sha256": "5891d0ba797f5c20adb598d897a4efe0b39674823f08d2497accfff117859d9a",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw_image_color.hpp"
+    },
+    {
+      "sha256": "5ade1bb74bbd8cca287073de03103e675c2a1916fe957d5bb5964fd525da57be",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw_image_filter.hpp"
+    },
+    {
+      "sha256": "370b27167543d0ead1f8175ae0374bd0017425d50dae02d6db68ef087ac5ad4b",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw_image_op.hpp"
+    },
+    {
+      "sha256": "d83274124fd8abbc65505193db95af9503f48b18d32d0409c6ac54fa58a3a247",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw_image_transform.hpp"
+    },
+    {
+      "sha256": "2ed93dcbafff4a9299cd71bbb344d3db4a8fb917652aa41e39f560074c6082ef",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw_signal.hpp"
+    },
+    {
+      "sha256": "1854701ffd24426ee884fd28707b46a4762865eee499bb0f8af638f20035d6ca",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw++/iw_signal_transform.hpp"
+    },
+    {
+      "sha256": "973b41338a3dbf17dd52c4623afa78c1cb2c37620eaf8c34669e825b73b6e1b4",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw.h"
+    },
+    {
+      "sha256": "7af79b6c8190bb0471a94b27a0dfd0062f22707d89664db2a4f697ed7c217eec",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_core.h"
+    },
+    {
+      "sha256": "c8ed82f7e1d1f31e86953222ff8b5c42b56de2b5153aed4dfbce8a9b8ba73f1a",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_image.h"
+    },
+    {
+      "sha256": "5c416f51fc8115430c728236c09419c90c4f96274e1bc60e457f7e68ed4a8872",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_image_color.h"
+    },
+    {
+      "sha256": "422f5ba2ebc531b513124ed16b5e59615286ae217b8cfd7772585d7e8af66e0a",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_image_filter.h"
+    },
+    {
+      "sha256": "489d101ac59ca5e6d12d6e73f00a9112b214ddc687b33fe067289817cb980ec6",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_image_op.h"
+    },
+    {
+      "sha256": "8dbb676e22333abf6ae45cacaf03d4cf78e202241eca414626de98f8ebf2c7f8",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_image_transform.h"
+    },
+    {
+      "sha256": "6f7be80c29b43a4448b387a2bdcb65495f8555995631b61c0918f9c64eb6b7f8",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_signal.h"
+    },
+    {
+      "sha256": "42b81fa7d123251f710a7cea580d3120efb5e3dbd13f057ea2c9b4e743df3dad",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_signal_transform.h"
+    },
+    {
+      "sha256": "6bf55e2de43bbeddd497da117f0188966136f8904b6878f935731731dc695cb5",
+      "path": "oneapi/ipp/2026.0/include/ipp/iw/iw_version.h"
+    },
+    {
+      "sha256": "76ccbe72a1ebf064f2dc99bf02265e402090e6f99bc6ed9ef30e950bc1740fab",
+      "path": "oneapi/ipp/2026.0/lib/ippcc.dll"
+    },
+    {
+      "sha256": "42b258dc0d77bebfc426e744f53561f8f1fabcf64c59ced90cb9de0c52e999e1",
+      "path": "oneapi/ipp/2026.0/lib/ippcc.lib"
+    },
+    {
+      "sha256": "5ed689a069ab736300f17797c6d40f24651b3d593cd2339137dfc749c056b3ea",
+      "path": "oneapi/ipp/2026.0/lib/ippcc_tl_omp.dll"
+    },
+    {
+      "sha256": "2696abb0fdff722c14eaed2e961aeffbb80c4e885af41e2557a392c4e5cba9e2",
+      "path": "oneapi/ipp/2026.0/lib/ippcc_tl_omp.lib"
+    },
+    {
+      "sha256": "e3ff171e1304c342ca55c936749fd5d983261720e96bf29d64a9525747226718",
+      "path": "oneapi/ipp/2026.0/lib/ippcc_tl_tbb.dll"
+    },
+    {
+      "sha256": "2c57a027f60714489a048b6c7572955922ecfa73fa8173fcee9d6c3de6f3065f",
+      "path": "oneapi/ipp/2026.0/lib/ippcc_tl_tbb.lib"
+    },
+    {
+      "sha256": "f90b46dd13916ca7f2f48c97fc81efc96f7b53883e849b90f1a7017f2e8a4cdc",
+      "path": "oneapi/ipp/2026.0/lib/ippccd1.dll"
+    },
+    {
+      "sha256": "f7e5909bee963598f7f47e5a00c83adc1e21d98a676c17079c45eae0d6b344cd",
+      "path": "oneapi/ipp/2026.0/lib/ippcck0.dll"
+    },
+    {
+      "sha256": "f7084acd9aee20a9ca3c723da5fa452bfdbe8459b0a90a76bd6dfa1554ae5d24",
+      "path": "oneapi/ipp/2026.0/lib/ippccl9.dll"
+    },
+    {
+      "sha256": "9842e97d0d8e5e50133d635db746db19b9f3650102ce5c3d862c45e4d5f53587",
+      "path": "oneapi/ipp/2026.0/lib/ippccy8.dll"
+    },
+    {
+      "sha256": "35b7847a61e96d6b7dc4c28b686f9bfafc877bc7142f7612176c01a3227f096e",
+      "path": "oneapi/ipp/2026.0/lib/ippcore.dll"
+    },
+    {
+      "sha256": "d045fcc1ea59bbbb097feea1ae3e7a4ccef3d711e956efc6cf804048f4c12a8a",
+      "path": "oneapi/ipp/2026.0/lib/ippcore.lib"
+    },
+    {
+      "sha256": "d7d7cc6afe02c0a286661484b2c6928039ad2c2d9afc007dd6c7ad12e56f3cce",
+      "path": "oneapi/ipp/2026.0/lib/ippcore_tl_omp.dll"
+    },
+    {
+      "sha256": "2f4564e5df4df120d6b77d8df493900c760fd178ffebf74e12560d7ded45b1e6",
+      "path": "oneapi/ipp/2026.0/lib/ippcore_tl_omp.lib"
+    },
+    {
+      "sha256": "8c9fe7d8aa126c8ce0f492863f9e78560c96af66dc2c7d301923c9eef4caac73",
+      "path": "oneapi/ipp/2026.0/lib/ippcore_tl_tbb.dll"
+    },
+    {
+      "sha256": "0fa9bdfc4a7954546873968f4ffbc0f859c067f4728825f3761b6f3cdc278a10",
+      "path": "oneapi/ipp/2026.0/lib/ippcore_tl_tbb.lib"
+    },
+    {
+      "sha256": "af9b6575993721f376b34c20bc01b700034bc52baf8a9aef0bcf1927e755fbc1",
+      "path": "oneapi/ipp/2026.0/lib/ippcv.dll"
+    },
+    {
+      "sha256": "7653194508902921b07178a8c396e417a3e89f80be2cf7aec167486bdca04d4c",
+      "path": "oneapi/ipp/2026.0/lib/ippcv.lib"
+    },
+    {
+      "sha256": "0268571d0b18691f8f3786a02151a776c27a306ce6ba3f7d258bf9ee05b2a395",
+      "path": "oneapi/ipp/2026.0/lib/ippcv_tl_omp.dll"
+    },
+    {
+      "sha256": "303432d053734cced70c17921c04cffc388c1944a5d17a4d23bbe61fbe30783b",
+      "path": "oneapi/ipp/2026.0/lib/ippcv_tl_omp.lib"
+    },
+    {
+      "sha256": "d256580c5b238b4bf27903bf64cddadd8c1fdcaecc4a3917cfe84d467b7ed01b",
+      "path": "oneapi/ipp/2026.0/lib/ippcv_tl_tbb.dll"
+    },
+    {
+      "sha256": "aaa335eab9c9e2d51f87cb36e4fcc0da618720cbff1d9d593334f9717a0a1c5e",
+      "path": "oneapi/ipp/2026.0/lib/ippcv_tl_tbb.lib"
+    },
+    {
+      "sha256": "40dc341117886e622deeb5f77d0bebfa430cb3873b107b8698abb86245bf2101",
+      "path": "oneapi/ipp/2026.0/lib/ippcvd1.dll"
+    },
+    {
+      "sha256": "320249020f7d216a43fa787a5275c959aa9a1e2e7316398f4589cb2d6dd821f8",
+      "path": "oneapi/ipp/2026.0/lib/ippcvk0.dll"
+    },
+    {
+      "sha256": "c496fe53f17d28fc800564e073a78820a148ac5f15f8d9134ffab437c91bf2e5",
+      "path": "oneapi/ipp/2026.0/lib/ippcvl9.dll"
+    },
+    {
+      "sha256": "25e1a2513c6abac9acac1095796cce384ad878c962d5e5c8830ee4894e239c08",
+      "path": "oneapi/ipp/2026.0/lib/ippcvy8.dll"
+    },
+    {
+      "sha256": "b4c6d2d83bdec39b9a9dfbf1892d43d1adc7d9c29d9ff59802e27361f5432a4c",
+      "path": "oneapi/ipp/2026.0/lib/ippdc.dll"
+    },
+    {
+      "sha256": "d1c727ff30226301f455d00daaa7e039cdc952fb93d58da4267017800e149d1a",
+      "path": "oneapi/ipp/2026.0/lib/ippdc.lib"
+    },
+    {
+      "sha256": "bdc04d9bb185d59f47ea93224e3c57fa7ac11b64d77ce6372c46baf0e4c9dd15",
+      "path": "oneapi/ipp/2026.0/lib/ippdcd1.dll"
+    },
+    {
+      "sha256": "d95541d339cb930a942cd53be2f12d0486a5ab8165c84b3f7d8dff6813915cd3",
+      "path": "oneapi/ipp/2026.0/lib/ippdck0.dll"
+    },
+    {
+      "sha256": "7554c9e46a16e16cd56161a5b3993c842011908b5c285ddf7374df2d3f55ef07",
+      "path": "oneapi/ipp/2026.0/lib/ippdcl9.dll"
+    },
+    {
+      "sha256": "b66434fb8d216250ce71b60bdfe91df91dd0202b08f98c50c28140affa464fbf",
+      "path": "oneapi/ipp/2026.0/lib/ippdcy8.dll"
+    },
+    {
+      "sha256": "7ac55b71a3f95d72457c73138c268a11e5dddc6dd49169c432b4c08c965738a4",
+      "path": "oneapi/ipp/2026.0/lib/ippe.dll"
+    },
+    {
+      "sha256": "01a49fab3389a29fc8d27f979941d9e114e23daa8299bd046006da9dfe4276e3",
+      "path": "oneapi/ipp/2026.0/lib/ippe.lib"
+    },
+    {
+      "sha256": "fcc11682eba54101a7a15ef0dd0b98d137b68793a41612e17d474edbe52071c6",
+      "path": "oneapi/ipp/2026.0/lib/ipped1.dll"
+    },
+    {
+      "sha256": "6192e6c1872866234cc5e88a36185ffaa5bdb7ac40a8bb92dad806669bc6d184",
+      "path": "oneapi/ipp/2026.0/lib/ippek0.dll"
+    },
+    {
+      "sha256": "a9fbf15785d829c88896aa322508a21cc8c5ae232e8aeb3b566e143c044e8ef3",
+      "path": "oneapi/ipp/2026.0/lib/ippel9.dll"
+    },
+    {
+      "sha256": "112ea2d817571d94c10f8073c52633f114b7cfa86167b087f45dce0d1080f0c0",
+      "path": "oneapi/ipp/2026.0/lib/ippey8.dll"
+    },
+    {
+      "sha256": "176efa5a0801f353a577f6caeb9abf005ba220ec0c2c417a67de6a4c3454a28e",
+      "path": "oneapi/ipp/2026.0/lib/ippi.dll"
+    },
+    {
+      "sha256": "cf533d5a82d3afaf8cac58c13c0c0394b8c772707af5e5cbc075fdb20fa46094",
+      "path": "oneapi/ipp/2026.0/lib/ippi.lib"
+    },
+    {
+      "sha256": "a8063eea8d64df1c0814a5638bc6a5f5d07af961c16da8f7d24f989216ef3f90",
+      "path": "oneapi/ipp/2026.0/lib/ippi_tl_omp.dll"
+    },
+    {
+      "sha256": "5c03293ebd88906408f4f77cf0e61bfa34996462d91142cc7617a6222397ae0a",
+      "path": "oneapi/ipp/2026.0/lib/ippi_tl_omp.lib"
+    },
+    {
+      "sha256": "b5ed80f323ad7688f25f6441d87354c2e7eb6623b9e29b2c328788051d12c640",
+      "path": "oneapi/ipp/2026.0/lib/ippi_tl_tbb.dll"
+    },
+    {
+      "sha256": "64f35d05da339a14bb75121fa9eb11d29969468d7f7776f7f0769e6e9109f06f",
+      "path": "oneapi/ipp/2026.0/lib/ippi_tl_tbb.lib"
+    },
+    {
+      "sha256": "5efbf308a411af02252efc84f9b6ade755afbb9745038fc42a884a7e8cdbce76",
+      "path": "oneapi/ipp/2026.0/lib/ippid1.dll"
+    },
+    {
+      "sha256": "79691b835764350f407d96f2126108777427a03b1663eaec7f800a49fc399cff",
+      "path": "oneapi/ipp/2026.0/lib/ippik0.dll"
+    },
+    {
+      "sha256": "30c7d75131c7f03fe339dd83c82524d33d6c662fb6024add64176b7b798d3f0d",
+      "path": "oneapi/ipp/2026.0/lib/ippil9.dll"
+    },
+    {
+      "sha256": "b499d7fd73fb291cc64b656f59175ac097893e1249b8bd62345c01b15cad524d",
+      "path": "oneapi/ipp/2026.0/lib/ippiy8.dll"
+    },
+    {
+      "sha256": "bd1bd1c4c13bb3911faa860b0c8edab0df1560b8d1c02d5ab81adc83a7498ebf",
+      "path": "oneapi/ipp/2026.0/lib/ipps.dll"
+    },
+    {
+      "sha256": "e9915cf5bbbfd08dbbfc83a1d8d9d68d0c60308800c868ec077d98e9b6c07def",
+      "path": "oneapi/ipp/2026.0/lib/ipps.lib"
+    },
+    {
+      "sha256": "bb9d9897d77e25383c1c701e9a312fca20afdcf3bae83fd17bcace6efd323521",
+      "path": "oneapi/ipp/2026.0/lib/ippsd1.dll"
+    },
+    {
+      "sha256": "bcfca59c2eba116c38fe2c8fe078d80b4603912155027dfe9755710521fe734a",
+      "path": "oneapi/ipp/2026.0/lib/ippsk0.dll"
+    },
+    {
+      "sha256": "0fe220f0d336c1802a950e8000920d03fea96e3297af919ede2948cea8d37d20",
+      "path": "oneapi/ipp/2026.0/lib/ippsl9.dll"
+    },
+    {
+      "sha256": "350c781adb438ea8510246db5d9bd013ab0ae308e99832fbc34b69a8ab6fc259",
+      "path": "oneapi/ipp/2026.0/lib/ippsy8.dll"
+    },
+    {
+      "sha256": "f9eb0ce1c7c0ad10b064b7df0243295d545a5f5947bf31e6a5e29420cfe90131",
+      "path": "oneapi/ipp/2026.0/lib/ippvm.dll"
+    },
+    {
+      "sha256": "b51b28ec763e7da794b094c612ad96ba811dee24721168bb14810f12c202a6b9",
+      "path": "oneapi/ipp/2026.0/lib/ippvm.lib"
+    },
+    {
+      "sha256": "a167cd8b8bad61e424c3b79b144f54fc3d28e82410fb6e492df35010c332efec",
+      "path": "oneapi/ipp/2026.0/lib/ippvmd1.dll"
+    },
+    {
+      "sha256": "f96d82ce131bd1e6e3c35963053027c4c497ad0964ba6908b686e28d1136b504",
+      "path": "oneapi/ipp/2026.0/lib/ippvmk0.dll"
+    },
+    {
+      "sha256": "c5327752d686639afcdaed7b3b00bb9ade18b2950ea7ab22f3a39909cd92a2fd",
+      "path": "oneapi/ipp/2026.0/lib/ippvml9.dll"
+    },
+    {
+      "sha256": "d8861bf118817cdc00f3355066a21481f4ba53341c69600773267b14c2b145c4",
+      "path": "oneapi/ipp/2026.0/lib/ippvmy8.dll"
+    },
+    {
+      "sha256": "04e7d0dbe9536c3ac5ed95759aa276503acf32192991e29eda0e67b1fef79d40",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw.h"
+    },
+    {
+      "sha256": "d91128ff5fa8c5a5a097d30867c7c2b233ab50c01eb8f80010f39b4ffaa46b2c",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3-mpi.f03"
+    },
+    {
+      "sha256": "2f610bad204da455d4421b62f7ecd6995bacb07aa8ec8e2d0c94fdb320a5d867",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3-mpi.h"
+    },
+    {
+      "sha256": "0c2fa2aa160a2ff7f1f7fe5428f88c17907dedc58cda273cf72de2255676d191",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3-mpi_mkl.h"
+    },
+    {
+      "sha256": "22f048d1346f302170648b00e4c0e73f54024430d9430289c2961db1c60a81ab",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3.f"
+    },
+    {
+      "sha256": "0cea9d411e98df59f25e8806b051988e266a8670cf82363d5e6ea94c0d828960",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3.f03"
+    },
+    {
+      "sha256": "174090d7148905e4b817a59530f4b1e2e1e5db5d46b3ff0e47c2a9665c7fe931",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3.h"
+    },
+    {
+      "sha256": "59274cc478db10fa063462b32299f8ecd3bad071577f044fa17a4e5e8781f17d",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3_mkl.f"
+    },
+    {
+      "sha256": "fa87de39a93007544dcd3069c975cf125df7bf6d67d437c4e0d34de9c001b906",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3_mkl.h"
+    },
+    {
+      "sha256": "3921163127d93e28ac6b21d3e1dfe2d514d024547fc97d79062ee2028a2df504",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw3_mkl_f77.h"
+    },
+    {
+      "sha256": "84fdcada0e5d377e274beccccd58b74022a9f5cb9370209d2939c01efb04bd9f",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw_f77.i"
+    },
+    {
+      "sha256": "b1f537f2008457e7e7a270af575684eb3e2b22c8caa3b898535b261e0fe041b8",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw_mpi.h"
+    },
+    {
+      "sha256": "54e7a3a1c9f7c18b94a60ac31e165c6816a6868760eeec668dbee8c07ce5df7b",
+      "path": "oneapi/mkl/2026.1/include/fftw/fftw_threads.h"
+    },
+    {
+      "sha256": "64b0a01e10fb2a9ee5628bb6d7093fb41db5476d23e5bd9a76908c6c83d7bc23",
+      "path": "oneapi/mkl/2026.1/include/fftw/offload/fftw3_omp_offload.f90"
+    },
+    {
+      "sha256": "76a4128847bdca3963a76beb740f84590480a8ba538ef002a2a5050aaf3be59f",
+      "path": "oneapi/mkl/2026.1/include/fftw/offload/fftw3_omp_offload.h"
+    },
+    {
+      "sha256": "890f0661826b8e1f579479629150379452bfee7e8738080bcf1d4960d4067328",
+      "path": "oneapi/mkl/2026.1/include/fftw/offload/fftw3_omp_offload_common.h"
+    },
+    {
+      "sha256": "90afbf359e65868ef5bb7091281000072476ee4d016adef017d042dbdbfa1abd",
+      "path": "oneapi/mkl/2026.1/include/fftw/rfftw.h"
+    },
+    {
+      "sha256": "497994ee2c642cd2af552fe225864aa21468589dff894cc4a4065b27a68c7ebb",
+      "path": "oneapi/mkl/2026.1/include/fftw/rfftw_mpi.h"
+    },
+    {
+      "sha256": "20ded16cc6e70f36312b7a2e338ffdea7d6c73d6075d20eed03b2dba71abc9be",
+      "path": "oneapi/mkl/2026.1/include/fftw/rfftw_threads.h"
+    },
+    {
+      "sha256": "cf88222389c67df2ae876c368dc974c6bc797209b263b2da4d00964ec0eaadba",
+      "path": "oneapi/mkl/2026.1/include/i_malloc.h"
+    },
+    {
+      "sha256": "0470f5b24f3ddb91947c7cd37e2881af701de9102600d16411b1f19895812399",
+      "path": "oneapi/mkl/2026.1/include/intel64/ilp64/blas95.mod"
+    },
+    {
+      "sha256": "b1f40327680797c5347dddab06e147c3e4a3a27809b1034691c60fb140e76c4c",
+      "path": "oneapi/mkl/2026.1/include/intel64/ilp64/f95_precision.mod"
+    },
+    {
+      "sha256": "7ffbf997b17fd5ab63964ca80394e6588248cd9294810a29fae5a8368305ac2a",
+      "path": "oneapi/mkl/2026.1/include/intel64/ilp64/lapack95.mod"
+    },
+    {
+      "sha256": "c6004ffcdf22026dfb76d9c9bb77f8959488a549d5a8281449e25c2394b5c280",
+      "path": "oneapi/mkl/2026.1/include/intel64/ilp64/mkl_service.mod"
+    },
+    {
+      "sha256": "4c35ad73556774c41115709422e41ae0a7c7565a2acebecf39659ed0cb408c0b",
+      "path": "oneapi/mkl/2026.1/include/intel64/lp64/blas95.mod"
+    },
+    {
+      "sha256": "158a4124f18ff5a48b450269185b90bff7333a8d2d34d136cb9fb9aab89b252c",
+      "path": "oneapi/mkl/2026.1/include/intel64/lp64/f95_precision.mod"
+    },
+    {
+      "sha256": "8a307acd7f808fe37e8b32c78e35a4dad62456a5b11f47aac7b1d13d019d41fa",
+      "path": "oneapi/mkl/2026.1/include/intel64/lp64/lapack95.mod"
+    },
+    {
+      "sha256": "64a89857458db46e909f15fddb671fa43fa928aa9ee8bde0a54a65459c799985",
+      "path": "oneapi/mkl/2026.1/include/intel64/lp64/mkl_service.mod"
+    },
+    {
+      "sha256": "d9fadc13c8cb0bf6961bc05e0e6be2f988331e87f673a75b795d2c8ec2ff7f45",
+      "path": "oneapi/mkl/2026.1/include/mkl.fi"
+    },
+    {
+      "sha256": "bb48bea8c45502766e3689052ae17e16c02e7a4c57463e00bfc75503be20cf12",
+      "path": "oneapi/mkl/2026.1/include/mkl.h"
+    },
+    {
+      "sha256": "ea3148b97611e431a75f0f69f81a3edbe5596188ff8630f48de9f94a2b813d10",
+      "path": "oneapi/mkl/2026.1/include/mkl_blacs.h"
+    },
+    {
+      "sha256": "f801df5985d17be8e730b1c2b505c75c598f74e8e317a845c77e2eb86c08d68f",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas.f90"
+    },
+    {
+      "sha256": "dde5a15ee6df291a888e403ca58d3ed9885cfe94881a1c175a4db99f5db099d4",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas.fi"
+    },
+    {
+      "sha256": "1af48ced309920a1a3e6afb278edd64fc9910781d0c9549fefab0ccc33665ed5",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas.h"
+    },
+    {
+      "sha256": "db5467492026bc192a80659892a45d40f129d18faec5628e6f481eec85e57edc",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_64.h"
+    },
+    {
+      "sha256": "c949577b43382aebea7d9672ae877a74ceec14b67fe513683f9f3edf04c5e4db",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_offload.f90"
+    },
+    {
+      "sha256": "b99f696b8e0de8cd1c6678f914bc612b738741b7b4c30a373d99266e75d80e8a",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_offload.h"
+    },
+    {
+      "sha256": "15c182514956537772472ee297cb3522f18e2311863b26ea65ea8065be691176",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_offload_ilp64.f90"
+    },
+    {
+      "sha256": "61bf77b8c14c2cb0b51bd2bab697a7347ef108893320e0c9fbf810b1dbe4a179",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_offload_ilp64_no_array_check.f90"
+    },
+    {
+      "sha256": "dc80259442c2fdc81bac950e7c6b2668703f9a3daf2b4e5192dab598c55923a3",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_offload_lp64.f90"
+    },
+    {
+      "sha256": "16d7f8f00429313a2600e68e428324afabb61eaac200979fc7474c14cfd21188",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_offload_lp64_no_array_check.f90"
+    },
+    {
+      "sha256": "8175ccfed4a7e1de2510f3f3cee6156499789682692fa5a07cab7ada7a089cd3",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_variant.h"
+    },
+    {
+      "sha256": "2cbdbfbfa8152112988f97ba32a0de0a6633b31c61ffd5249654e6c6f1529ca5",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_variant_ilp64.f90"
+    },
+    {
+      "sha256": "e17149cac0a18357be545b64b30ee1645c0a577578018f8e3b20109782c6dc92",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_variant_ilp64_no_array_check.f90"
+    },
+    {
+      "sha256": "f84801c49de3ad4d698fa1b34c0cfb371a129abd35ee7e50eb9e8ce19b5c973d",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_variant_lp64.f90"
+    },
+    {
+      "sha256": "2fa08742630860693b94365158831d9288abe1f3b44f3512668404dc6a630861",
+      "path": "oneapi/mkl/2026.1/include/mkl_blas_omp_variant_lp64_no_array_check.f90"
+    },
+    {
+      "sha256": "7f6c034dfcb30824ff59376232e2d322848d1483bdd7c291dd7de75777da4bda",
+      "path": "oneapi/mkl/2026.1/include/mkl_cblas.h"
+    },
+    {
+      "sha256": "a9d059a66950aa4405e2bed3bf3f60be4b1dcb33352572cecbc6b6cd67433103",
+      "path": "oneapi/mkl/2026.1/include/mkl_cblas_64.h"
+    },
+    {
+      "sha256": "c654f01274aefbd2025fda0b89db162a6073061c6f19e62e1a556627f2dba617",
+      "path": "oneapi/mkl/2026.1/include/mkl_cdft.f90"
+    },
+    {
+      "sha256": "e76fe5b3f4ad495ed36441f550375d849580352e5d10bc82a724c7abfd0a2950",
+      "path": "oneapi/mkl/2026.1/include/mkl_cdft.h"
+    },
+    {
+      "sha256": "9e1d54868dc8bec659b44b6de854354001b42112f808daf4a146a455d39c8855",
+      "path": "oneapi/mkl/2026.1/include/mkl_cdft_types.h"
+    },
+    {
+      "sha256": "1a48fbdef969fb86ef4a76d436851b482484f156016918e26668b64cf3eb4ea8",
+      "path": "oneapi/mkl/2026.1/include/mkl_cluster_sparse_solver.f90"
+    },
+    {
+      "sha256": "940584ffccb4ec72b8ad9e8ebbacf5b02aa9dd2fba79881c94ac0df64f89e101",
+      "path": "oneapi/mkl/2026.1/include/mkl_cluster_sparse_solver.fi"
+    },
+    {
+      "sha256": "ec787c2a248d02c62f6efba1ee77fc241ef95c0d8e222d8839e141971692c5db",
+      "path": "oneapi/mkl/2026.1/include/mkl_cluster_sparse_solver.h"
+    },
+    {
+      "sha256": "6a91794102819d586e5c136aa59fffec4e6ffad2a46f1a89863f150361173ad1",
+      "path": "oneapi/mkl/2026.1/include/mkl_compact.h"
+    },
+    {
+      "sha256": "ba27d977994ba6f240a016127904575b43452a7d0ad711816628298cc1b089a2",
+      "path": "oneapi/mkl/2026.1/include/mkl_df.f90"
+    },
+    {
+      "sha256": "fb152b8f227c24d6807d378d5cc3e4633b51a0031623d01312199a989648c73f",
+      "path": "oneapi/mkl/2026.1/include/mkl_df.h"
+    },
+    {
+      "sha256": "8273dafc544ef0408b96e567e04241806305c04169dd70291e1d1ea1cd5389af",
+      "path": "oneapi/mkl/2026.1/include/mkl_df_defines.h"
+    },
+    {
+      "sha256": "e6919fab221d522d20bd7f9416216aefa74593bf1f2ee08aec881659eef33d49",
+      "path": "oneapi/mkl/2026.1/include/mkl_df_functions.h"
+    },
+    {
+      "sha256": "c3e355985f09a1370241e4589e561563f248e153cb1bd77d340b88a42edb30d4",
+      "path": "oneapi/mkl/2026.1/include/mkl_df_types.h"
+    },
+    {
+      "sha256": "1329593c03d2bc9dbf523826f176228070afedda80f0b934453dd0ec0671b1e1",
+      "path": "oneapi/mkl/2026.1/include/mkl_dfti.f90"
+    },
+    {
+      "sha256": "0bf4871c7f5c498076343b4384c0152b107a325db670d2f633ed9c04a4570feb",
+      "path": "oneapi/mkl/2026.1/include/mkl_dfti.h"
+    },
+    {
+      "sha256": "42ebb4c72aa64b5f13156c932aadd6ecaf0535a33fdd6d6aee1a0bdc44addaab",
+      "path": "oneapi/mkl/2026.1/include/mkl_dfti_omp_offload.f90"
+    },
+    {
+      "sha256": "ba7fa3345141eafa466c9b4a576d37f8428fc6c1439c7b5a3af6f3da5db79def",
+      "path": "oneapi/mkl/2026.1/include/mkl_dfti_omp_offload.h"
+    },
+    {
+      "sha256": "0813bb054fcaff59d8d8d073421bbf17fdfeff79ad148f30b8207a683da9cd1c",
+      "path": "oneapi/mkl/2026.1/include/mkl_direct_blas.h"
+    },
+    {
+      "sha256": "c802b14c3c43bffc54401f053f8437814f715442f319d62d0385f882d74ced68",
+      "path": "oneapi/mkl/2026.1/include/mkl_direct_blas_kernels.h"
+    },
+    {
+      "sha256": "b954fa9071137acd15e989048b229dd730b0174754c1a2d06e777e5f5cfca38f",
+      "path": "oneapi/mkl/2026.1/include/mkl_direct_call.fi"
+    },
+    {
+      "sha256": "a3b7057224b7548418a253419b7c940db78f1b446d011b65cc33621fc942dc24",
+      "path": "oneapi/mkl/2026.1/include/mkl_direct_call.h"
+    },
+    {
+      "sha256": "bfac7f9a05a1ca4dd79ee4a99faca4ff54bdc349ef338acc8379bbeb76dfc77e",
+      "path": "oneapi/mkl/2026.1/include/mkl_direct_lapack.h"
+    },
+    {
+      "sha256": "c72d981eae779caeb312fadc94c5833e391b0b11ad963f56deea7435a110eb68",
+      "path": "oneapi/mkl/2026.1/include/mkl_direct_types.h"
+    },
+    {
+      "sha256": "29f865b759e19f12ebd6f3b505c6d79dbe37b6fb212e252db988a82e0182f5fb",
+      "path": "oneapi/mkl/2026.1/include/mkl_dss.f90"
+    },
+    {
+      "sha256": "fa35484f109cf489e72a265f262906ecb2438c1528f02601c22d879bca5d7866",
+      "path": "oneapi/mkl/2026.1/include/mkl_dss.fi"
+    },
+    {
+      "sha256": "29c8717ec9f5a4df4614676d394937ddaac88598ab7c97962d6a0ae8809b76a5",
+      "path": "oneapi/mkl/2026.1/include/mkl_dss.h"
+    },
+    {
+      "sha256": "c38c00cac47d413147c89d11f00aa29660eb206f6990259d7bd0d6b9ad7bdb8b",
+      "path": "oneapi/mkl/2026.1/include/mkl_jit_blas.f90"
+    },
+    {
+      "sha256": "80c6f57d9c2561975d786ff8b4ec3f21e478f602985345916ca019a0a2fb714f",
+      "path": "oneapi/mkl/2026.1/include/mkl_jit_blas_ilp64.f90"
+    },
+    {
+      "sha256": "9237f8752989f08ca8184069c92de3a29f5b57632ba327cedd0c18355cd6fd8d",
+      "path": "oneapi/mkl/2026.1/include/mkl_jit_blas_lp64.f90"
+    },
+    {
+      "sha256": "959ca1427333567ed911936b8fb54d060aa5c52175350171079fac231f6e7583",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack.f90"
+    },
+    {
+      "sha256": "8174402b20c334456835626e35dd581cd06b2bb45223ab8f9182a35fad31c9f5",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack.fi"
+    },
+    {
+      "sha256": "26b982bfff1841ed0d195cf789231f2fe305f3cb79bd79f4a6ab480d1407122a",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack.h"
+    },
+    {
+      "sha256": "722019c4b837df53ed802cbf375208820b80ea222c567478190e8169c5b47144",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack_omp_offload.f90"
+    },
+    {
+      "sha256": "bd36e9687efa2beed53b9e6933e529b26a505d05708fe68c5deea786a63ff3c1",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack_omp_offload.h"
+    },
+    {
+      "sha256": "72a0535c318452d751e99000f774dad050746044c50edeb3366b7dd2c2e217fc",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack_omp_offload_ilp64.f90"
+    },
+    {
+      "sha256": "e9db1b6286dda9bc2217ef388e4bfb23ac615e1a40a146513b9dd3be92736c62",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack_omp_offload_lp64.f90"
+    },
+    {
+      "sha256": "ba9efb710cf5d9d1e1dada75643e75e2acdacbc775f7ac1db03e7169b17f562d",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack_omp_variant.h"
+    },
+    {
+      "sha256": "cbca72d56b29a91659b1bd8d087259b7bb21f354e451824ff60021ed608b9eff",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack_omp_variant_ilp64.f90"
+    },
+    {
+      "sha256": "2668dfb4d18bb8bb1930e77f7af410ef38db021726922b7f42eb9a4274edfde2",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapack_omp_variant_lp64.f90"
+    },
+    {
+      "sha256": "c149e82521239cec08c5e51d962fba542287dce62d3ed0ab780640fa79c0f6a0",
+      "path": "oneapi/mkl/2026.1/include/mkl_lapacke.h"
+    },
+    {
+      "sha256": "ada85e7ed807f9adce467d6b29ab6ccb40fd1c365c6b62772f6a75e4f4011ecc",
+      "path": "oneapi/mkl/2026.1/include/mkl_omp_offload.f90"
+    },
+    {
+      "sha256": "e02a0095b28f94998a9fd2c61ecbcaf1b6b10410ddf204b1ac69445e6a850803",
+      "path": "oneapi/mkl/2026.1/include/mkl_omp_offload.h"
+    },
+    {
+      "sha256": "e113a187841b375e877a0bad482130019b62a700c62e2b55d83d93274e0dca14",
+      "path": "oneapi/mkl/2026.1/include/mkl_omp_variant.h"
+    },
+    {
+      "sha256": "b06b8ea3ba4101ddd57b3740ac9aa22705ed19d33a9d6e9915fd98003a7ff117",
+      "path": "oneapi/mkl/2026.1/include/mkl_pardiso.f90"
+    },
+    {
+      "sha256": "8302e32cb37529996019f51f9b338257214a19f1203186dc4809d08eb12f90ee",
+      "path": "oneapi/mkl/2026.1/include/mkl_pardiso.fi"
+    },
+    {
+      "sha256": "d6f8200e746f2261069c4605419b6eda7422310c663ec113288affea0f1ec063",
+      "path": "oneapi/mkl/2026.1/include/mkl_pardiso.h"
+    },
+    {
+      "sha256": "4b805d708aa32ec323967aa3e370738193605e1047fda699f36637ec96c20c4f",
+      "path": "oneapi/mkl/2026.1/include/mkl_pblas.h"
+    },
+    {
+      "sha256": "21921ae331c74c4c8b1b0fdb666ae1920ef02b22a56b65e19cd19c58ffccbf67",
+      "path": "oneapi/mkl/2026.1/include/mkl_poisson.f90"
+    },
+    {
+      "sha256": "39952cafb96b46205ac0d279723989c73c1501125c5ced96c0ddbf7fa0e3b458",
+      "path": "oneapi/mkl/2026.1/include/mkl_poisson.h"
+    },
+    {
+      "sha256": "424216b8c9dea68b85e14a0e3a841026ab8c3ad4db6666b2a6add21c93b6e599",
+      "path": "oneapi/mkl/2026.1/include/mkl_rci.f90"
+    },
+    {
+      "sha256": "9660aa8138c7fafc97b4969c1191c71eaa5941d36106b86d610f5b07f8817457",
+      "path": "oneapi/mkl/2026.1/include/mkl_rci.fi"
+    },
+    {
+      "sha256": "600abddfb3353e763491ed1c2cb21df3200c5eff72c7c84f78c45b86714edf3d",
+      "path": "oneapi/mkl/2026.1/include/mkl_rci.h"
+    },
+    {
+      "sha256": "454986261ff6401fc10987bf64fc370f2c90628278592439c7d6057d2a964060",
+      "path": "oneapi/mkl/2026.1/include/mkl_scalapack.h"
+    },
+    {
+      "sha256": "e29f22f18a26d126807fe71a477775f6b9a01c3971a18f47aec34e37c1122bcd",
+      "path": "oneapi/mkl/2026.1/include/mkl_service.f90"
+    },
+    {
+      "sha256": "4df85ec8129d9db92ad2647a8de1755cf36d70919c96ce356751e738ccf3fd63",
+      "path": "oneapi/mkl/2026.1/include/mkl_service.fi"
+    },
+    {
+      "sha256": "2807142ba5b48231ed530e1cb93576fa879326abc00fc1c160927f8a757cf28f",
+      "path": "oneapi/mkl/2026.1/include/mkl_service.h"
+    },
+    {
+      "sha256": "52c09cb975aa0a0afc41432e4d57fa47ff5f278028e57685f658010cf5349ea7",
+      "path": "oneapi/mkl/2026.1/include/mkl_solvers_ee.f90"
+    },
+    {
+      "sha256": "125199d20d1fc1e92fbb540c2fff7e34096974e6eeced0639f8d1ad76cbf70f7",
+      "path": "oneapi/mkl/2026.1/include/mkl_solvers_ee.fi"
+    },
+    {
+      "sha256": "66bd5074b155db457432a1c86be6d2a21d90849a422ec07ae7c0b8e17342146e",
+      "path": "oneapi/mkl/2026.1/include/mkl_solvers_ee.h"
+    },
+    {
+      "sha256": "7bd067143c291134f831c5938076bb2406ec6664f83321e85367a924d002f277",
+      "path": "oneapi/mkl/2026.1/include/mkl_sparse_handle.f90"
+    },
+    {
+      "sha256": "f70041b0271c6164ded1fe731672e9af6b5d3394237bf31678403459e2399b82",
+      "path": "oneapi/mkl/2026.1/include/mkl_sparse_handle.fi"
+    },
+    {
+      "sha256": "80ca7798a88366a833323a3c3dcf1cb3f6ba02249689a7011fe6fa92017b8ff2",
+      "path": "oneapi/mkl/2026.1/include/mkl_sparse_handle.h"
+    },
+    {
+      "sha256": "6fbfc89ae2e45e0f1e047d144d1efb2302e3e12ecd7ae7df4442f645a292b415",
+      "path": "oneapi/mkl/2026.1/include/mkl_sparse_qr.f90"
+    },
+    {
+      "sha256": "b9f9614c77a8cf40e21a4a1f1b9452082d8c8f134d8b6e81e5b857cb8585c050",
+      "path": "oneapi/mkl/2026.1/include/mkl_sparse_qr.h"
+    },
+    {
+      "sha256": "1da322c0b42413971ec5f6c0a46abac896ccabbd8c779e11cbb5f03273d1a99a",
+      "path": "oneapi/mkl/2026.1/include/mkl_spblas.f90"
+    },
+    {
+      "sha256": "e4ef86c316d76a809b4e55ec7fb0ef205a4bf797590da60619e317ccac1d1239",
+      "path": "oneapi/mkl/2026.1/include/mkl_spblas.fi"
+    },
+    {
+      "sha256": "45133667557c321081dd232551e50c95a79c35862fdd8221f4d85ebcf134bdbc",
+      "path": "oneapi/mkl/2026.1/include/mkl_spblas.h"
+    },
+    {
+      "sha256": "0d0bdba80e3da7d65c511b8d641e0da54f1df60b174470a78afaecca1000a0da",
+      "path": "oneapi/mkl/2026.1/include/mkl_spblas_omp_offload.h"
+    },
+    {
+      "sha256": "c2fb52be93d4b25455b305b241f8c96f91f1ede8da010bfd16fbe1f08a11cfdf",
+      "path": "oneapi/mkl/2026.1/include/mkl_spblas_omp_variant.h"
+    },
+    {
+      "sha256": "92dd8a9b4d372c9c6c6f5fb588935f09e4cb3ad909c79b69d67a45f3f0b354d2",
+      "path": "oneapi/mkl/2026.1/include/mkl_trans.fi"
+    },
+    {
+      "sha256": "d6bf38d0edff6850b783690e0f09afc248f057e7af381d43f248b3a40940d0f2",
+      "path": "oneapi/mkl/2026.1/include/mkl_trans.h"
+    },
+    {
+      "sha256": "b8a4d62619dac758546e2d12b6e22f88328bde8632c80aadeb37204744062408",
+      "path": "oneapi/mkl/2026.1/include/mkl_trans_names.h"
+    },
+    {
+      "sha256": "6165c2ebc7051ce5879f03313875ec0236a6acd3c9c7e213f545296b91f66df6",
+      "path": "oneapi/mkl/2026.1/include/mkl_trig_transforms.f90"
+    },
+    {
+      "sha256": "6ebb313a07d22f1ab32c872f827ab4a95ee3c72fc5939197de2e0029dfb73e96",
+      "path": "oneapi/mkl/2026.1/include/mkl_trig_transforms.h"
+    },
+    {
+      "sha256": "70407ba4e5092b213231bb31e44be21c707e955d41a163890651df97a01dbaa7",
+      "path": "oneapi/mkl/2026.1/include/mkl_types.h"
+    },
+    {
+      "sha256": "d02f9b23212882b8302d4a7a35bb72de9b0fdf663ceff51873807077912639cd",
+      "path": "oneapi/mkl/2026.1/include/mkl_version.h"
+    },
+    {
+      "sha256": "dd2af80859a66fdeaee70a343c46690561c559819f2f5d49d63c768895cc0bc0",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml.f90"
+    },
+    {
+      "sha256": "2a3d52ab063a573b62e6fcf144636097ffe917fca7e9662214e57bd4629f6f04",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml.fi"
+    },
+    {
+      "sha256": "e9ab6060a5f2a69c3c68f5fabd7312d05c66cdc8116ad343d580b8488a7c89ac",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml.h"
+    },
+    {
+      "sha256": "3349986497398f6915de71799d5a9695ce9eb4f3be2077fda102bcd210ba5571",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml_defines.h"
+    },
+    {
+      "sha256": "7a976e6ca77eeb18124bc1c59f5d4ce407475ea1d437b5dcd95fb739c07dbe3c",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml_functions.h"
+    },
+    {
+      "sha256": "05964b23ffb548869817791e5e3801cc9df32c2232d198f979fa3f83c429837c",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml_omp_offload.f90"
+    },
+    {
+      "sha256": "9757abc503924e53f65b65874e852cac4e7bd205eb76c32e8d2ec3f20f3b0e03",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml_omp_offload.h"
+    },
+    {
+      "sha256": "b675c66b415b0b9e65ff37c5c8c4b952c037b53c3a8e9ac0d42e0cc71008f862",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml_omp_variant.f90"
+    },
+    {
+      "sha256": "bea3b7c290ce2acbbd15ae0506e5f5bd831954fc5b57374475ef85c6da7165ce",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml_omp_variant.h"
+    },
+    {
+      "sha256": "12a7c8d13bde2407e063f85187983693a541f20a479f879a45e0cb3f74770856",
+      "path": "oneapi/mkl/2026.1/include/mkl_vml_types.h"
+    },
+    {
+      "sha256": "6c577f398a578be14058d8589085758b657afbdce67368c7b9b8e955978b0034",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl.f90"
+    },
+    {
+      "sha256": "bb736f476126cb959802bcb4f5098fed27abecf7d56de9405506d890f96d1375",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl.fi"
+    },
+    {
+      "sha256": "91c43cead91dfaef36c8330dc5d11c6403999fb5691b3abcbb3fe8e7b25dcff1",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl.h"
+    },
+    {
+      "sha256": "d72534fbf95643e3c4fce75c67c02523f1a6721f0bfc705a5c57326cba7bed6d",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_defines.h"
+    },
+    {
+      "sha256": "1b8a74a3ea2b9a309370a0a24e53393dd20a2be2e8a441c7a52ace634261b6de",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_functions.h"
+    },
+    {
+      "sha256": "fafcebffa576bd26af61d4a1ccd845f19aaa4a3f8797ff4618be7ebce1a4f549",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_functions_64.h"
+    },
+    {
+      "sha256": "4b204cdd64876159fe96b753ae7618b4c676e9803032fe9ce27a49f66ba7c737",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_omp_offload.f90"
+    },
+    {
+      "sha256": "9c7d65bc83232aa869457524528af84e96426659d51052d08b16c444643a7d92",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_omp_offload.h"
+    },
+    {
+      "sha256": "f46d03deb58d72df17c0bc487c9e219a72b8cb9b7661f76e7f2c2dd9aad2a30e",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_omp_variant.f90"
+    },
+    {
+      "sha256": "dddc30d3586f8e9bb4b516326633c8a646450dcdb20b81a22353a5decc4b0c31",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_omp_variant.h"
+    },
+    {
+      "sha256": "4c211a4ce4aa3eaeff5bf5fd48b9a9ba066d4b1f491084095c49214d14ac8993",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_subroutine.fi"
+    },
+    {
+      "sha256": "c078ec0a76ae73c992067669e50338bf1e520c3f270b55829b4f186a40a65349",
+      "path": "oneapi/mkl/2026.1/include/mkl_vsl_types.h"
+    },
+    {
+      "sha256": "c12922cd169206dbe0a62d1537be488bb3b7eec01de1b73db4e258af372e3189",
+      "path": "oneapi/mkl/2026.1/lib/libimalloc.dll"
+    },
+    {
+      "sha256": "f40cd63e85f37b93c8e10a306cd1ba536ccab35ccbebbb9516c2e3af59dbc106",
+      "path": "oneapi/mkl/2026.1/lib/mkl_avx10.3.dll"
+    },
+    {
+      "sha256": "24cac1a180d775424063fc5d7840728bc61e25fd57efd9f1866181fc79860871",
+      "path": "oneapi/mkl/2026.1/lib/mkl_avx2.3.dll"
+    },
+    {
+      "sha256": "9a80f5c5388000b5a5d65d81f52d271dd45fbf16c1412529076f18aba0cfd156",
+      "path": "oneapi/mkl/2026.1/lib/mkl_avx512.3.dll"
+    },
+    {
+      "sha256": "4c629fe2e3b8a1b23d536a7cbb73827f5d8bd0198d81358b5cc2eee7d0bab765",
+      "path": "oneapi/mkl/2026.1/lib/mkl_core.3.dll"
+    },
+    {
+      "sha256": "1d65668f25b5be6b0a1852d70ec12dc94dbffd0d90f304c7c02ec91440496c77",
+      "path": "oneapi/mkl/2026.1/lib/mkl_core_dll.lib"
+    },
+    {
+      "sha256": "02743fbf53bf4ae84a193cce892cf3c19f66e0a1ac3734152cbcc48f4c3b5cb3",
+      "path": "oneapi/mkl/2026.1/lib/mkl_def.3.dll"
+    },
+    {
+      "sha256": "c34be0a7f26b6007faf31de503eb4d4086b0615a9700354f9c6a15abe7857186",
+      "path": "oneapi/mkl/2026.1/lib/mkl_intel_ilp64_dll.lib"
+    },
+    {
+      "sha256": "ea95571b979c54d05f7576b24d13c3adbd02ffd92da246ddfb0d6b737d9a8a76",
+      "path": "oneapi/mkl/2026.1/lib/mkl_intel_lp64_dll.lib"
+    },
+    {
+      "sha256": "90c8d5dfe43da4cfe1f66f1c79ce27b13a04496c00c61308ace3c382691a0534",
+      "path": "oneapi/mkl/2026.1/lib/mkl_intel_thread.3.dll"
+    },
+    {
+      "sha256": "4857c915813a47f64c337568bdf15fbb7737dd87f73ab2ba14a3488385db0979",
+      "path": "oneapi/mkl/2026.1/lib/mkl_intel_thread_dll.lib"
+    },
+    {
+      "sha256": "9a7fadb97bb26babdd1e12765a15b2e3318230649b7ea686fe06f56803da4b9b",
+      "path": "oneapi/mkl/2026.1/lib/mkl_mc3.3.dll"
+    },
+    {
+      "sha256": "0ade2b44b4786fa3e4ed19c1e81fa2e2ac975093e373674db52f5db57d6e54b2",
+      "path": "oneapi/mkl/2026.1/lib/mkl_rt.3.dll"
+    },
+    {
+      "sha256": "47bde98a96791544094778455dd312c046b8087b15ca962b146c0b8abe7f9a45",
+      "path": "oneapi/mkl/2026.1/lib/mkl_rt.lib"
+    },
+    {
+      "sha256": "f4fd8034c1cc80b0a2342902c42427909834c313b00d05511e3b41516ff4140f",
+      "path": "oneapi/mkl/2026.1/lib/mkl_sequential.3.dll"
+    },
+    {
+      "sha256": "cce722ed385507b696a704705adde166d66c03bea94f17926cdac8867bd4e44c",
+      "path": "oneapi/mkl/2026.1/lib/mkl_sequential_dll.lib"
+    },
+    {
+      "sha256": "efa3a897817d8900f910417e2836797977368a6ced88766c0a039d50fb8da462",
+      "path": "oneapi/mkl/2026.1/lib/mkl_tbb_thread.3.dll"
+    },
+    {
+      "sha256": "caab820fa2a0b1d438ee912def963ca6fb1a1096204e23fc1de78d89e27a650d",
+      "path": "oneapi/mkl/2026.1/lib/mkl_tbb_thread_dll.lib"
+    },
+    {
+      "sha256": "77fa29a1bd07884d772fe8d6fe6560320bdc3b9144802296cf5050f7468fb580",
+      "path": "oneapi/mkl/2026.1/lib/mkl_vml_avx10.3.dll"
+    },
+    {
+      "sha256": "c5919b4aaa746efcdcee2768dd6fcee7528fcf301fb553a6cac5c4179f4ee029",
+      "path": "oneapi/mkl/2026.1/lib/mkl_vml_avx2.3.dll"
+    },
+    {
+      "sha256": "f248f89797e5cfe5776e9a8c723eb9b352040a0e84286e318bf8d1e9445f3c46",
+      "path": "oneapi/mkl/2026.1/lib/mkl_vml_avx512.3.dll"
+    },
+    {
+      "sha256": "393118dc31eec7d569712546b1478c88f04f6d9e0ae70982d96d36b0a7fe067e",
+      "path": "oneapi/mkl/2026.1/lib/mkl_vml_cmpt.3.dll"
+    },
+    {
+      "sha256": "fd90a7d80c3ab95061948b1390078de5ef94f7c568ad8ed0c435a1b804ed9dc6",
+      "path": "oneapi/mkl/2026.1/lib/mkl_vml_def.3.dll"
+    },
+    {
+      "sha256": "0ad2349ff6453deb0651af9ebdc455ad09ce3d851e34059f1ea8b82d87d41547",
+      "path": "oneapi/mkl/2026.1/lib/mkl_vml_mc3.3.dll"
+    },
+    {
+      "sha256": "173dd7673cde45e58eba346f509e0a78ecf969e9bf3773a3d4f708565e2b89a4",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/fftw3xc.lst"
+    },
+    {
+      "sha256": "e75c29fc755e871d4e100c6147f202cab3f27d53c337136096405d3ca8d4f07e",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/makefile"
+    },
+    {
+      "sha256": "89819502123a6c99bff32a489ff8f47dff354f3b80d7a8bdca10d47d1b6b3bfb",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_alignment_of.c"
+    },
+    {
+      "sha256": "24c21418358b6b90ef3d5f3b7a41e1cfd65b5c5e62f2247d0df9e29344e02df3",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_alloc_complex.c"
+    },
+    {
+      "sha256": "711767b4ec7c02906729071ee049516d17bc9a3ab48081a8eb0b93631f4b14e4",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_alloc_real.c"
+    },
+    {
+      "sha256": "571dc5d73a670f42d0fb3f0d8e17c328773534b4bd3c10cf219aca451ae9be6c",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_cleanup.c"
+    },
+    {
+      "sha256": "d2eb0d0059d39227a6429a16a137213f2626a8373d2e78251c7a2c020880fd47",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_cleanup_threads.c"
+    },
+    {
+      "sha256": "d216f02b79920fd176989a607696474951c4cf27503839cd360fa527e9391f77",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_cost.c"
+    },
+    {
+      "sha256": "4e4c261d6a5d744b49ea750d68aa855377b3f71506f26978f166e0a53576352c",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_destroy_plan.c"
+    },
+    {
+      "sha256": "6b8184cd5e98fa81d350fbd4e964e9925cd04f25f230ddf5a37b494d782e35b2",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_estimate_cost.c"
+    },
+    {
+      "sha256": "e52c6908bf7f20d312d955ad4fb6dc6246cbef556d6e16d45bc6fee742b26f00",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_execute.c"
+    },
+    {
+      "sha256": "69de1605a863a50acdea06c692331b872da166e6699e866f6e76aa43d9b31b7b",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_execute_dft.c"
+    },
+    {
+      "sha256": "3e75838c094c1f0dad908c529a874e3f71272bafdadda6fbb34567045bb9c4b6",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_execute_dft_c2r.c"
+    },
+    {
+      "sha256": "4ed29ad034277657e2dffa473c86a45cd5dea50b04edb8572e3181ac458b428e",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_execute_dft_r2c.c"
+    },
+    {
+      "sha256": "7aeb2f8ff25375987bcb85ae4f99d4b394ce5e461b1eb6182290e9ebe36f85e1",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_execute_r2r.c"
+    },
+    {
+      "sha256": "0818ed0154417dd95ccdd35def2dae86b7de7163f1619c68428a04f85aba7bb6",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_execute_split_dft.c"
+    },
+    {
+      "sha256": "2688d395f745f632c2ee8d4bf52baaa8f0e6959ff3b327045d00e69f1567166e",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_execute_split_dft_c2r.c"
+    },
+    {
+      "sha256": "e6242407344b02ff83673a46085a2aa8798178499f82d8c6978fd7bc7cab2ecd",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_execute_split_dft_r2c.c"
+    },
+    {
+      "sha256": "4252599af82641b217a973289098ef2f1bf2ee4ee230772e142678ee1a1b91b1",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_export_wisdom.c"
+    },
+    {
+      "sha256": "d7d3631cbe17feb1b0766953b0a8bfb333239b9a01aa17ce3e26ed1dac722955",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_export_wisdom_to_file.c"
+    },
+    {
+      "sha256": "a277f051027e8741b7fc497a3c00034ccccd38ac70814f66a9ecff6e4e0d4a80",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_export_wisdom_to_filename.c"
+    },
+    {
+      "sha256": "ddf6b71995eb7b9358e57ae39e6764c23781ff11f18084a22d0c808a72b0002d",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_export_wisdom_to_string.c"
+    },
+    {
+      "sha256": "3877ad0860156a314accb169ade8ad4414213681c0d4f1c5910e0ac0bcbbf482",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_flops.c"
+    },
+    {
+      "sha256": "46707673d3b8b7d4653c32be204a55b7ec66ba658dce6b1684b134a82b892e44",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_forget_wisdom.c"
+    },
+    {
+      "sha256": "f4ec4717f87b8237c63f1294e85671ec1b421633dd36b7a3b06b9eaf9086f9dc",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_fprint_plan.c"
+    },
+    {
+      "sha256": "6bd452a85fd0075d6af97f88c7e5f6ad8e9ccb308388c37190ae88933946d78f",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_free.c"
+    },
+    {
+      "sha256": "ceabbdb292a1736bdfa53d41e89a90104dad362cdba743d6f544bf97cfd99f81",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_import_system_wisdom.c"
+    },
+    {
+      "sha256": "83be04446e878418c1d8cdb2545bf99a78a2b0aaec87a58ba5337ceb6defc1b9",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_import_wisdom.c"
+    },
+    {
+      "sha256": "d7ed7751382245efe851920c03f70a8ba10017e826615a457ce8a21596507241",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_import_wisdom_from_file.c"
+    },
+    {
+      "sha256": "a9ff1e1d7b0e461a0d9843a2ccac88d6b8554d7890479cde93f9ef794b401078",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_import_wisdom_from_filename.c"
+    },
+    {
+      "sha256": "d7daeae219ccf091ee28c73400743d1e7e16a97d40984915e237dfc579ea52a8",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_import_wisdom_from_string.c"
+    },
+    {
+      "sha256": "699b6c5c4ac2727ab009dad688a7a07689003c75b026ace05dc390eb665a38bc",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_init_threads.c"
+    },
+    {
+      "sha256": "bfe6ba64191112df21e540a488392ed6f5f3e70d48d5fb84528efeae83ee2f33",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_malloc.c"
+    },
+    {
+      "sha256": "35070e11ac5e392d9f3d1d7a210b1f2b406ea0a9016e7a7abd592b4007018486",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft.c"
+    },
+    {
+      "sha256": "aa2b1bf774e1c7a9e0e5281dca578d52b39fb980ead6b2605c6beb5d5ab1080a",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_1d.c"
+    },
+    {
+      "sha256": "f4b77ea159ba8197b082bc4116282f01cf6c6358017b1c71a85cfd0ac6715424",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_2d.c"
+    },
+    {
+      "sha256": "d506733bc161b9bcd318dec8e43311c1245d38b34ea1acb3af1f711b8369e897",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_3d.c"
+    },
+    {
+      "sha256": "2eb12929c09c90ae8d95ce4e3c2f61017ac64e69982031ddc705a2717906c4ee",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_c2r.c"
+    },
+    {
+      "sha256": "40b1b1750071b48f9c9b6015572d90995b310f72e98dfd1f1fc30e91dc6ba85a",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_c2r_1d.c"
+    },
+    {
+      "sha256": "f836e96166b560a8eb459c0fb29c495aa2de3bad294bf52d864f5c68940b8be8",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_c2r_2d.c"
+    },
+    {
+      "sha256": "76de6987ab3382b24737645c31a1b2179d8aecca79a52ba43ab6707cc84c1742",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_c2r_3d.c"
+    },
+    {
+      "sha256": "6a5618945e1ef11c2a6cedef89a21c9e86a60358ecb07f0d9758692081813132",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_r2c.c"
+    },
+    {
+      "sha256": "c8e620276d2996e766f1f5c41dd63553023feeb89e2e03ce6f5ed9ab9dab1c32",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_r2c_1d.c"
+    },
+    {
+      "sha256": "493ec411e41c853752c306ac82557856885579803e95e149ab702342becd0cc9",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_r2c_2d.c"
+    },
+    {
+      "sha256": "eb4756fec6eb874eb677d1f6f01d641b8140ef1977dffea892914aa2a69744f2",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_dft_r2c_3d.c"
+    },
+    {
+      "sha256": "ed5fdb1c697df43ad85bea4dd4d0132023fdba48da855a1ad88e549a0c6bb6c3",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru64_dft.c"
+    },
+    {
+      "sha256": "56e08a00eea0d5f2384d682832ec25509883847aaeeb5b7033b69169d6f45b9b",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru64_dft_c2r.c"
+    },
+    {
+      "sha256": "6c21d2ce971f83733c6f1b7187587edb923c91f90d97ac6efb34f3c8a4f83e30",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru64_dft_r2c.c"
+    },
+    {
+      "sha256": "eccbd55078f5da85eaf79d7f3ff305db31931d76e4848682ebad70cc887902b3",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru64_r2r.c"
+    },
+    {
+      "sha256": "a8dbae27ef6e4831512f32044c1dd58f74501a1441783101b85be087eeed8b8d",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru64_split_dft.c"
+    },
+    {
+      "sha256": "c6036fde43c5225221582c96f38b05eb947e1bba1a299ae33ec6aeb58d7f4d5f",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru64_split_dft_c2r.c"
+    },
+    {
+      "sha256": "6cc21e0580337a64020de245cc51584ec85b87089b374214676b78809a1da196",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru64_split_dft_r2c.c"
+    },
+    {
+      "sha256": "acb977bbf5cce200fa3d9cb51a0543a785b2e6bf7bbe9ce433540ce2db72b90c",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru_dft.c"
+    },
+    {
+      "sha256": "63d5e5f75519824c1975391f149bb4e0a0c315baebfd6ab4f68630e565ca1930",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru_dft_c2r.c"
+    },
+    {
+      "sha256": "887035826d19284f74eb9a9809b6e943ebca2a616be9e02c6846437246307939",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru_dft_r2c.c"
+    },
+    {
+      "sha256": "f22109e5ff0168750c5e14d583394fcb273b82281e1f60cd19cdbf12a370d3c3",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru_r2r.c"
+    },
+    {
+      "sha256": "cd3a7602288f32bea660835515b8ec69ac61c647c760ed807ed11a98281c6674",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru_split_dft.c"
+    },
+    {
+      "sha256": "fa5f3aaa01d83b69b6449cccd8e9f48ea926bf9657271fe48b68d162dcb4cff5",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru_split_dft_c2r.c"
+    },
+    {
+      "sha256": "ddb67689c323e01c55e772132cb7c5b7c78a6c59dcfd350c0b1ea88c9266cbbb",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_guru_split_dft_r2c.c"
+    },
+    {
+      "sha256": "2daf314b6aac292f23991bc495c18592faa56ba7266e783e00a64b548ec3f02d",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_many_dft.c"
+    },
+    {
+      "sha256": "90e823f2db465c4a1862b6b1cb7ff469b0e6787b025f18d2c6462009071df27a",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_many_dft_c2r.c"
+    },
+    {
+      "sha256": "f0fb27a2b8b7b76909347db4ae92b369415c04250152d79697c94bcc7c9552c8",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_many_dft_r2c.c"
+    },
+    {
+      "sha256": "e1daa0705b16d6941d45052ffb1a8886abef1aa1aba6ebc7714206ee6f044680",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_many_r2r.c"
+    },
+    {
+      "sha256": "117eab9030f75d3b11b1cb9b53fe39d9c4fb71acae510f0df69ccd534162adec",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_r2r.c"
+    },
+    {
+      "sha256": "4000b23d1c85766edbb3293cf5e5d4032a8eb516a7fa5526869b26ec9a6ca8a5",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_r2r_1d.c"
+    },
+    {
+      "sha256": "e5737c7624ffbba272002f128371f8d06167917507b52324fa5ed74b5fa20e6a",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_r2r_2d.c"
+    },
+    {
+      "sha256": "40f4683cc92964a4a5ef3c52c1db943ac20525e6da69f2699d873418c6b96706",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_r2r_3d.c"
+    },
+    {
+      "sha256": "409deb57bae934859010afaabe55cfdc424d2d1387487b67d9f47c4420b8468f",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_plan_with_nthreads.c"
+    },
+    {
+      "sha256": "dbb261acb00e70819ccc9a6572a2b784ad96534f01e39f951a246e51c343e547",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_print_plan.c"
+    },
+    {
+      "sha256": "8ded68bb8c30b009674149b53983e87d76cc9bf3527c4540e3c613c5b30ba4b2",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_set_timelimit.c"
+    },
+    {
+      "sha256": "87be34a9ceb715c5b6b52db946c57d816e5b55053b9a4e41f98ce48647e8f5f3",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_sprint_plan.c"
+    },
+    {
+      "sha256": "73d4fd97782cac5981407a2657f3a4727127ebf1b19af9418303fffaa196a20b",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftw_version.c"
+    },
+    {
+      "sha256": "7d206d57224b4e44126dd3d2924ecc3d79151e52d131cfa1ddb9b37c855b92b2",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_alignment_of.c"
+    },
+    {
+      "sha256": "668e2e5d0624c9dba0a048a7c5697defbcc2c95aab3bc8a3c116596884f0e441",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_alloc_complex.c"
+    },
+    {
+      "sha256": "66f58500841a3058ef35a79bcc8272ada2e97e377b812e9581fc301d1ec1f2ca",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_alloc_real.c"
+    },
+    {
+      "sha256": "ad8c7428661511195eeb2f9a43207ab560f67d669e4ef6b433040150ce462d79",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_cleanup.c"
+    },
+    {
+      "sha256": "0376eda3a127709384ce7bada64785ba3ae6bf0533412d494a357e54e6672346",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_cleanup_threads.c"
+    },
+    {
+      "sha256": "8c65426db0d034bcb1897feee1e4ee337fb04d584b4de66c001b2d174cbf5111",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_cost.c"
+    },
+    {
+      "sha256": "89a8abc15dcb48bb129fe8b5a20c49152d6187c0b3bbc4286eb71e61468cb36e",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_destroy_plan.c"
+    },
+    {
+      "sha256": "a272601647cf86a3dabebfa56e424afcc7a5f07ca57b8d46d9a256073a19dffc",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_estimate_cost.c"
+    },
+    {
+      "sha256": "4969971f49a1008e7758e357958e9ca0014ca7d3ceadbcd7dc3db85d096d0b50",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_execute.c"
+    },
+    {
+      "sha256": "4bf1092c33f7b7a2d319a56cee96627bea0cf7a4be95bb587eea2e707f3490fc",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_execute_dft.c"
+    },
+    {
+      "sha256": "02b3ba21289659cc03ff376dd06bbb2933cdc9d53dc29a36090184f76b2777d0",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_execute_dft_c2r.c"
+    },
+    {
+      "sha256": "1fd5212d6ffe587b8aa2196c4d29e8db200e0e577f691774255e5a6c0621578b",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_execute_dft_r2c.c"
+    },
+    {
+      "sha256": "6cfba2aad9626573ed6723023cfa8b93edb929919e486fbb6d82381c5d83c814",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_execute_r2r.c"
+    },
+    {
+      "sha256": "5f82225f78bea0038dcd563be9a8a18ff0199104790c92a713d6e3490897a804",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_execute_split_dft.c"
+    },
+    {
+      "sha256": "31ee585a3131dc1fd7506499f5660425a837352d31e525c4f4c56b046341cb78",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_execute_split_dft_c2r.c"
+    },
+    {
+      "sha256": "c69deaf27d1a7f3ac063b36002c28cc3524e9c81f1999e0754a2811319447847",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_execute_split_dft_r2c.c"
+    },
+    {
+      "sha256": "1adbfc36bd1d90fa6c8e25ffd6ed738a2c35f668f4accac0a4629145045d2890",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_export_wisdom.c"
+    },
+    {
+      "sha256": "69775fea6f98696e9ad1654670953cdcf8aa6fb36d344ea1ec319e2a25999d9f",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_export_wisdom_to_file.c"
+    },
+    {
+      "sha256": "77cbc175683d02a72544252982f30c0d8c839d1469054fb94ac31d10f2523b4d",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_export_wisdom_to_filename.c"
+    },
+    {
+      "sha256": "406aab7901894161ca3d31d116865aacb5ecc924428d4b4a6a2cda1581a8e9e7",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_export_wisdom_to_string.c"
+    },
+    {
+      "sha256": "0bb3e14bb8c7a89585c24857ec781cb8a88b9f1ac38998d8322413df98ae0fff",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_flops.c"
+    },
+    {
+      "sha256": "a07492fa87c077fce487a88bd5811f8de9916667f73a46ffc9af7ceaa54a0280",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_forget_wisdom.c"
+    },
+    {
+      "sha256": "ba04b6a2ebd07aba2eaf170efb6bbc79d07bd3bb3015319848a03a8afa5a69b4",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_fprint_plan.c"
+    },
+    {
+      "sha256": "915f774bd7fe8791ad864a266851419f64d1926dc4c80ab0280ecbcdeffa6965",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_free.c"
+    },
+    {
+      "sha256": "1baede215d64c74bcf65e8f7a9425b738788d46402f6c1e50bb7be4f8d26fd62",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_import_system_wisdom.c"
+    },
+    {
+      "sha256": "d3a9093172f5735e6829f6c7e5c6a7b677ba74be900867e40bb2447c2de8faea",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_import_wisdom.c"
+    },
+    {
+      "sha256": "85b5a17c010687737e44530fdb5da6c09e46b3baaa59bad350e5688ef68d52d9",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_import_wisdom_from_file.c"
+    },
+    {
+      "sha256": "801da75890f8076b35d37d1d1eeac38fa3b6c0196dab2832919d6643b7b8f9c1",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_import_wisdom_from_filename.c"
+    },
+    {
+      "sha256": "3e3d658c3497ef434a44e796e97f31013d4c32038cf593dab4de455f0f0e007b",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_import_wisdom_from_string.c"
+    },
+    {
+      "sha256": "3033f85a537ad2510d3a63adede1f12c6f8c3385a70d9babbbb8aebaa3203446",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_init_threads.c"
+    },
+    {
+      "sha256": "2baf20bf3f1492f605e77e87ed5d971f656a681c6b36fdb6863c161eee418510",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_malloc.c"
+    },
+    {
+      "sha256": "a5f9edc283abd2bb12531267b340476d68587b6da15f55c4606c1f5e9e178af6",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft.c"
+    },
+    {
+      "sha256": "7df57a717223dc566f1fe4af3097db7837fef0192c8030cc6d63010e1eba3bed",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_1d.c"
+    },
+    {
+      "sha256": "f01888c912993fe0e9d8ff8ea3e7b1a0e4ee11cd4af8073de616059f47b0a68b",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_2d.c"
+    },
+    {
+      "sha256": "611c0647c4cb8a46cf5c3b6b837ee46364cdbac5d93e16b09b1199ac317d1710",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_3d.c"
+    },
+    {
+      "sha256": "f0aa1bd8b0213ec742e41f06e115a2b8fe829275d9235d39581c604764b636e5",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_c2r.c"
+    },
+    {
+      "sha256": "d33e1ea8468ec028ebd25870fb64c3aa09ce68fe23cbdb011f64b1272f214eaa",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_c2r_1d.c"
+    },
+    {
+      "sha256": "6ae0130d5275ade68e7889626a18bce0977d93b596d43339505211e67ccc16d8",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_c2r_2d.c"
+    },
+    {
+      "sha256": "6bce7668dc44bfe9d5792b4e7de07ba99060af244d7c9d51bacef0ac7241172c",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_c2r_3d.c"
+    },
+    {
+      "sha256": "f4864a33cc5653b1c8adb82d93874433a94aaad1f911803d5167deadc5286000",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_r2c.c"
+    },
+    {
+      "sha256": "3f970c1c4e8f43b018a684653da99c540714fb4c726ac0ef242b393da389c5eb",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_r2c_1d.c"
+    },
+    {
+      "sha256": "42760048a982265e0bb50bb51e01a8e6682097f06a5df14d108ed75a3bbd2333",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_r2c_2d.c"
+    },
+    {
+      "sha256": "96fec515843540195030af6b647144a29dfabf2ac2de037e7cf6dbcc501c9bf0",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_dft_r2c_3d.c"
+    },
+    {
+      "sha256": "42c058f9cfa38a8e4e8a6a5d5d7cdf7659692c3d6c9df8e4cfe14c091dbbc0f2",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru64_dft.c"
+    },
+    {
+      "sha256": "ccf3fcbf53d8b757d48762750553f4d3bfad58448ad615e17bdd23a1e4648426",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru64_dft_c2r.c"
+    },
+    {
+      "sha256": "21f6eb8f0eb2953df720bd74c641c6e31085bd543af0e765aedffdae591e1c42",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru64_dft_r2c.c"
+    },
+    {
+      "sha256": "6a1c659db3d13ae43a0c4e3508cfeae6f4d010d4675cb8361e89a0fb37e36771",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru64_r2r.c"
+    },
+    {
+      "sha256": "b1fc983044f0376e0d800465ae88ef0557b91445816f2d9a369ea39f38163640",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru64_split_dft.c"
+    },
+    {
+      "sha256": "344ffb0119de75a6c84f884e6dc35e1b486da805b1bc07266d580994cb7bb75b",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru64_split_dft_c2r.c"
+    },
+    {
+      "sha256": "e406b26701e2d49404ef45f304a92e052a4342e7eb3dba67776b08d804acb0aa",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru64_split_dft_r2c.c"
+    },
+    {
+      "sha256": "560d8c41bc0fe30c2030a42ff2bcf04327e0e907d1c0172ff25007e21385e140",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru_dft.c"
+    },
+    {
+      "sha256": "204d52db1d8e33d5257167aaf9d2b3c705604306db35f9007dd205aba26b7252",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru_dft_c2r.c"
+    },
+    {
+      "sha256": "03424a79b35255b138fbe328562382a1dd41ce3a9228c0d1defb14f630c4190e",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru_dft_r2c.c"
+    },
+    {
+      "sha256": "84774d1302ef06b618e1e26efe42425011ab28010654b47f78ef1d105ba9c175",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru_r2r.c"
+    },
+    {
+      "sha256": "2007afd85f0a557b00447a00b9766177d5fd1238ca2667565b3b86a5f2105c72",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru_split_dft.c"
+    },
+    {
+      "sha256": "a5001c9d056d1fa785288dce724719303b378fee90cfa096f0cf2e2ef74a64f7",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru_split_dft_c2r.c"
+    },
+    {
+      "sha256": "1edca7c4cf55fe90df8d3e933fe173d0bc66b322edd1c1c361aa804463d37fd8",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_guru_split_dft_r2c.c"
+    },
+    {
+      "sha256": "51775719f1f5c80ac28dfc3ca55ef7e083cf700e4c5cf1d9aab5af10a5f30570",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_many_dft.c"
+    },
+    {
+      "sha256": "aa663d7fb98b703da9fd3efbf5a6d4cdade4e8cf7d2da24484f29821f18805cd",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_many_dft_c2r.c"
+    },
+    {
+      "sha256": "fdd1ca291613b74edd7debeadb67028577131d76017c8b28a7435c38cbbb393e",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_many_dft_r2c.c"
+    },
+    {
+      "sha256": "9ff1024e4b71c0693156a63ebe1187ab157867b3b04a0ba423eb71e685f8d94e",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_many_r2r.c"
+    },
+    {
+      "sha256": "d222a98febadbd8cc241a352a661e99d82f5a6522d45e3eff7d8cebc0675fff0",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_r2r.c"
+    },
+    {
+      "sha256": "fe5280e522c9045d830a85a953187abcee5baa7554bd35c480802a8e66994683",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_r2r_1d.c"
+    },
+    {
+      "sha256": "436e93a397ca5a9a8267520d6590159153bb039dd32e086cdd0cc2977030f31d",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_r2r_2d.c"
+    },
+    {
+      "sha256": "27a91b3767d21e31758d2a5487fce9bee0da55649e89032da4ff12f867dda0ac",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_r2r_3d.c"
+    },
+    {
+      "sha256": "fc5688bf30182a2a26107267a3ac3340d38eea39eda8f80195e00cfc7be0016e",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_plan_with_nthreads.c"
+    },
+    {
+      "sha256": "fe4f3d4edde22afa49f56f5ddfe3ded6256c8b5a16d25e15410e00e9e4e0a441",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_print_plan.c"
+    },
+    {
+      "sha256": "051cf427651c876c2be6fc1b788d0ffe6ba77b49481a3348ad5aa257855b8daa",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_set_timelimit.c"
+    },
+    {
+      "sha256": "48d4aa6020c84eb9e53d1ef20cff780f8a48a4c098cdc41fd97a8d186e1e0f47",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_sprint_plan.c"
+    },
+    {
+      "sha256": "a8d837f32309c3384b09a2cf269ea274c44b06df0da31e9738557eacc15508af",
+      "path": "oneapi/mkl/2026.1/share/mkl/interfaces/fftw3xc/wrappers/fftwf_version.c"
+    },
+    {
+      "sha256": "cf048c4529345d1762a96dbaf50a95277a67a44d73ccae5e6e3cfa14c4531e6a",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb.cppm"
+    },
+    {
+      "sha256": "86fe3d1df4092d8d2fd686d12823759ad45b34101a23e5d4cc8c50034c8519ed",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb.h"
+    },
+    {
+      "sha256": "1f1da2cf907c9e2fc78ae0f0d16009bfe3d17e04155017ec3a32056efecd1b18",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/blocked_nd_range.h"
+    },
+    {
+      "sha256": "1958b2e02353fa1cb031ba7a4aa963626013aafe4176a675f6e9bb1973ff136c",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/blocked_range.h"
+    },
+    {
+      "sha256": "ddc30f89683bff22b1e67b777888bb4c329c21fce4b0d07ebbbfb7b395a6a0b8",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/blocked_range2d.h"
+    },
+    {
+      "sha256": "124fe6efb8bca19fb7be82c92a12c5b656f0ecede2cfad104f0915c9507ec553",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/blocked_range3d.h"
+    },
+    {
+      "sha256": "079f24d8c4c2149e27585ec52a1bb0ecf263225e3c24e9a1d02ec582ecc05b15",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/cache_aligned_allocator.h"
+    },
+    {
+      "sha256": "b15d36d993695c149e0eb068443225b30f089ee6cd2df5d2437c9da68e639b64",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/collaborative_call_once.h"
+    },
+    {
+      "sha256": "627b5a0387b54fe53443f7d0b244a2f0b1655f11e47ea0a0b087103193565fbe",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/combinable.h"
+    },
+    {
+      "sha256": "b9af1d28bdcb9a6321e4250f9d07d9f528e18d1bd5572807bb989b940954b0bf",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_hash_map.h"
+    },
+    {
+      "sha256": "fe40685a5da3aeefaf5d2543b83b68d65fd7d507d2114778168aaf075851c226",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_lru_cache.h"
+    },
+    {
+      "sha256": "4b77f295271f803c50469fa6ec027d3877f8999985fab6cd55b1116ca8e25811",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_map.h"
+    },
+    {
+      "sha256": "38568cb2ba764f0ac0b8c949b7276ef64ff2305623f89224fe4c601a6299f5af",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_priority_queue.h"
+    },
+    {
+      "sha256": "c9bc442074338bb6d962167e2afcefb6fd37e28ff33304030b7429053424e982",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_queue.h"
+    },
+    {
+      "sha256": "628cc89f5e8433377ac877f5d198ff84f3cd06f0187cd0ae753760a04dd76c0d",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_set.h"
+    },
+    {
+      "sha256": "c2aea0937f4d5e108f58398091573466195b59973c777147c7e3b48f312c0a19",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_unordered_map.h"
+    },
+    {
+      "sha256": "98ae85e9dab9223fa10f59be6ecc7b10331b7c7640265bf01c8b730fd2019742",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_unordered_set.h"
+    },
+    {
+      "sha256": "a6c37e15b998a8e88dc111643a769c931432908988c79a1f3a1a43cd04495b26",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/concurrent_vector.h"
+    },
+    {
+      "sha256": "9b2c0fb767d1bd8daf22f4bb481a0864b7b205c94bff92d436fbb5c83dc33e63",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_aggregator.h"
+    },
+    {
+      "sha256": "d48b527ee2837f8b287ba30eb8ae42fb1d9ff638c831d620d0756ea048baffd5",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_aligned_space.h"
+    },
+    {
+      "sha256": "ba6e4b959d4da330aaac5298a3a1365b3c6c42a9651d37b981764cbb4dddc67e",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_allocator_traits.h"
+    },
+    {
+      "sha256": "9ffc68da82ead7b704ddc411f0505e364f0425cf9a486c65266ce993c58b2ac8",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_assert.h"
+    },
+    {
+      "sha256": "2fd5691f1d4b254436e9cb82a51f4e171ea50a6df630036b01ac3b9d1b8e5361",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_attach.h"
+    },
+    {
+      "sha256": "1f23ac6a2e74a0e736717b01f2c3a749fca5ff7195d01af161ac32d35412c738",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_concurrent_queue_base.h"
+    },
+    {
+      "sha256": "0e01d81c1a5766ce83c89bf7bed7349d0114286593ec0e155f283460ce55c33b",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_concurrent_skip_list.h"
+    },
+    {
+      "sha256": "7547f4646d51743ef4ac1edf7aa9ab43a684ba49b4e8044cb558334d36926a16",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_concurrent_unordered_base.h"
+    },
+    {
+      "sha256": "67b612a5e4c04c496ba9c353780cea0df91f9939a6762a75dd8f1351c8cf2aa6",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_config.h"
+    },
+    {
+      "sha256": "0a8bf42648f5a08f5f1942dc484da9d73d67c6bd2c8ac797718679c919950d80",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_containers_helpers.h"
+    },
+    {
+      "sha256": "c0067416194d93acbbf87741561ba9153b9f81e1334d5c284b97cde41e534571",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_exception.h"
+    },
+    {
+      "sha256": "ec45018d508fb7894a4f97e249322c0e5b2cd82e46ff0ef41cb9eeb86d02109a",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_export.h"
+    },
+    {
+      "sha256": "6a356269961601f398c233e23a4608ff9f6241cc78e955bb472cf8188868d8b7",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_body_impl.h"
+    },
+    {
+      "sha256": "e63212c95388133bd413554ef4168978a5804f676d5e48f6902694728dbfaf7f",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_cache_impl.h"
+    },
+    {
+      "sha256": "9f57561e969a586082cce836d236576d3de1f38c60c616b170d551c95c25f9f0",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_impl.h"
+    },
+    {
+      "sha256": "43be9db96790e562a611477b30e9fd6eade121fc87da678170e0f13dc0fa2c60",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_indexer_impl.h"
+    },
+    {
+      "sha256": "0dde263d605467593832037d885237809df1784a4b0a4731e23482778fc0ba52",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_item_buffer_impl.h"
+    },
+    {
+      "sha256": "eb3e5a570fcad4b2a4de50aad89d6e678806d97a349ac3059ae8d3b20f382b65",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_join_impl.h"
+    },
+    {
+      "sha256": "7a62bfef47628a9b25786553b835960d939cbd1b144207dfcf1e4794a6b37e3e",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_node_impl.h"
+    },
+    {
+      "sha256": "7b3bfe7bc2e674faa2024bb0062d50c6b60ca829904c788ca9ffead4d334f792",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_node_set_impl.h"
+    },
+    {
+      "sha256": "8c70706742a8e964ec45b43bb69051b8e6dfbffd3d4208f98910cae92dfd97e9",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_nodes_deduction.h"
+    },
+    {
+      "sha256": "13749517eb8af638c48b594f3ece0f09c630259143edc5fcc56b288b749c5bac",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_resource_limiting.h"
+    },
+    {
+      "sha256": "a537c9be4b9038a379f476f4efa1743d3472742679a222e0c2cfb3cdac395011",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_tagged_buffer_impl.h"
+    },
+    {
+      "sha256": "c586670d8df1105532db81b0f7d5ef87f2e5433aa306fae70ce6b883072429a1",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_trace_impl.h"
+    },
+    {
+      "sha256": "cbe7610029a78a7b35fe94516d1390a0115205b523e13e11753a84818641e7a5",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_flow_graph_types_impl.h"
+    },
+    {
+      "sha256": "57cc8e3aad40f44c5eedc242ae23de1d6e5bbcc60218032b2567fe5b3daa1d0c",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_hash_compare.h"
+    },
+    {
+      "sha256": "b1e782ceac732d018243b2be99c8d001ba7fd8a585dd248e3ee3da37b6457a9a",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_intrusive_list_node.h"
+    },
+    {
+      "sha256": "6f40152260705d72a01db98a3f2d636e10d999548d9774c24a58fcfb80555004",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_machine.h"
+    },
+    {
+      "sha256": "138f42ee0ddbf30de56c1b1b962186e798739a5a7aa7d66150d29b52986fa905",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_mutex_common.h"
+    },
+    {
+      "sha256": "07bf91767594417a394c28f4885c736a13b05c1379b15efe3d905b57c66a6ff1",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_namespace_injection.h"
+    },
+    {
+      "sha256": "688c46ab941379d3b8cad1d5425391080948da3e233809ec590a85f9b0e6009d",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_node_handle.h"
+    },
+    {
+      "sha256": "1a786415e9357ef9f97db83c48e0711012d86336c8fa2f1f627dd1b51a9f8ee8",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_pipeline_filters.h"
+    },
+    {
+      "sha256": "4ce9e358d0ef2ddef8391cc22a730ce8808425fe6018eb81e681de609b5dead2",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_pipeline_filters_deduction.h"
+    },
+    {
+      "sha256": "4d429c982b2c754506fc1cc7a27b064cd191b765fbd7580cbcf0797549eebe60",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_range_common.h"
+    },
+    {
+      "sha256": "500538394ef983ec839e13e2782ba6965e6b3276959c7ff66461a089839b5a71",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_rtm_mutex.h"
+    },
+    {
+      "sha256": "6ef3322b05497dd06d66e89d0cc00b3effbd12a433627fab2024b2de7c234864",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_rtm_rw_mutex.h"
+    },
+    {
+      "sha256": "ea009cae6e3b6faa09bd68df1ad8f529cd65bf5b1933b298f1fff88c51f31af6",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_scoped_lock.h"
+    },
+    {
+      "sha256": "fe28e4933496ad567d1c5ff58205c22620aa61b6d1a3bd3c273e3623c56820ba",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_segment_table.h"
+    },
+    {
+      "sha256": "f998a0863c4bb7b53b6af499e50983a89206996db5ca424f36af7d0bd1bc7d04",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_small_object_pool.h"
+    },
+    {
+      "sha256": "80371a1f9823b24104f12df0183f57abc53bc181a86540f6fc22bda25c17e2eb",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_string_resource.h"
+    },
+    {
+      "sha256": "8fbe206e5336cdacc29bb723a4c9b4dadf39296606e84ab843f6d00037ea5448",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_task.h"
+    },
+    {
+      "sha256": "3c21d05a8f96e497f730552710e2b4cffe27cc99aad743decd721d5bf8d92de0",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_task_handle.h"
+    },
+    {
+      "sha256": "784dfe2688773b586fefa385f399f6fbdb3a7283f5fb17e9b0be687ee5692f2f",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_template_helpers.h"
+    },
+    {
+      "sha256": "38a2efb4d1380918e9d3df32b82df82c735be15026f2d758495df1c9aee05c54",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_utils.h"
+    },
+    {
+      "sha256": "1bc43dbb2f1882fca464060520fa4c4b47372af376a40b82dc5b5987fee9aecb",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/detail/_waitable_atomic.h"
+    },
+    {
+      "sha256": "dbc080d39d9003d50d1b19ea5cdc52c160fa6d67bb27b0f815d41e3924bc7003",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/enumerable_thread_specific.h"
+    },
+    {
+      "sha256": "9c995d7d5a41fa16d8348eb62e97c761ae5e74d5c766f22619770e63988f9a71",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/flow_graph.h"
+    },
+    {
+      "sha256": "0c5fc9e702fdfb69b32288f9b0bea51ef87a35fd6cc8e63da9732de3894fa75d",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/flow_graph_abstractions.h"
+    },
+    {
+      "sha256": "3263309bad81fb5585d26f39bd82639aa39238674d92bc03d6d0bd98adb717ca",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/global_control.h"
+    },
+    {
+      "sha256": "c39d669b34ae7bc325132d4aacf6b4dc5e7bd7b9e150047ddc994560a52ce203",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/info.h"
+    },
+    {
+      "sha256": "d587504a146ef6227d1a6933d222989dbafc13a0454fb8d7d7d38cc13b401ab2",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/memory_pool.h"
+    },
+    {
+      "sha256": "282872530293dd826fe340aac5cd53fb2c69d888dd3155f40e86031455ee8bfe",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/mutex.h"
+    },
+    {
+      "sha256": "fcc2fc146f520a8c828e86722c37b69f0172028c76391cb90cc6c1ff73313fbb",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/null_mutex.h"
+    },
+    {
+      "sha256": "69a2cb01a1d91304c92699b3556a1a48036599a0092a387d79ea79e7ec3bf806",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/null_rw_mutex.h"
+    },
+    {
+      "sha256": "881073a36f260f6090b27b91e08a61b0e581130f3b7983386c80d0fe8cc000a4",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/numa_allocation.h"
+    },
+    {
+      "sha256": "f93f652bde8f05c5d0588dbe9bc94f863e7ddd7beb437f40d2cbc078fe305f33",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/parallel_for.h"
+    },
+    {
+      "sha256": "8d7514a065428bd6f01ce1df76c7bf1753d0290a714d2e756bd78aaea0a5a5ff",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/parallel_for_each.h"
+    },
+    {
+      "sha256": "5b294e421ddcbd93fed32b0b5dead06349cecf60b53c1a5ca31b65e7dbbb31f2",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/parallel_invoke.h"
+    },
+    {
+      "sha256": "a3e30d91c9d68306050f4f1386956fb8ab0eb48deea22b6553539f71e2830bc5",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/parallel_pipeline.h"
+    },
+    {
+      "sha256": "f8d45bfa5fee14490990e2408e3aeefb60ca725dac8bbe7885c259aab9b28117",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/parallel_reduce.h"
+    },
+    {
+      "sha256": "71234dea0aa7a5732aa90d6bec3d8e976fc2a72e217702b82c03b752621f2bcd",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/parallel_scan.h"
+    },
+    {
+      "sha256": "5da330361cc646a1e719f194790f4eb7aa2ef48d899359f62fe4c09c677c0bd1",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/parallel_sort.h"
+    },
+    {
+      "sha256": "976306541d1468fa19549060611ec46e5a3af5e28bcbec63e39b0ce34d5181d5",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/partitioner.h"
+    },
+    {
+      "sha256": "daa70d10cb491b624d9ffbda98f759e5ca3023bfd7d5b4b9816dfc6782a7cef1",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/profiling.h"
+    },
+    {
+      "sha256": "83661e483d266aa73949cc774b997ef74ed6cc16c7adb7a08017c0f6ae154ec3",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/queuing_mutex.h"
+    },
+    {
+      "sha256": "7ad6bbde55c6ef747d74dbc66d018a48ebaaa362bc734054eadb46412fae448e",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/queuing_rw_mutex.h"
+    },
+    {
+      "sha256": "cd513bff334d6e69fc78657f280f3b12535fccd129defe0ed8c1cd6356f97935",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/rw_mutex.h"
+    },
+    {
+      "sha256": "090714056c87a3f97fe6067da0dc2f2819640dc056151a24ab2c11b22ab4637e",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/scalable_allocator.h"
+    },
+    {
+      "sha256": "e43bbc522e1c0ce78f39412db5ae57d2f0ac8e799135ff63d107d898eb44bf36",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/spin_mutex.h"
+    },
+    {
+      "sha256": "b2d6071c52979475ca8260d567d3ec96725bf59097989767d2b3b8871dfceec0",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/spin_rw_mutex.h"
+    },
+    {
+      "sha256": "88869ac99b90ac515ab5f83690c68dc34f16901c1c8e16ef398ef90572000dce",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/task.h"
+    },
+    {
+      "sha256": "cfadf655bbb195bd1cd6f8be679c92ba9fc9fa8a4b69e6354f52ca2f0d52a371",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/task_arena.h"
+    },
+    {
+      "sha256": "bd36592fde511853022cb2f4e46711c24dddfdd9cab5cbe3c65bbcc88a818622",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/task_group.h"
+    },
+    {
+      "sha256": "382f859fca884ca5d42cf77dbdb4a59b38602cb6c4a7018775ab9c35d4cd2b0a",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/task_scheduler_observer.h"
+    },
+    {
+      "sha256": "6d449626863c62c0ea81eac6a6906439a8476cb1ce0a1a4b131d8c6c0b052fa4",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/tbb_allocator.h"
+    },
+    {
+      "sha256": "492455f28630c3e1e99c6b6be7f4394cc447875a32770406bb67d70119b6308b",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/tbbmalloc_proxy.h"
+    },
+    {
+      "sha256": "036df916b7748d6a61bde925236b5ec6ef652a6f269f6847326b7d670b8dce40",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/tick_count.h"
+    },
+    {
+      "sha256": "23e053d5fe9c290949c1370fa94cf614c772aa44dbb21e94083382a08bdaa3bb",
+      "path": "oneapi/tbb/2023.1/include/oneapi/tbb/version.h"
+    },
+    {
+      "sha256": "3760f3c47fc59423bbc1567a02b7b83c1f70b6675ef2adee57d255ca6d624772",
+      "path": "oneapi/tbb/2023.1/include/tbb/blocked_nd_range.h"
+    },
+    {
+      "sha256": "5d280718c2041a51f397034b5dcaaee62a21bd45d5275d1e5b246201ba827700",
+      "path": "oneapi/tbb/2023.1/include/tbb/blocked_range.h"
+    },
+    {
+      "sha256": "0c3f305ca4c0ad81c8e61655b14116de0be3af5be9a5c87e56acfcfe5d1bd2c1",
+      "path": "oneapi/tbb/2023.1/include/tbb/blocked_range2d.h"
+    },
+    {
+      "sha256": "f5e6c6f1c2e1ddebf4853e5f3f89ff567fd335718732fc514892d31d0997e87e",
+      "path": "oneapi/tbb/2023.1/include/tbb/blocked_range3d.h"
+    },
+    {
+      "sha256": "fad93d0f6b0bb0fe55874269b48c55acca2d7c2c10f458bd10d7c7d0552247de",
+      "path": "oneapi/tbb/2023.1/include/tbb/cache_aligned_allocator.h"
+    },
+    {
+      "sha256": "d0ed572befc8ecc7919fdcf04294dda8d01c74834f802d79b2f43289b83a0e98",
+      "path": "oneapi/tbb/2023.1/include/tbb/collaborative_call_once.h"
+    },
+    {
+      "sha256": "d546857ad777992f755c32b1201d93eda10baf8198dce459cf441ed50e738dd9",
+      "path": "oneapi/tbb/2023.1/include/tbb/combinable.h"
+    },
+    {
+      "sha256": "a350d12b4e2c60b56c2e67a15a7e747a0ee78dc9cde54414c05a46c3a014a082",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_hash_map.h"
+    },
+    {
+      "sha256": "d7b5a060d0333133498d6e00cc5dd3b5f3097da0d472aae9dd83d11bab8deb7a",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_lru_cache.h"
+    },
+    {
+      "sha256": "dcaf68784291e8f0c86e9d5006a43f746fbec6cdb4512677f80ccc472423b492",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_map.h"
+    },
+    {
+      "sha256": "61143cad1b3abc6826ef001f769aa90614655e83f96b14815b50a7aa82a1b1f0",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_priority_queue.h"
+    },
+    {
+      "sha256": "ea5d2734677fcf4b5f58bee655e163a045b374caad781e698d17edfc153ea2c5",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_queue.h"
+    },
+    {
+      "sha256": "39dc21ad6c4087d97a3bb28752b1eb011a8b7edac8584674689207e1ad769f49",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_set.h"
+    },
+    {
+      "sha256": "0c98ca103a45807c65c9f995a8523fcb58d01f5a6a9be75c6d3900d587da6a17",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_unordered_map.h"
+    },
+    {
+      "sha256": "4e5b01dd5d8c7a83ac15c0bc15e3ec7ed8e78340058aa78a0eb40967b9970047",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_unordered_set.h"
+    },
+    {
+      "sha256": "ff0951002ed7fe7e7fabd1649734d7ee109bb94790183cdcf95d91817f992516",
+      "path": "oneapi/tbb/2023.1/include/tbb/concurrent_vector.h"
+    },
+    {
+      "sha256": "22d1c1594c0e4686ddfafbaabd0371ab7b64c2d4a437ec704edd89ff96afad00",
+      "path": "oneapi/tbb/2023.1/include/tbb/enumerable_thread_specific.h"
+    },
+    {
+      "sha256": "2a0857fdb3eaf9c68300987619cf41628ef9af1a0a215408e53d3a3c3efe1f43",
+      "path": "oneapi/tbb/2023.1/include/tbb/flow_graph.h"
+    },
+    {
+      "sha256": "bd5a80085a271b0493c4adadc636b13ff8f392e8f635ce9b57f291ba3e126345",
+      "path": "oneapi/tbb/2023.1/include/tbb/flow_graph_abstractions.h"
+    },
+    {
+      "sha256": "101b3f1eb7fba413f5651bbe879419d2bdb8a5deeace76e49cca049eeffda5be",
+      "path": "oneapi/tbb/2023.1/include/tbb/global_control.h"
+    },
+    {
+      "sha256": "44279351e234b8b3c5dc510d06e3a002213c4c33443490d7f01c694ee93730db",
+      "path": "oneapi/tbb/2023.1/include/tbb/info.h"
+    },
+    {
+      "sha256": "e51db0de7c91581458e09f583e61b8e1ead088424b8d0ae03ad2e1996b90afc9",
+      "path": "oneapi/tbb/2023.1/include/tbb/memory_pool.h"
+    },
+    {
+      "sha256": "baf1a0c73fe818f58d9f2f9a969af217609e4eb60b57c79f814f1c88b0e30e8b",
+      "path": "oneapi/tbb/2023.1/include/tbb/mutex.h"
+    },
+    {
+      "sha256": "9ed7a293132d4a3f7ab15a27e1af9b9e66119d2c9e00d10feb56d0ae104be4d4",
+      "path": "oneapi/tbb/2023.1/include/tbb/null_mutex.h"
+    },
+    {
+      "sha256": "dcd56ef0920c61decc09c5bd0c30df750986e71bde0ef8ec4e31c1824cb7185b",
+      "path": "oneapi/tbb/2023.1/include/tbb/null_rw_mutex.h"
+    },
+    {
+      "sha256": "4548138023b42d5c5752b792718356d24802ba41e0056df8e742c3468632b7a0",
+      "path": "oneapi/tbb/2023.1/include/tbb/numa_allocation.h"
+    },
+    {
+      "sha256": "33d16c056a50e76dd9747550c1cb1b485ef5676a57fc2609c5e5f2d7ad7257f3",
+      "path": "oneapi/tbb/2023.1/include/tbb/parallel_for.h"
+    },
+    {
+      "sha256": "cc5d163ac27df5e1257ae338d644c488a9e226c598f50b7ba7c7500ac87cb6cc",
+      "path": "oneapi/tbb/2023.1/include/tbb/parallel_for_each.h"
+    },
+    {
+      "sha256": "4531ecd69e1e00794d48c16568b344df2f5991f4303ef0d26d81f1d317737490",
+      "path": "oneapi/tbb/2023.1/include/tbb/parallel_invoke.h"
+    },
+    {
+      "sha256": "313d3bfcd13e33f73146c4507b9552c95ca95569f5124e6303242481396845cd",
+      "path": "oneapi/tbb/2023.1/include/tbb/parallel_pipeline.h"
+    },
+    {
+      "sha256": "bb19901dbf31bfe06ab5480279c7a85a402dcea6f485f89ad8615b9f28f4af36",
+      "path": "oneapi/tbb/2023.1/include/tbb/parallel_reduce.h"
+    },
+    {
+      "sha256": "fec7ffefd64310040ccb961ea56f2ab22d54fa8e9c2946cc130053873d6be778",
+      "path": "oneapi/tbb/2023.1/include/tbb/parallel_scan.h"
+    },
+    {
+      "sha256": "c1050ac2e28c447b0f4d411b83aef1b41907d429de51aa22557d42b16d090b35",
+      "path": "oneapi/tbb/2023.1/include/tbb/parallel_sort.h"
+    },
+    {
+      "sha256": "7e16a8e56ad0d5b035bae68f468d050207792cf89b2a3037a5894269ccdcf6a1",
+      "path": "oneapi/tbb/2023.1/include/tbb/partitioner.h"
+    },
+    {
+      "sha256": "7fb6c116524b85183fcdcc3236a18f31a4f43bceca0135478a0c74fda42d9604",
+      "path": "oneapi/tbb/2023.1/include/tbb/profiling.h"
+    },
+    {
+      "sha256": "2db98f6781e92a39cb42ef68e3fa318c771a26d566f2cb2e3f52ff8c6e2c258b",
+      "path": "oneapi/tbb/2023.1/include/tbb/queuing_mutex.h"
+    },
+    {
+      "sha256": "e9a844562ede9a2ce8079a87d2e832476d0987d8624588b872da0e8d2d8d9005",
+      "path": "oneapi/tbb/2023.1/include/tbb/queuing_rw_mutex.h"
+    },
+    {
+      "sha256": "93ae041fa56b4fee380848d8976de4dfdffeddd14f20e39c8c64515c54fdd51e",
+      "path": "oneapi/tbb/2023.1/include/tbb/rw_mutex.h"
+    },
+    {
+      "sha256": "52c786155efab412366064d80ca8d5caae14182fabaa61335f2e8c9b393b4291",
+      "path": "oneapi/tbb/2023.1/include/tbb/scalable_allocator.h"
+    },
+    {
+      "sha256": "efd3a77e8d09912e7a027802e622d4c0bbfe61aefb9186422ce1a619b652a9c2",
+      "path": "oneapi/tbb/2023.1/include/tbb/spin_mutex.h"
+    },
+    {
+      "sha256": "e5e55f5d3aae6474a258c87cd1b3d274518f28f6f2e0291b2c064eaf9e573928",
+      "path": "oneapi/tbb/2023.1/include/tbb/spin_rw_mutex.h"
+    },
+    {
+      "sha256": "ba2a5e401a1399b6e33b8cb2919bb4d434f0a716d752a3072b67fd7aa4ae30df",
+      "path": "oneapi/tbb/2023.1/include/tbb/task.h"
+    },
+    {
+      "sha256": "60830bb91a1063c55659e5fe02da3a65dbb3111068ba6ef771655abe591c693e",
+      "path": "oneapi/tbb/2023.1/include/tbb/task_arena.h"
+    },
+    {
+      "sha256": "6f9a8ddb50964ce7052d898be26012177ed78958fefdcd347650f0d06604fdbe",
+      "path": "oneapi/tbb/2023.1/include/tbb/task_group.h"
+    },
+    {
+      "sha256": "054d36291bf7c42a26d86a1b69dd63682f6c95c02a0880a863c291bb9ec8e6e6",
+      "path": "oneapi/tbb/2023.1/include/tbb/task_scheduler_observer.h"
+    },
+    {
+      "sha256": "cc07208ee166a217f747030dde1f40880c6249e963e7d3cba1e6515c3789ca8c",
+      "path": "oneapi/tbb/2023.1/include/tbb/tbb.h"
+    },
+    {
+      "sha256": "482e89b8ab92d28d8db6493448c6c75855bb276b0582edf5fa77f9e409f4bd23",
+      "path": "oneapi/tbb/2023.1/include/tbb/tbb_allocator.h"
+    },
+    {
+      "sha256": "f100ce8dcbc6a9ffd570a0596193f30abd832939722d9f57383bcaad5f5e1d66",
+      "path": "oneapi/tbb/2023.1/include/tbb/tbbmalloc_proxy.h"
+    },
+    {
+      "sha256": "daea8fa5babfab1d37bee5dd013d9f84b75fc766dbaf1c2ade5438f955e49a34",
+      "path": "oneapi/tbb/2023.1/include/tbb/tick_count.h"
+    },
+    {
+      "sha256": "85cc01e558b12725a63435c1ca996fa830e134bfad163d48f28094d57e153fe6",
+      "path": "oneapi/tbb/2023.1/include/tbb/version.h"
+    },
+    {
+      "sha256": "32828736fd17b73214cf7a4afd4b80c2f200f407719cc01c98f4bacdd85fe334",
+      "path": "oneapi/tbb/2023.1/lib/tbb.lib"
+    },
+    {
+      "sha256": "97cf2dbaba93fb8bab6ce0093b4a62bc675d642a8d512970f57169ef57f54386",
+      "path": "oneapi/tbb/2023.1/lib/tbb12.dll"
+    },
+    {
+      "sha256": "32828736fd17b73214cf7a4afd4b80c2f200f407719cc01c98f4bacdd85fe334",
+      "path": "oneapi/tbb/2023.1/lib/tbb12.lib"
+    },
+    {
+      "sha256": "cf47441e95be910db424bbfa9665b2d50f17908adb812d2972e4a430fd56034c",
+      "path": "oneapi/tbb/2023.1/lib/tbb12.pdb"
+    },
+    {
+      "sha256": "027e183aec8c2291864f2818507f32a80e2688bf5a8746341ffe93161dd347da",
+      "path": "oneapi/tbb/2023.1/lib/tbb12_debug.dll"
+    },
+    {
+      "sha256": "4a1b5da21307c69fe8772ff3d306c27e8905bfb8130a639bfb2fe41e53073426",
+      "path": "oneapi/tbb/2023.1/lib/tbb12_debug.lib"
+    },
+    {
+      "sha256": "84b8caae6babf6f45a554324ec17716811a0b35f048e72cee0a8fd86296021da",
+      "path": "oneapi/tbb/2023.1/lib/tbb12_debug.pdb"
+    },
+    {
+      "sha256": "4a1b5da21307c69fe8772ff3d306c27e8905bfb8130a639bfb2fe41e53073426",
+      "path": "oneapi/tbb/2023.1/lib/tbb_debug.lib"
+    },
+    {
+      "sha256": "2997eab31e63226ad4472de6bb4f36ab1b2012185b4610c2c2a558c65f522d0f",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind.dll"
+    },
+    {
+      "sha256": "e0bceb2bfc5bed8d895f49e6e92d56794541d22b63f7e61f35106d3714365800",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind.lib"
+    },
+    {
+      "sha256": "b2da980e2f8af7ae5d989762591d4abff1ad513dd90787d9c95347bf05f89f0b",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind.pdb"
+    },
+    {
+      "sha256": "432a8a5ebc5e96af0431bb2120bde264d468b96ffa7032f7f424fca74af7d8a0",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_0.dll"
+    },
+    {
+      "sha256": "047dddce304b3254bdfa72dc36a2906eeb5fe2e49769d11ef6f557ab947439f0",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_0.lib"
+    },
+    {
+      "sha256": "b487aae64c281f6ee051bea944a938f2d982e4fc3032e25a8805649a4f0bf7db",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_0.pdb"
+    },
+    {
+      "sha256": "5849a0c55fb5f98e8a29880e9b6f6436a83895c448f41236eb4041526bae2694",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_0_debug.dll"
+    },
+    {
+      "sha256": "fbdf14cab75904c4efec6409b6238ede3a2f0cf3f13f7108025be63419e70552",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_0_debug.lib"
+    },
+    {
+      "sha256": "de1b4f0114be28f8aafefb57a627f31f6e174c22793703e36afc11249cd7a3b4",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_0_debug.pdb"
+    },
+    {
+      "sha256": "b0b7a077ce9516e60343dcc1905492bd600fb84b205a3948b699fb1e5d0ffd31",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_5.dll"
+    },
+    {
+      "sha256": "3ea3484858c97c2d2d780d97799ebf3159e0bcb46716bb742cdae0b484001adc",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_5.lib"
+    },
+    {
+      "sha256": "c775404206c38a01f88714b712e890fea82c7e8926af16bd8dacca2408d3b35f",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_5.pdb"
+    },
+    {
+      "sha256": "9c90fdc8b0d08bd69d6bf03145b7a676246dc0508cc7966098c8d6b1240bed51",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_5_debug.dll"
+    },
+    {
+      "sha256": "9de07e34618978a128f5bbaab13eb595df45eb70125acaf3bd6f06293f9e244c",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_5_debug.lib"
+    },
+    {
+      "sha256": "2632888aed9eafd7c592b8eccee00d843bd4c9decb2fd9ba04c9ae17d87c244b",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_2_5_debug.pdb"
+    },
+    {
+      "sha256": "3d0696754d035253fe89385c0e7b143973345183c6698454b1c0e31131ba188b",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_debug.dll"
+    },
+    {
+      "sha256": "051a846b2b22013325c6b7046511c495b5a97e96cc6eddf421644ffbcb300649",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_debug.lib"
+    },
+    {
+      "sha256": "8cb8aaf0cb7a90ed9c74cd12997d72bab3f4559c9c0f9b520f77a8b998200f99",
+      "path": "oneapi/tbb/2023.1/lib/tbbbind_debug.pdb"
+    },
+    {
+      "sha256": "b352140d3555dbc4645fb6c87dd8cb3ef71ac130eb0bc4043b4b61f4846f0bec",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc.dll"
+    },
+    {
+      "sha256": "a387570801e31d4e3b92d5c0fa7d5e4fea8eeb7ba09e4857aae72704fc5a40a1",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc.lib"
+    },
+    {
+      "sha256": "c47c9538d6cb14cb51f2a78bfc5c3818da74d6898a0bb3cbce15653612e2230d",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc.pdb"
+    },
+    {
+      "sha256": "bcd0dc6c283bf47abdc7d5a92513c206b2f9052b3e27185aa5ba90855e45f371",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_debug.dll"
+    },
+    {
+      "sha256": "5f2a67e031cb5bdb782ce48e0632e453c7f07de1d81322517045742e1ad590f1",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_debug.lib"
+    },
+    {
+      "sha256": "718e0a73e9c0ed08c85bfd3ee5b02f021f9f49643812a8754cd68e2345cd5093",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_debug.pdb"
+    },
+    {
+      "sha256": "c62945dbe30fcae1d094f9b499207e70b9124ec57678f5371cbe5c13f7d4d340",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_proxy.dll"
+    },
+    {
+      "sha256": "7028fef27affddd93ff6ae3e4cc0b7ca807fca5c0637878e671a90780b48bdf5",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_proxy.lib"
+    },
+    {
+      "sha256": "da02e8276d57ce5813ca148bea5f906eee60a47fd7096c75bcafbe0f3e3a5028",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_proxy.pdb"
+    },
+    {
+      "sha256": "288db5c7ef4e0c4a0b13b1615d502abdce19b0d7afda4f50a13570585ffba398",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_proxy_debug.dll"
+    },
+    {
+      "sha256": "77f9ef029a3704d845e06d7cab0e21a30e72e32f083433e8e2695788f002f588",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_proxy_debug.lib"
+    },
+    {
+      "sha256": "68e84153a6d6138e5ee9af00e1363696d5d605445fe67bb87faa81bc71f7ff95",
+      "path": "oneapi/tbb/2023.1/lib/tbbmalloc_proxy_debug.pdb"
+    }
+  ]
+}

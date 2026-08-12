@@ -1,0 +1,27 @@
+{
+  "schema_version": "kspacejet.verification-record/v1",
+  "kind": "VerificationRecord",
+  "execution_plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "execution_profile": "bounded-online",
+  "verified_resource_vector": {
+    "host_normal_bytes": 33554432,
+    "host_pinned_bytes": 0,
+    "host_hugepage_bytes": 0,
+    "shared_host_bytes": 0,
+    "spool_bytes": 0,
+    "transport_bytes": 0,
+    "descriptor_count": 16,
+    "async_token_count": 0,
+    "cpu_leaf_permits": 1,
+    "backend_gang_permits": 0,
+    "provider_private_permits": 0,
+    "io_slots": 1,
+    "devices": []
+  },
+  "verified_terminal_occurrences": 2,
+  "verified_obligations": [
+    "typed-safety",
+    "bounded-memory",
+    "finite-drain"
+  ]
+}

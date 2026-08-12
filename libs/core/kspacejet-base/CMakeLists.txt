@@ -1,0 +1,12 @@
+ksj_add_core_component(
+  base
+  INCLUDE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  SOURCES
+  src/clock.cpp
+  src/file.cpp
+  src/checksum/crc32c.cpp
+  src/path.cpp
+  src/status.cpp
+  src/timestamp.cpp
+  src/version.cpp)

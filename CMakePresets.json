@@ -1,0 +1,306 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "toolchainFile": "${sourceDir}/out/build/${presetName}/conan_toolchain.cmake",
+      "cacheVariables": {
+        "BUILD_TESTING": "OFF",
+        "KSJ_THIRDPARTY_CONFIG": "Release",
+        "KSJ_BUILD_UNIT_TESTS": "OFF",
+        "KSJ_BUILD_BENCHMARKS": "OFF",
+        "KSJ_BUILD_RESEARCH": "OFF",
+        "KSJ_BUILD_APPLICATIONS": "ON",
+        "KSJ_ENABLE_NATIVE_ARCH_OPTIMIZATION": "OFF",
+        "KSJ_ENABLE_INSTALL_RULES": "ON",
+        "KSJ_WINDOWS_USE_DYNAMIC_MSVC_RUNTIME": "ON",
+        "KSJ_PERFORMANCE_LEVEL": "0"
+      }
+    },
+    {
+      "name": "linux-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "generator": "Ninja",
+      "cacheVariables": {}
+    },
+    {
+      "name": "windows-vs2022-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
+      "name": "windows-vs2022-release",
+      "inherits": "windows-vs2022-base",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/windows-vs2022-release",
+        "KSJ_THIRDPARTY_CONFIG": "Release"
+      }
+    },
+    {
+      "name": "windows-vs2022-debug",
+      "inherits": "windows-vs2022-base",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/windows-vs2022-debug",
+        "KSJ_THIRDPARTY_CONFIG": "Debug"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/linux-debug",
+        "KSJ_THIRDPARTY_CONFIG": "Debug"
+      }
+    },
+    {
+      "name": "linux-release",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/linux-release"
+      }
+    },
+    {
+      "name": "linux-release-tests-base",
+      "hidden": true,
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "KSJ_ENABLE_INSTALL_RULES": "OFF",
+        "KSJ_BUILD_APPLICATIONS": "OFF"
+      }
+    },
+    {
+      "name": "linux-release-unit-tests",
+      "inherits": "linux-release-tests-base",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "KSJ_BUILD_UNIT_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-release-benchmark",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/linux-release-benchmark",
+        "KSJ_BUILD_BENCHMARKS": "ON",
+        "KSJ_BUILD_APPLICATIONS": "OFF"
+      }
+    },
+    {
+      "name": "linux-release-research",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/linux-release-research",
+        "KSJ_BUILD_RESEARCH": "ON",
+        "KSJ_BUILD_APPLICATIONS": "OFF"
+      }
+    },
+    {
+      "name": "linux-release-memory-diagnostics",
+      "inherits": "linux-release",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/linux-release-memory-diagnostics",
+        "KSJ_MEMORY_ENABLE_STATS": "ON",
+        "KSJ_MEMORY_ENABLE_LEAK_TRACKING": "ON"
+      }
+    },
+    {
+      "name": "linux-release-performance-analysis",
+      "inherits": "linux-release",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/linux-release-performance-analysis",
+        "KSJ_PERFORMANCE_LEVEL": "1"
+      }
+    },
+    {
+      "name": "linux-release-static-analysis",
+      "inherits": "linux-release",
+      "binaryDir": "${sourceDir}/out/build/linux-release-static-analysis",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/linux-release-static-analysis",
+        "KSJ_ENABLE_STATIC_MEMORY_LEAK_CHECK": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "jobs": 0
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-unit-tests",
+      "configurePreset": "linux-release-unit-tests",
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-benchmark",
+      "configurePreset": "linux-release-benchmark",
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-research",
+      "configurePreset": "linux-release-research",
+      "targets": [
+        "ksj_cpp_numerics_performance_handbook"
+      ],
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-memory-diagnostics",
+      "configurePreset": "linux-release-memory-diagnostics",
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-performance-analysis",
+      "configurePreset": "linux-release-performance-analysis",
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-static-analysis",
+      "configurePreset": "linux-release-static-analysis",
+      "jobs": 0
+    },
+    {
+      "name": "windows-vs2022-release",
+      "configurePreset": "windows-vs2022-release",
+      "configuration": "Release",
+      "jobs": 0
+    },
+    {
+      "name": "windows-vs2022-debug",
+      "configurePreset": "windows-vs2022-debug",
+      "configuration": "Debug",
+      "jobs": 0
+    },
+    {
+      "name": "windows-vs2022-release-install",
+      "configurePreset": "windows-vs2022-release",
+      "configuration": "Release",
+      "targets": [
+        "install"
+      ],
+      "jobs": 0
+    },
+    {
+      "name": "windows-vs2022-debug-install",
+      "configurePreset": "windows-vs2022-debug",
+      "configuration": "Debug",
+      "targets": [
+        "install"
+      ],
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-install",
+      "configurePreset": "linux-release",
+      "targets": [
+        "install"
+      ],
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-benchmark-install",
+      "configurePreset": "linux-release-benchmark",
+      "targets": [
+        "install"
+      ],
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-research-install",
+      "configurePreset": "linux-release-research",
+      "targets": [
+        "install"
+      ],
+      "jobs": 0
+    },
+    {
+      "name": "linux-debug-install",
+      "configurePreset": "linux-debug",
+      "targets": [
+        "install"
+      ],
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-memory-diagnostics-install",
+      "configurePreset": "linux-release-memory-diagnostics",
+      "targets": [
+        "install"
+      ],
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-performance-analysis-install",
+      "configurePreset": "linux-release-performance-analysis",
+      "targets": [
+        "install"
+      ],
+      "jobs": 0
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-release-unit-tests",
+      "configurePreset": "linux-release-unit-tests",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "linux-release-ci",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-release-unit-tests"
+        },
+        {
+          "type": "build",
+          "name": "linux-release-unit-tests"
+        },
+        {
+          "type": "test",
+          "name": "linux-release-unit-tests"
+        }
+      ]
+    }
+  ]
+}

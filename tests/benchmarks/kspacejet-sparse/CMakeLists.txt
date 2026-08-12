@@ -1,0 +1,6 @@
+add_executable(ksj_sparse_backend_benchmark sparse_backend_benchmark.cpp)
+
+ksj_target_enable_benchmark_defaults(ksj_sparse_backend_benchmark)
+target_include_directories(ksj_sparse_backend_benchmark PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
+target_link_libraries(ksj_sparse_backend_benchmark PRIVATE KSpaceJet::sparse)
+ksj_set_executable_runtime_path(ksj_sparse_backend_benchmark)

@@ -1,0 +1,16 @@
+ksj_add_gtest(
+  ksj_array_eigen_tests
+  MODULE
+  numerics.kspacejet-array
+  SOURCES
+  pooled_array4d_tests.cpp
+  pooled_cube_tests.cpp
+  pooled_image_tests.cpp
+  pooled_matrix_tests.cpp
+  pooled_vector_tests.cpp
+  view_algorithms_tests.cpp
+  LINK_LIBS
+  KSpaceJet::array
+  LABELS
+  numerics
+  kspacejet-array)

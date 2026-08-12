@@ -1,0 +1,11 @@
+ksj_add_gtest(
+  ksj_platform_tests
+  MODULE
+  core.kspacejet-platform
+  SOURCES
+  platform_tests.cpp
+  LINK_LIBS
+  KSpaceJet::core
+  LABELS
+  core
+  kspacejet-platform)

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "package": "intel-oneapi/2026.1@kspacejet/stable",
+  "purpose": "KSpaceJet CPU acceleration: Intel IPP, Intel oneMKL, and Intel OpenMP runtime",
+  "distribution": {
+    "transport": "Git LFS",
+    "rule": "Only reviewed redistributable binary files, their required headers, and required license/notices may be staged. Do not add an entire oneAPI SDK, installer, compiler executable, samples, or tools."
+  },
+  "platforms": {
+    "linux-x86_64": {
+      "payload_root": "payload/linux-x86_64/oneapi",
+      "components": {
+        "ipp": "2026.0",
+        "mkl": "2026.1",
+        "compiler_openmp_runtime": "2026.1"
+      }
+    },
+    "windows-x86_64": {
+      "payload_root": "payload/windows-x86_64/oneapi",
+      "components": {
+        "ipp": "2026.0",
+        "mkl": "2026.1",
+        "compiler_openmp_runtime": "2026.1"
+      }
+    }
+  },
+  "release_requirements": [
+    "Every payload platform contains a text manifest-files.json with schema_version=1 and files=[{path,sha256}]; path is relative to payload/<platform>-x86_64 and every file below oneapi/ appears exactly once.",
+    "The payload uses shared libraries only: Linux *.a archives are forbidden; Windows *.lib files are allowed only as DLL import libraries.",
+    "The matching component licenses and all applicable third-party notices are copied into licenses/<platform>/ before release, retaining their component-relative paths.",
+    "licenses/linux/ and licenses/windows/ contain unmodified notice copies for the staged component versions. The Windows prebuilt payload does not carry them, so the corresponding same-version component notices are mirrored from the supplied Linux payload and require release/legal review.",
+    "A clean checkout followed by git lfs pull, conan export third_party/intel, and conan install succeeds without a system oneAPI installation."
+  ]
+}

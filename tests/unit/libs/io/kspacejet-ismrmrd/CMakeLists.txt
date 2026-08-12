@@ -1,0 +1,12 @@
+ksj_add_gtest(
+  ksj_ismrmrd_tests
+  MODULE
+  io.kspacejet-ismrmrd
+  SOURCES
+  dataset_reader_tests.cpp
+  LINK_LIBS
+  KSpaceJet::ismrmrd
+  ISMRMRD::ISMRMRD
+  LABELS
+  io
+  kspacejet-ismrmrd)

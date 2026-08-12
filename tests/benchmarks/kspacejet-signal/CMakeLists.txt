@@ -1,0 +1,13 @@
+add_executable(ksj_signal_backend_benchmark signal_backend_benchmark.cpp signal_filter_benchmark.cpp)
+
+ksj_target_enable_benchmark_defaults(ksj_signal_backend_benchmark)
+target_include_directories(ksj_signal_backend_benchmark PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
+target_link_libraries(ksj_signal_backend_benchmark PRIVATE KSpaceJet::signal)
+ksj_set_executable_runtime_path(ksj_signal_backend_benchmark)
+
+add_executable(ksj_signal_vml_candidate_benchmark signal_vml_candidate_benchmark.cpp)
+
+ksj_target_enable_benchmark_defaults(ksj_signal_vml_candidate_benchmark)
+target_include_directories(ksj_signal_vml_candidate_benchmark PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
+target_link_libraries(ksj_signal_vml_candidate_benchmark PRIVATE KSpaceJet::signal KSpaceJet::special)
+ksj_set_executable_runtime_path(ksj_signal_vml_candidate_benchmark)
