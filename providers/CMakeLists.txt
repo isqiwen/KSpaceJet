@@ -5,3 +5,4 @@ ksj_include_project_bootstrap()
 # explicit so a product build can ship a trusted reference plugin without
 # creating a second reconstruction data plane.
 add_subdirectory(kspacejet-reference-cartesian)
+add_subdirectory(kspacejet-minimal-cartesian)

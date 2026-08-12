@@ -16,6 +16,8 @@ namespace detail {
 struct FixedBufferEdgeState;
 } // namespace detail
 
+class M3PublishLease;
+
 // The edge constructs move-only ImmutableBufferHandle objects in the
 // caller-owned control ring. max_align_t makes that placement well-defined
 // without exposing the private control-record layout in the public ABI.
@@ -57,6 +59,14 @@ struct FixedBufferEdgeConfig {
   // reserves this declared bound before filling/sealing the source slot and
   // retains it until the consumer acknowledges the item.
   Quantity max_logical_bytes{0U};
+  // Optional frozen artifact accounting for the fixed control records. Zero
+  // uses the concrete slab size and `max_items` descriptor count, preserving
+  // the standalone primitive's historical behavior. A plan-bound owner sets
+  // these to its artifact charge so the local mirror ledger enforces the full
+  // frozen sub-budget even when the concrete record is smaller than its
+  // stable abstract accounting unit.
+  Quantity charged_control_storage_bytes{0U};
+  Quantity charged_descriptor_count{0U};
 };
 
 enum class FixedBufferEdgeLifecycle : std::uint8_t {
@@ -85,8 +95,11 @@ struct FixedBufferEdgeSnapshot {
 
 class FixedBufferEdge;
 
-// A move-only item/descriptor/logical-byte reservation. Its destructor rolls
-// back only unpublished edge credit; a firing wrapper is responsible for
+// A move-only item/descriptor/logical-byte reservation. It owns one detached
+// fixed credit record, not a preselected FIFO position: several firings may
+// pre-acquire credits before their Providers run, and a later ordered handoff
+// appends the committing handle to the FIFO in commit order. Its destructor
+// rolls back only unpublished edge credit; a firing wrapper is responsible for
 // treating a missing required output as a contract failure rather than merely
 // relying on this rollback.
 class FixedBufferEdgeProducerReservation final {
@@ -109,17 +122,25 @@ public:
 
 private:
   friend class FixedBufferEdge;
+  friend class M3PublishLease;
 
   FixedBufferEdgeProducerReservation(std::shared_ptr<detail::FixedBufferEdgeState> state, Quantity slot_index,
                                      std::uint64_t token, Quantity logical_bytes) noexcept;
 
   void release_noexcept() noexcept;
   void disarm() noexcept;
+  // Only the coupled M3.7 reorder→edge handoff may use this after a
+  // successful commit when its subsequent reorder acknowledgement fails.
+  // It closes the exact edge that accepted the handle, releasing its queued
+  // ownership rather than leaving a successful edge enqueue visible after a
+  // failed upstream terminal settlement.
+  [[nodiscard]] ksj::base::Status abort_committed_edge_for_coupled_handoff();
 
   std::shared_ptr<detail::FixedBufferEdgeState> state_{};
   Quantity slot_index_{0U};
   std::uint64_t token_{0U};
   Quantity logical_bytes_{0U};
+  bool committed_{false};
 };
 
 // A move-only synchronous consumer capability. It exposes only a const
@@ -200,10 +221,13 @@ public:
   FixedBufferEdge& operator=(FixedBufferEdge&&) = delete;
   ~FixedBufferEdge();
 
-  // Reserves one fixed ring record and its declared logical credit. This
-  // operation never waits and returns Unavailable on ordinary capacity
-  // pressure. Only one producer reservation may be outstanding at a time,
-  // preserving FIFO order without a dynamic reservation journal.
+  // Reserves one fixed detached credit record and its declared logical credit.
+  // This operation never waits and returns Unavailable on ordinary capacity
+  // pressure. Multiple reservations may coexist up to max_items; they do not
+  // occupy or determine FIFO positions until commit_from() transfers their
+  // handle into the fixed queue. This permits full edge credit to be acquired
+  // before an out-of-order Provider callback while preserving ordered commit
+  // at the downstream FIFO boundary.
   [[nodiscard]] ksj::base::Result<FixedBufferEdgeProducerReservation> try_reserve(Quantity logical_bytes);
 
   [[nodiscard]] FixedBufferEdgePoll try_acquire();

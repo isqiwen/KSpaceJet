@@ -220,6 +220,11 @@ Result<TypeDescriptor> TypeDescriptor::create(const TypeDescriptorSpec& specific
   if (!revision.ok()) {
     return revision.status();
   }
+  auto abi_descriptor_digest =
+    ArtifactDigest::parse(specification.abi_descriptor_digest, field(field_name, "abi_descriptor_digest"));
+  if (!abi_descriptor_digest.ok()) {
+    return abi_descriptor_digest.status();
+  }
   auto payload_schema_digest =
     ArtifactDigest::parse(specification.payload_schema_digest, field(field_name, "payload_schema_digest"));
   if (!payload_schema_digest.ok()) {
@@ -297,6 +302,7 @@ Result<TypeDescriptor> TypeDescriptor::create(const TypeDescriptorSpec& specific
 
   return TypeDescriptor{specification.type_id,
                         std::move(revision).value(),
+                        std::move(abi_descriptor_digest).value(),
                         std::move(payload_schema_digest).value(),
                         specification.payload_kind,
                         specification.element_type,

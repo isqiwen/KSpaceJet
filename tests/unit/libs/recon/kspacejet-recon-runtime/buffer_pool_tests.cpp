@@ -31,6 +31,7 @@ using ksj::recon::runtime::MutableBufferLease;
 using ksj::recon::runtime::ResourceVectorLedger;
 
 constexpr auto kPayloadDigest = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+constexpr auto kAbiDescriptorDigest = "sha256:3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea";
 constexpr auto kMetadataDigest = "sha256:cb8379ac2098aa165029e3938a51da0bcecfc008fd6795f401178647f96c5b34";
 
 static_assert(!std::is_copy_constructible_v<MutableBufferLease>);
@@ -42,6 +43,7 @@ static_assert(!std::is_copy_assignable_v<ImmutableBufferHandle>);
   const auto created = TypeDescriptor::create({
     .type_id = "ksj.fixed-buffer-pool-test",
     .revision = revision,
+    .abi_descriptor_digest = kAbiDescriptorDigest,
     .payload_schema_digest = kPayloadDigest,
     .payload_kind = PayloadKind::buffer_handle,
     .element_type = ksj::recon::ElementType::uint8,

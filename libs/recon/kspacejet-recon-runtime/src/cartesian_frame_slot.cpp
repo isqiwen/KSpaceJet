@@ -138,7 +138,7 @@ ksj::base::Result<CartesianFrameSlot> CartesianFrameSlot::create(CartesianFrameS
   const auto bitmap_words = (physical_line_count + (kBitmapWordBits - 1U)) / kBitmapWordBits;
 
   try {
-    std::vector<ksj::base::byte> storage(storage_bytes);
+    detail::CartesianFrameByteStorage storage(storage_bytes);
     std::vector<std::uint64_t> expected_bitmap(bitmap_words, 0U);
     std::vector<std::uint64_t> coverage_bitmap(bitmap_words, 0U);
     for (const auto coordinate : required) {
@@ -157,7 +157,7 @@ ksj::base::Result<CartesianFrameSlot> CartesianFrameSlot::create(CartesianFrameS
 }
 
 CartesianFrameSlot::CartesianFrameSlot(CartesianFrameSlotConfig config, const std::size_t line_bytes,
-                                       const std::size_t physical_line_count, std::vector<ksj::base::byte> storage,
+                                       const std::size_t physical_line_count, detail::CartesianFrameByteStorage storage,
                                        std::vector<std::uint64_t> expected_bitmap,
                                        std::vector<std::uint64_t> coverage_bitmap) noexcept
     : config_(std::move(config)), line_bytes_(line_bytes), physical_line_count_(physical_line_count),

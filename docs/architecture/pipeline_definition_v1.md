@@ -13,7 +13,7 @@
 > 非目标：定义新的网络协议、复刻任何私有历史格式、规定具体重建算法，或把运行时调度参数写死在用户 pipeline 文件中。
 >
 > 本文历史段落中的 `strict-online`、`bounded-best-effort` 等旧 profile 名称不再是当前
-> profile identifier。当前 M0–M3.6 实现状态、profile 准入和下一边界见第 12 节；该状态不
+> profile identifier。当前 M0–M3.7 实现状态、profile 准入和下一边界见第 12 节；该状态不
 > 放宽优化版规范中的任何要求。
 
 ## 1. 目的、边界与权威关系
@@ -1026,7 +1026,7 @@ metrics, logs and optional proof-audit trace
 
 在第 1 至 3 步完成前，新增公开数据集、Gadgetron 对照或性能数字不能替代 pipeline 语义、资源界和终止正确性的验收。
 
-## 12. 当前 M0–M3.6 实现状态与下一边界（非规范性）
+## 12. 当前 M0–M3.7 实现状态与下一边界（非规范性）
 
 本节只描述当前实现可用性；规范性语义仍以
 [KSpaceJet Pipeline Review Optimized v1](KSpaceJet_pipeline_review_optimized_v1.md)
@@ -1035,39 +1035,52 @@ metrics, logs and optional proof-audit trace
 | 范围 | 当前边界 |
 | --- | --- |
 | terminal output | 正常 EndOfInput 的 `on_scan_end`/`normal_flush` 是唯一 output-bearing terminal 路径。`cancel_cleanup.outputs` 必须为 `{}`；`on_cancel` 及其 cleanup 只能完成资源释放、quarantine、已注册 async settlement 与独立审计，不能发布普通 MRI data 或触发 data-producing 下游 firing。 |
-| execution profile | 当前进程内 M0–M3.6 路径只支持 `offline` 与 `bounded-online`。`isolated-strict-online` 和 `deadline-qualified-online` 必须拒绝，直到经授权的 worker 故障边界、supervisor、资源 quota 与 watchdog/超时强制机制均已实现并 qualification。 |
+| execution profile | 当前进程内 M0–M3.7 路径只支持 `offline` 与 `bounded-online`。`isolated-strict-online` 和 `deadline-qualified-online` 必须拒绝，直到经授权的 worker 故障边界、supervisor、资源 quota 与 watchdog/超时强制机制均已实现并 qualification。 |
 | M1 serial Cartesian | 当前是有界、同步、串行的 `FrameSlot` 基线，不是任意交错输入的通用 reorder runtime。一个 `FrameSlotContext` 首次出现时，其 `OrderKey` 必须不小于已经启动 frame 的最大 `OrderKey`；首次出现的更小 key 必须拒绝。 |
-| M3 fixed reorder | 当前 `FixedReorderBuffer` 以已验证 `ExecutionPlan + VerificationRecord + node_id` 选择并复制一个 `ReorderPlan` slice；在 caller 固定 slab 与 committed shared ledger pool 上执行 pre-dispatch permit、completion、publish lease 与 sink acknowledgement。domain、duplicate、behind-next 和本 buffer 的资源不变量会 fail closed；容量压力保持 retryable `Unavailable`。EOI/cancel 失败先 drain outstanding permit/lease，之后才释放 pool。它不是 BufferHandle/edge/scheduler，也不证明输入 `FrameSlotContext` 的 HostFrameAssembler 来源。 |
-| M3.5 host completion handoff | `HostFrameAssembler` 以预分配 Cartesian frame slot 与 move-only `CompletedFrameLease` 建立 host-owned provenance/lifetime handoff。lease 将封存 frame 与 issuer/scan/node/port、slot/generation 绑定，仅支持同步单消费者；`FrameDispatch::complete()` 停止读取后即可 recycle source slot，drop、重复或 stale 会 fail closed/quarantine。它不是 `FrameAssemblyPlan`，不声明 compiler-derived `ResourceVector` charge、`BufferHandle`、fan-out、generic edge 或跨阶段 credit transfer，也不证明超出 runtime capability 本身的 acquisition/classifier/source provenance。 |
-| M3.6 external-slab BufferHandle/edge | `FixedBufferPool` 在 caller-asserted host-normal payload/metadata/control slab 上提供 move-only `MutableBufferLease → ImmutableBufferHandle` 和 generation 防 ABA；裸 `ByteSpan` 不证明 allocation 或 memory-domain provenance。`FixedBufferEdge` 只支持一个 owner 下的单 FIFO producer、单同步 consumer，移动 sole-owned immutable handle，并在 consumer acknowledge 后归还 credit/slot。参与的 Pool/Edge 只在同一 `ksj_recon_runtime` image 内持有 caller-slab range claim；其他 raw-slab primitive 的重叠仍由 caller 负责。可选 occupancy credit 只是外部 slab 的运行时占用记账，不是 `PhysicalMemoryLedger`、allocation provenance 或 admission。没有 fan-out、retain、async、transfer、source provenance，也未接入 Provider、reorder 或 compiled `ExecutionPlan`。 |
+| M3 fixed reorder | `FixedReorderBuffer` 以已验证 `ExecutionPlan + VerificationRecord + node_id` 选择并复制一个 `ReorderPlan` slice；在 caller 固定 slab 与 committed shared ledger pool 上执行 pre-dispatch permit、completion、publish lease 与 sink acknowledgement。domain、duplicate、behind-next 和本 buffer 的资源不变量会 fail closed；容量压力保持 retryable `Unavailable`。EOI/cancel 失败先 drain outstanding permit/lease，之后才释放 pool。它作为底层/legacy primitive 不能单独成为 M3.7 产品数据入口；M3.7 以 context-owned facade 将其限定到同一条 handle 路径。 |
+| M3.5 host completion handoff | `HostFrameAssembler` 以预分配 Cartesian frame slot 与 move-only `CompletedFrameLease` 建立 host-owned provenance/lifetime handoff。lease 将封存 frame 与 issuer/scan/node/port、slot/generation 绑定，仅支持同步单消费者；`FrameDispatch::complete()` 停止读取后即可 recycle source slot，drop、重复或 stale 会 fail closed/quarantine。它不是 acquisition/classifier 来源 attestation 或 `FrameAssemblyPlan`；在 M3.7 中它是唯一可进入 plan-bound reorder ingress 的产品 ingress。 |
+| M3.6 external-slab BufferHandle/edge 原语 | `FixedBufferPool` 在 caller-asserted host-normal payload/metadata/control slab 上提供 move-only `MutableBufferLease → ImmutableBufferHandle` 和 generation 防 ABA；`FixedBufferEdge` 只支持一个 owner 下的单 FIFO producer、单同步 consumer，并在 consumer acknowledge 后归还 credit/slot。裸 `ByteSpan` 不证明 allocation 或 memory-domain provenance；同一 runtime image 内的 range claim 不替代 caller 对其他 raw-slab overlap 的责任。M3.7 将这些原语绑定到 plan，但不改变其 caller-owned raw-slab 边界。 |
+| M3.7 frozen plan / verifier | `ExecutionPlan` 现冻结 `BufferPoolPlan` 与 `DataEdgePlan`；canonical JSON、compiler 与独立 verifier 都交叉核验。pool 冻结 Provider/bundle/operator/contract provenance、精确 `TypeDescriptor`、slot 数、payload/metadata 容量、对齐和物理 charge；edge 冻结 pool、端点/ABI output port、类型、逻辑 item/byte credit、descriptor/staging charge 和 terminal policy。plan 必须携带 `PO-13.m3_7_plan_bound_data_plane` 与 `RA-02.m3_7_single_physical_payload_charge`，`VerificationRecord` 必须携带对应的 M3.7 verification obligations。 |
+| M3.7 plan-bound data plane | `AdmittedPlanBoundDataPlane` 只接受一个已验证的 host-normal pool、reorder 与 FIFO edge 的同步单生产者/单消费者拓扑。Provider callback 前 bridge 同时取得 pool slot 和完整 edge credit；Provider 写 `MutableBufferLease` 并 seal 后，同一个 `ImmutableBufferHandle` 经 reorder 的 `M3PublishLease::commit_to_edge()` 进入 edge。物理 payload 只由 `BufferPoolPlan` 计一次，reorder/edge 只计逻辑/descriptor/control credit。 |
+| M3.7 terminal/sink | sink 只接收 `PlanBoundSinkLease`，它会在 context 销毁后仍保留 global admission reservation，直到最后一个 handle acknowledge 或 drop 结算。bridge 处理 normal EOI：无 gap 时 edge drain，gap/cancel/failure/未结算输出则 abort/fail close edge。 |
+| M3.7 real Cartesian E2E | `kspacejet-minimal-cartesian` 对两个真实单线圈 2×2 complex-int16 k-space frame 做归一化 2D IFFT，产生 float32 magnitude image，并覆盖 `HostFrameAssembler → CompletedFrameLease → Provider → pool → reorder → frozen edge → sink acknowledgement`。这是 ABI/账本回归 fixture，不是临床 pipeline。 |
 
-M3 的受限 Cartesian `ReorderPlan` 只将 `strict-dense-all-tuples-eoi-fail` 安装为运行时
-义务：compiler/verifier 可证明有限 dense mapping、type binding、injectivity 和容量，但不能从
-ISMRMRD XML limit 单独证明每个 tuple 会出现。任何缺失、重复或域外 completed frame 都必须在
-runtime/trace 中导致 `Failed`；已确认 sink 前缀不承诺因后续缺口而回滚。当前不把同类型
-Provider 输出称作 host FrameAssembler，也未实现其来源 attestation 或 occurrence artifact。
+M3 的受限 Cartesian `ReorderPlan` 仍将 `strict-dense-all-tuples-eoi-fail` 安装为运行时义务：
+compiler/verifier 可证明有限 dense mapping、type binding、injectivity 和容量，但不能从 ISMRMRD XML limit
+单独证明每个 tuple 会出现。任何缺失、重复或域外 completed frame 都必须在 runtime/trace 中导致 `Failed`；
+已确认 sink 前缀不承诺因后续缺口而回滚。当前仍不把同类型 Provider 输出称作 host FrameAssembler，也未实现其
+来源 attestation 或 occurrence artifact。
 
-M3.5 中的 `CompletedFrameLease` 只证明本 runtime 实例的封存与交付 capability。M3.5 的 product
-reorder ingress 只能消费持有已验证 plan/node/port 绑定的 lease；裸的 `FrameSlotContext` 不是这个
-产品边界的 ingress。该限制不代替 `BufferHandle` 的所有权模型，也不开放异步 retain 或 fan-out。
+M3.5 的 `CompletedFrameLease` 只证明本 runtime 实例的封存与交付 capability。在 M3.7，只有持有已验证
+plan/node/port binding 的 lease 能被 context-owned `PlanBoundM3ReorderIngress` 接受；裸的 `FrameSlotContext`、
+第二个 reorder identity 或 direct typed publish 都不是产品入口。同步 bridge 停止读取输入 frame 后 source
+`FrameSlot` 即可 recycle，失败结算则 quarantine；这不等待后续 sink acknowledgement。该限制不证明 input source
+attestation，也不开放异步 retain 或 fan-out。
 
-M3.6 的 external-slab pool/edge 是独立的受限原语，不能把它当成 M3.5 frame handoff、Provider output
-grant 或 compiled graph edge。raw `ByteSpan` 的 host-normal 属性、实际 allocation、上游 admission 与跨
-facility slab 排他均由 caller 断言和承担；runtime-image range claim 只覆盖参与的 Pool/Edge。可选
-occupancy credit 仅约束该原语存活期间的占用，不能替代 `PhysicalMemoryLedger`。
+M3.7 将 pool、reorder 和 edge 的所有权与 accounting 固定为一条链：callback 前预留 pool lease 与完整 edge
+credit，Provider 只能在 granted `MutableBufferLease` 中产生一个 sealed output；同一个 `ImmutableBufferHandle`
+随后通过 `M3PublishLease::commit_to_edge()` 移入 edge。任何没有 seal、错误端点、超出 frozen output、pending
+ordered-output drop 或 bridge 非正常销毁都会使耦合数据面 fail close；callback 前容量压力可 retry。`RA-02` 禁止
+把这份 payload 在 reorder 或 edge 再次按 physical memory 记账，`BufferPoolPlan` 是它唯一的物理 charge owner。
 
-在任何 source `FrameSlot` 分配、`FrameAssemblyLease` 取得或 `CompletedFrameLease` 交付之前，必须完成已验证
-`ExecutionPlan + VerificationRecord + node/port` 的 binding 与 admission；M3.5 没有隐式 pre-admission staging、
-缓存或未绑定的 source frame work。
+normal EndOfInput 仅由 bridge 接收：reorder 无 gap 时可以让已入队 edge item drain；gap、cancel 或 failure 必须
+abort edge。sink 只见 `PlanBoundSinkLease`，而不是 raw edge consumer lease。该 capability 在 data-plane context
+已经销毁后仍保留全局 admission reservation，直到最后一个 handle acknowledge，或在 drop 时失败结算，防止可见输出
+与 admission lifetime 脱钩。
 
-一旦 binding 完成，product terminal control 与 completed-lease 消费均统一归 `M3ReorderIngress` 所有，并与
-配对 reorder 耦合。host failure 必须使 paired reorder fail closed；已被外部 acknowledge 的有序前缀仍不回滚。
+M3.7 仍不改变 raw-slab 的责任边界。pool/edge/reorder storage 由 caller 提供、断言为 host-normal，且必须活到
+context、bridge 和最后一个 sink lease 之后；runtime 只检查它精确适配 frozen plan，不分配 memory、不证明 OS
+allocation provenance，也不管理 runtime image 外的 slab exclusivity。当前仅支持一个同步 producer、一个同步 FIFO
+consumer 及一个 pool/edge/reorder 拓扑；没有 fan-out、retain、async、GPU/device memory、generic executor 或跨进程
+资源边界。bridge 核验 loaded Provider 的 bundle/operator/contract identity，但 opaque operator/context/key-state
+handle 和 canonical node config 的创建/生命周期仍是 caller 建立的 trusted in-process precondition，而非从 raw ABI
+pointer 重建的 provenance。
 
-同步 `FrameDispatch::complete()` 一旦停止读取输入 frame，source `FrameSlot` 即可 recycle；失败结算则
-quarantine。这不等待后续 ordered publish acknowledgement。后续的 ordered reorder/publish lease 只持有终止顺序权限
-和已预留 credit，不持有输入 bytes 或 slot。
+最小 `kspacejet-minimal-cartesian` E2E 是真实的 2×2 单线圈 IFFT，不是 mock buffer：两个 complex-int16 k-space
+frame 在 Provider 内转为 float32 magnitude image，测试包含乱序 completion、顺序 publish、单次物理 payload charge、
+sink acknowledgement 和 global ledger drain。它没有 coil combine、calibration、trajectory correction、公开 image
+egress 或临床 qualification，不能作为诊断用 MRI pipeline。
 
-下一运行时边界是把 M3.6 的受限 `BufferHandle`/edge 与该受限 reorder primitive、M3.5 的 lease-only
-ingress、verified plan、Provider firing、terminal state machine、跨阶段 credit transfer 和 fault injection
-组合成 compiled executor。严格及 deadline profile 的下一边界则是独立 worker 故障域；进程内 watchdog
-不能替代该边界。
+下一实现边界是 M4：在已验证的 M3.7 数据面上加入 worker 隔离、supervisor、RunRecord recovery、故障注入和跨进程
+资源边界。严格或 deadline profile 在这些故障域、quota 和 watchdog/超时强制机制完成并 qualification 前仍必须拒绝；
+进程内 watchdog 不能替代该边界。

@@ -1,5 +1,7 @@
 #include "kspacejet/recon/runtime/synchronous_firing_lease.hpp"
 
+#include "kspacejet/recon/execution_plan.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -201,6 +203,17 @@ combine_persistent_and_firing_reservations(const ksj::recon::ResourceVector& per
 } // namespace
 
 struct SynchronousFiringLeaseHost::Impl {
+  enum class OutputGrantAccounting : std::uint8_t {
+    // The public SynchronousFiringLeaseHost API receives arbitrary caller
+    // spans, so its firing ResourceVector must include every output byte.
+    externally_supplied,
+    // Only the private plan-bound bridge may select this path.  Its output
+    // spans are aliases of a BufferPool slot whose physical charge is already
+    // held by the admitted data plane; dynamic firing accounting covers
+    // scratch/CPU work but deliberately not the same payload a second time.
+    preaccounted_pool_slot,
+  };
+
   enum class GrantStateKind : std::uint8_t {
     available,
     acquired,
@@ -232,17 +245,27 @@ struct SynchronousFiringLeaseHost::Impl {
     bool unsupported_capability_requested{false};
   };
 
+  // The narrow M3.7 product host is statically limited to one input batch,
+  // one input item, and one output grant. Its concrete ABI-view backing fits
+  // inside the frozen artifact staging allowance; the runtime check in the
+  // preaccounted factory then enforces those exact cardinalities.
+  static constexpr std::uint64_t kM37OneOutputStagingBytes = sizeof(ksj_firing_lease) + sizeof(ksj_input_batch_view) +
+                                                             sizeof(ksj_input_item_view) + sizeof(GrantState) +
+                                                             sizeof(SynchronousSealedOutput);
+  static constexpr std::uint64_t kM37OneOutputStagingDescriptorCount = 5U;
+  static_assert(kM37OneOutputStagingBytes <= ksj::recon::kM37FiringLeaseHostStagingChargedBytes);
+  static_assert(kM37OneOutputStagingDescriptorCount <= ksj::recon::kM37FiringLeaseHostStagingDescriptorCount);
+
   explicit Impl(SynchronousFiringLeaseConfig configuration)
       : config(std::move(configuration)), resource_ledger(config.resource_ledger),
         firing_reservation(std::move(config.firing_reservation)) {}
 
   [[nodiscard]] ksj::base::Status prepare(const SynchronousProviderInvocation& invocation,
                                           const SynchronousFiringRequest& request, const bool terminal,
-                                          LeaseState& state);
-  [[nodiscard]] ksj::base::Result<SynchronousFiringResult> invoke(const SynchronousProviderInvocation& invocation,
-                                                                  const SynchronousFiringRequest& request,
-                                                                  bool terminal,
-                                                                  std::uint64_t completed_input_item_count);
+                                          OutputGrantAccounting output_accounting, LeaseState& state);
+  [[nodiscard]] ksj::base::Result<SynchronousFiringResult>
+  invoke(const SynchronousProviderInvocation& invocation, const SynchronousFiringRequest& request, bool terminal,
+         std::uint64_t completed_input_item_count, OutputGrantAccounting output_accounting);
 
   [[nodiscard]] ksj::base::Status begin_callback();
   void finish_callback() noexcept;
@@ -336,7 +359,9 @@ std::string_view to_string(const SynchronousFiringOutcome outcome) noexcept {
   return "unknown";
 }
 
-ksj::base::Result<SynchronousFiringLeaseHost> SynchronousFiringLeaseHost::create(SynchronousFiringLeaseConfig config) {
+ksj::base::Result<SynchronousFiringLeaseHost>
+SynchronousFiringLeaseHost::create_impl(SynchronousFiringLeaseConfig config,
+                                        const StagingAccounting staging_accounting) {
   if (config.resource_ledger == nullptr) {
     return ksj::base::Status::InvalidArgument(
       "SynchronousFiringLeaseHost requires an explicit shared ResourceVectorLedger");
@@ -354,56 +379,84 @@ ksj::base::Result<SynchronousFiringLeaseHost> SynchronousFiringLeaseHost::create
   }
 
   try {
-    auto* implementation = new Impl(std::move(config));
+    // Keep construction ownership local until every fixed vector allocation
+    // and every ledger transition has succeeded. In particular, reserve()
+    // below may throw after a persistent token was acquired.
+    auto implementation = std::make_unique<Impl>(std::move(config));
     if (!implementation->static_workspace_requirements(implementation->static_workspace_host_bytes,
                                                        implementation->static_workspace_descriptor_count)) {
-      delete implementation;
       return ksj::base::Status::ValidationError(
         "SynchronousFiringLeaseHost fixed ABI staging requirements overflow ResourceVector accounting");
     }
-    auto persistent_staging = make_persistent_staging_reservation(implementation->static_workspace_host_bytes,
-                                                                  implementation->static_workspace_descriptor_count);
-    if (!persistent_staging.ok()) {
-      delete implementation;
-      return persistent_staging.status();
-    }
-    auto complete_host_claim =
-      combine_persistent_and_firing_reservations(persistent_staging.value(), implementation->firing_reservation);
-    if (!complete_host_claim.ok()) {
-      delete implementation;
-      return complete_host_claim.status();
-    }
-    if (!implementation->resource_ledger->capacity().can_admit(complete_host_claim.value())) {
-      delete implementation;
-      return ksj::base::Status::ValidationError(
-        "SynchronousFiringLeaseHost persistent staging plus one firing exceeds shared ResourceVectorLedger capacity");
-    }
+    if (staging_accounting == StagingAccounting::self_reserved) {
+      auto persistent_staging = make_persistent_staging_reservation(implementation->static_workspace_host_bytes,
+                                                                    implementation->static_workspace_descriptor_count);
+      if (!persistent_staging.ok()) {
+        return persistent_staging.status();
+      }
+      auto complete_host_claim =
+        combine_persistent_and_firing_reservations(persistent_staging.value(), implementation->firing_reservation);
+      if (!complete_host_claim.ok()) {
+        return complete_host_claim.status();
+      }
+      if (!implementation->resource_ledger->capacity().can_admit(complete_host_claim.value())) {
+        return ksj::base::Status::ValidationError(
+          "SynchronousFiringLeaseHost persistent staging plus one firing exceeds shared ResourceVectorLedger capacity");
+      }
 
-    // The vector backing storage is allocated at create(), not at firing
-    // time. Reserve it before allocating, then retain the committed resource
-    // bundle for the full host lifetime so independently-created hosts cannot
-    // oversubscribe it.
-    auto persistent_reservation = implementation->resource_ledger->try_reserve(persistent_staging.value());
-    if (!persistent_reservation.ok()) {
-      delete implementation;
-      return persistent_reservation.status();
+      // The vector backing storage is allocated at create(), not at firing
+      // time. Reserve it before allocating, then retain the committed
+      // resource bundle for the full host lifetime so independently-created
+      // hosts cannot oversubscribe it.
+      auto persistent_reservation = implementation->resource_ledger->try_reserve(persistent_staging.value());
+      if (!persistent_reservation.ok()) {
+        return persistent_reservation.status();
+      }
+      implementation->persistent_staging_reservation.emplace(std::move(persistent_reservation).value());
+    } else {
+      // Public raw-span hosts historically charge only their persistent
+      // vector-backed workspace. The plan-bound M3.7 formula additionally
+      // carries the callback-local ABI lease control object, so prove it here
+      // without changing that public accounting contract.
+      constexpr auto kLeaseControlBytes = static_cast<std::uint64_t>(sizeof(ksj_firing_lease));
+      if (implementation->config.maximum_input_batches != 1U || implementation->config.maximum_input_items != 1U ||
+          implementation->config.maximum_output_grants != 1U ||
+          implementation->static_workspace_host_bytes >
+            ksj::recon::kM37FiringLeaseHostStagingChargedBytes - kLeaseControlBytes ||
+          implementation->static_workspace_descriptor_count > ksj::recon::kM37FiringLeaseHostStagingDescriptorCount) {
+        return ksj::base::Status::ValidationError(
+          "SynchronousFiringLeaseHost preaccounted staging requires the frozen M3.7 one-input/one-output bound");
+      }
+      if (!implementation->resource_ledger->capacity().can_admit(implementation->firing_reservation)) {
+        return ksj::base::Status::ValidationError(
+          "SynchronousFiringLeaseHost firing reservation exceeds its local plan ledger capacity");
+      }
     }
-    implementation->persistent_staging_reservation.emplace(std::move(persistent_reservation).value());
     implementation->input_batches.reserve(implementation->config.maximum_input_batches);
     implementation->input_items.reserve(implementation->config.maximum_input_items);
     implementation->grants.reserve(implementation->config.maximum_output_grants);
     implementation->sealed_outputs.reserve(implementation->config.maximum_output_grants);
-    const auto committed_staging = implementation->persistent_staging_reservation->commit();
-    if (!committed_staging.ok()) {
-      delete implementation;
-      return committed_staging;
+    if (implementation->persistent_staging_reservation.has_value()) {
+      const auto committed_staging = implementation->persistent_staging_reservation->commit();
+      if (!committed_staging.ok()) {
+        return committed_staging;
+      }
     }
-    return SynchronousFiringLeaseHost{implementation};
+    return SynchronousFiringLeaseHost{implementation.release()};
   } catch (const std::bad_alloc&) {
     return ksj::base::Status::OutOfMemory("unable to allocate bounded SynchronousFiringLeaseHost storage");
   } catch (const std::length_error&) {
     return ksj::base::Status::OutOfMemory("SynchronousFiringLeaseHost bounds exceed host vector capacity");
   }
+}
+
+ksj::base::Result<SynchronousFiringLeaseHost> SynchronousFiringLeaseHost::create(SynchronousFiringLeaseConfig config) {
+  return create_impl(std::move(config), StagingAccounting::self_reserved);
+}
+
+ksj::base::Result<SynchronousFiringLeaseHost>
+SynchronousFiringLeaseHost::create_preaccounted_staging(SynchronousFiringLeaseConfig config) {
+  return create_impl(std::move(config), StagingAccounting::preaccounted_by_plan);
 }
 
 SynchronousFiringLeaseHost::SynchronousFiringLeaseHost(Impl* implementation) noexcept
@@ -430,7 +483,16 @@ SynchronousFiringLeaseHost::process(const SynchronousProviderInvocation& invocat
   if (implementation_ == nullptr) {
     return ksj::base::Status::StateError("SynchronousFiringLeaseHost has been moved from");
   }
-  return implementation_->invoke(invocation, request, false, 0U);
+  return implementation_->invoke(invocation, request, false, 0U, Impl::OutputGrantAccounting::externally_supplied);
+}
+
+ksj::base::Result<SynchronousFiringResult>
+SynchronousFiringLeaseHost::process_preaccounted_output(const SynchronousProviderInvocation& invocation,
+                                                        const SynchronousFiringRequest& request) {
+  if (implementation_ == nullptr) {
+    return ksj::base::Status::StateError("SynchronousFiringLeaseHost has been moved from");
+  }
+  return implementation_->invoke(invocation, request, false, 0U, Impl::OutputGrantAccounting::preaccounted_pool_slot);
 }
 
 ksj::base::Result<SynchronousFiringResult>
@@ -440,7 +502,8 @@ SynchronousFiringLeaseHost::on_scan_end(const SynchronousProviderInvocation& inv
   if (implementation_ == nullptr) {
     return ksj::base::Status::StateError("SynchronousFiringLeaseHost has been moved from");
   }
-  return implementation_->invoke(invocation, request, true, completed_input_item_count);
+  return implementation_->invoke(invocation, request, true, completed_input_item_count,
+                                 Impl::OutputGrantAccounting::externally_supplied);
 }
 
 SynchronousFiringLeaseSnapshot SynchronousFiringLeaseHost::snapshot() const {
@@ -481,6 +544,10 @@ SynchronousFiringLeaseSnapshot SynchronousFiringLeaseHost::Impl::snapshot() cons
 
 bool SynchronousFiringLeaseHost::Impl::static_workspace_requirements(std::uint64_t& host_bytes,
                                                                      std::uint64_t& descriptor_count) const noexcept {
+  // The public raw-span host charges its fixed vector-backed workspace here.
+  // Preaccounted M3.7 construction separately adds its callback-local ABI
+  // lease control to the frozen 4096B proof, preserving the public host's
+  // established persistent-accounting behavior.
   host_bytes = 0U;
   descriptor_count = 1U; // The FiringLease itself.
   const auto add_storage = [&host_bytes](const std::uint64_t count, const std::uint64_t element_size) {
@@ -503,7 +570,9 @@ bool SynchronousFiringLeaseHost::Impl::static_workspace_requirements(std::uint64
 
 ksj::base::Status SynchronousFiringLeaseHost::Impl::prepare(const SynchronousProviderInvocation& invocation,
                                                             const SynchronousFiringRequest& request,
-                                                            const bool terminal, LeaseState& state) {
+                                                            const bool terminal,
+                                                            const OutputGrantAccounting output_accounting,
+                                                            LeaseState& state) {
   if (!invocation.provider.valid() || invocation.provider.api() == nullptr ||
       invocation.provider.descriptor() == nullptr || invocation.operator_id.empty() ||
       invocation.operator_handle == nullptr || invocation.execution_context == nullptr ||
@@ -650,11 +719,14 @@ ksj::base::Status SynchronousFiringLeaseHost::Impl::prepare(const SynchronousPro
       "SynchronousFiringLeaseHost requires one atomic output-commit callback for declared output grants");
   }
 
+  const auto dynamically_charged_output_bytes =
+    output_accounting == OutputGrantAccounting::externally_supplied ? total_output_capacity_bytes : 0U;
   std::uint64_t minimum_host_bytes = 0U;
-  if (!checked_add(total_output_capacity_bytes, request.scratch.size(), minimum_host_bytes) ||
+  if (!checked_add(dynamically_charged_output_bytes, request.scratch.size(), minimum_host_bytes) ||
       firing_reservation.host_normal_bytes() < minimum_host_bytes) {
     return ksj::base::Status::ValidationError(
-      "SynchronousFiringLeaseHost firing ResourceVector host_normal_bytes does not cover output grants and scratch");
+      "SynchronousFiringLeaseHost firing ResourceVector host_normal_bytes does not cover its dynamic output/scratch "
+      "reservation");
   }
 
   state.owner = this;
@@ -695,17 +767,16 @@ ksj::base::Status SynchronousFiringLeaseHost::Impl::prepare(const SynchronousPro
   return ksj::base::Status::Ok();
 }
 
-ksj::base::Result<SynchronousFiringResult>
-SynchronousFiringLeaseHost::Impl::invoke(const SynchronousProviderInvocation& invocation,
-                                         const SynchronousFiringRequest& request, const bool terminal,
-                                         const std::uint64_t completed_input_item_count) {
+ksj::base::Result<SynchronousFiringResult> SynchronousFiringLeaseHost::Impl::invoke(
+  const SynchronousProviderInvocation& invocation, const SynchronousFiringRequest& request, const bool terminal,
+  const std::uint64_t completed_input_item_count, const OutputGrantAccounting output_accounting) {
   std::unique_lock invocation_lock(invocation_mutex, std::try_to_lock);
   if (!invocation_lock.owns_lock()) {
     return ksj::base::Status::Unavailable(
       "SynchronousFiringLeaseHost has an active callback and cannot be re-entered or run concurrently");
   }
   LeaseState state{};
-  const auto prepared = prepare(invocation, request, terminal, state);
+  const auto prepared = prepare(invocation, request, terminal, output_accounting, state);
   if (!prepared.ok()) {
     return prepared;
   }

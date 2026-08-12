@@ -526,6 +526,21 @@ template <typename OptionalLimit>
     return validation(prefix + ".max_ahead_charged_bytes must cover max_ahead_items full OutputEnvelope "
                                "reservations.");
   }
+  auto handle_storage =
+    required_quantity(specification.handle_storage_charged_bytes, field(prefix, "handle_storage_charged_bytes"));
+  if (!handle_storage.ok()) {
+    return handle_storage.status();
+  }
+  auto expected_handle_storage =
+    checked_multiply(max_ahead_items.value().value(), kDenseCartesianReorderHandleSidecarChargedBytes,
+                     prefix + ".max_ahead_items * immutable handle sidecar bytes");
+  if (!expected_handle_storage.ok()) {
+    return expected_handle_storage.status();
+  }
+  if (handle_storage.value().value() != expected_handle_storage.value()) {
+    return validation(prefix + ".handle_storage_charged_bytes must equal max_ahead_items * " +
+                      std::to_string(kDenseCartesianReorderHandleSidecarChargedBytes) + ".");
+  }
   auto max_gap = canonical_quantity(specification.max_gap_ordinals, field(prefix, "max_gap_ordinals"));
   if (!max_gap.ok()) {
     return max_gap.status();
@@ -565,8 +580,206 @@ template <typename OptionalLimit>
     specification.storage_accounting_id, std::move(ordinal_domain).value(), std::move(first_expected).value(),
     std::move(last_expected).value(), std::move(max_ahead_items).value(), std::move(max_ahead_bytes).value(),
     std::move(max_gap).value(), specification.occurrence_policy, specification.publish_policy,
-    specification.certified_skipped_ordinals, specification.end_of_input_policy, std::move(host_metadata).value(),
-    std::move(descriptor_charge).value());
+    specification.certified_skipped_ordinals, specification.end_of_input_policy, std::move(handle_storage).value(),
+    std::move(host_metadata).value(), std::move(descriptor_charge).value());
+}
+
+[[nodiscard]] bool type_allows_host_normal(const TypeDescriptor& type_descriptor) {
+  return std::find(type_descriptor.allowed_memory_domains().begin(), type_descriptor.allowed_memory_domains().end(),
+                   TypeMemoryDomain::host_normal) != type_descriptor.allowed_memory_domains().end();
+}
+
+[[nodiscard]] Status validate_m37_pool_type(const TypeDescriptor& type_descriptor, const std::string_view prefix) {
+  if (type_descriptor.payload_kind() != PayloadKind::buffer_handle ||
+      type_descriptor.mutability() != PayloadMutability::immutable_after_publish ||
+      !type_allows_host_normal(type_descriptor)) {
+    return validation(std::string(prefix) +
+                      ".type_descriptor must be an immutable_after_publish buffer_handle that permits host_normal.");
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Result<BufferPoolPlan> to_buffer_pool_plan(const BufferPoolPlanSpec& specification,
+                                                         const std::size_t index) {
+  const std::string prefix = "buffer_pool_plans[" + std::to_string(index) + "]";
+  if (specification.pool_id.empty() || specification.producer_node_id.empty() ||
+      specification.producer_port_name.empty() || specification.producer_provider_id.empty() ||
+      specification.producer_operator_id.empty()) {
+    return validation(prefix + ".pool_id, producer node/port, producer_provider_id, and producer_operator_id must not "
+                               "be empty.");
+  }
+  auto producer_bundle_digest =
+    ArtifactDigest::parse(specification.producer_bundle_digest, field(prefix, "producer_bundle_digest"));
+  if (!producer_bundle_digest.ok()) {
+    return producer_bundle_digest.status();
+  }
+  auto producer_contract_digest =
+    ArtifactDigest::parse(specification.producer_contract_digest, field(prefix, "producer_contract_digest"));
+  if (!producer_contract_digest.ok()) {
+    return producer_contract_digest.status();
+  }
+  const auto type_status = validate_m37_pool_type(specification.type_descriptor, prefix);
+  if (!type_status.ok()) {
+    return type_status;
+  }
+  if (specification.memory_domain != TypeMemoryDomain::host_normal) {
+    return validation(prefix + ".memory_domain must be host_normal in M3.7.");
+  }
+  if (specification.storage_accounting_id != kM37BufferPoolStorageAccountingId) {
+    return validation(prefix + ".storage_accounting_id must be '" + std::string(kM37BufferPoolStorageAccountingId) +
+                      "'.");
+  }
+  auto slot_count = required_quantity(specification.slot_count, field(prefix, "slot_count"));
+  if (!slot_count.ok()) {
+    return slot_count.status();
+  }
+  auto payload_capacity =
+    required_quantity(specification.payload_capacity_bytes, field(prefix, "payload_capacity_bytes"));
+  if (!payload_capacity.ok()) {
+    return payload_capacity.status();
+  }
+  auto metadata_capacity =
+    canonical_quantity(specification.metadata_capacity_bytes, field(prefix, "metadata_capacity_bytes"));
+  if (!metadata_capacity.ok()) {
+    return metadata_capacity.status();
+  }
+  auto payload_alignment =
+    required_quantity(specification.payload_alignment_bytes, field(prefix, "payload_alignment_bytes"));
+  if (!payload_alignment.ok()) {
+    return payload_alignment.status();
+  }
+  if (payload_alignment.value().value() != specification.type_descriptor.min_alignment_bytes()) {
+    return validation(prefix + ".payload_alignment_bytes must exactly match type_descriptor.min_alignment_bytes.");
+  }
+  if (payload_capacity.value().value() % payload_alignment.value().value() != 0U) {
+    return validation(prefix + ".payload_capacity_bytes must be an integral multiple of payload_alignment_bytes.");
+  }
+  auto metadata =
+    required_quantity(specification.host_metadata_charged_bytes, field(prefix, "host_metadata_charged_bytes"));
+  if (!metadata.ok()) {
+    return metadata.status();
+  }
+  auto expected_metadata = m37_buffer_pool_host_metadata_charged_bytes(slot_count.value().value(),
+                                                                       field(prefix, "host_metadata_charged_bytes"));
+  if (!expected_metadata.ok()) {
+    return expected_metadata.status();
+  }
+  if (metadata.value().value() != expected_metadata.value()) {
+    return validation(prefix + ".host_metadata_charged_bytes does not match '" +
+                      std::string(kM37BufferPoolStorageAccountingId) + "'.");
+  }
+  auto descriptors =
+    required_quantity(specification.descriptor_charged_count, field(prefix, "descriptor_charged_count"));
+  if (!descriptors.ok()) {
+    return descriptors.status();
+  }
+  if (descriptors.value().value() != slot_count.value().value()) {
+    return validation(prefix + ".descriptor_charged_count must equal slot_count.");
+  }
+  auto physical_charge = required_quantity(specification.physical_charge_bytes, field(prefix, "physical_charge_bytes"));
+  if (!physical_charge.ok()) {
+    return physical_charge.status();
+  }
+  auto expected_physical_charge =
+    m37_buffer_pool_physical_charge_bytes(slot_count.value().value(), payload_capacity.value().value(),
+                                          metadata_capacity.value().value(), field(prefix, "physical_charge_bytes"));
+  if (!expected_physical_charge.ok()) {
+    return expected_physical_charge.status();
+  }
+  if (physical_charge.value().value() != expected_physical_charge.value()) {
+    return validation(prefix + ".physical_charge_bytes must exactly equal caller-slab payload + metadata + pool "
+                               "control charge.");
+  }
+  return BufferPoolPlan::from_validated(
+    specification.pool_id, specification.producer_node_id, specification.producer_port_name,
+    specification.producer_provider_id, std::move(producer_bundle_digest).value(), specification.producer_operator_id,
+    std::move(producer_contract_digest).value(), specification.type_descriptor, specification.memory_domain,
+    std::move(slot_count).value(), std::move(payload_capacity).value(), std::move(metadata_capacity).value(),
+    std::move(payload_alignment).value(), specification.storage_accounting_id, std::move(metadata).value(),
+    std::move(descriptors).value(), std::move(physical_charge).value());
+}
+
+[[nodiscard]] Result<DataEdgePlan> to_data_edge_plan(const DataEdgePlanSpec& specification, const std::size_t index) {
+  const std::string prefix = "data_edge_plans[" + std::to_string(index) + "]";
+  if (specification.edge_id.empty() || specification.source_pool_id.empty() || specification.producer_node_id.empty() ||
+      specification.producer_port_name.empty() || specification.consumer_node_id.empty() ||
+      specification.consumer_port_name.empty()) {
+    return validation(prefix + ".edge_id, source_pool_id, producer endpoint, and consumer endpoint must not be empty.");
+  }
+  const auto type_status = validate_m37_pool_type(specification.type_descriptor, prefix);
+  if (!type_status.ok()) {
+    return type_status;
+  }
+  auto producer_abi_port = canonical_quantity(specification.producer_abi_port, field(prefix, "producer_abi_port"));
+  if (!producer_abi_port.ok()) {
+    return producer_abi_port.status();
+  }
+  if (producer_abi_port.value().value() > kM37MaximumProducerAbiPort) {
+    return validation(prefix + ".producer_abi_port exceeds the uint32 Provider ABI range.");
+  }
+  if (specification.storage_accounting_id != kM37DataEdgeStorageAccountingId) {
+    return validation(prefix + ".storage_accounting_id must be '" + std::string(kM37DataEdgeStorageAccountingId) +
+                      "'.");
+  }
+  if (specification.terminal_policy != kM37NormalEoiDrainCancellationFailTerminalPolicy) {
+    return validation(prefix + ".terminal_policy must be '" +
+                      std::string(kM37NormalEoiDrainCancellationFailTerminalPolicy) + "'.");
+  }
+  auto max_items = required_quantity(specification.max_items, field(prefix, "max_items"));
+  if (!max_items.ok()) {
+    return max_items.status();
+  }
+  auto max_logical_bytes = required_quantity(specification.max_logical_bytes, field(prefix, "max_logical_bytes"));
+  if (!max_logical_bytes.ok()) {
+    return max_logical_bytes.status();
+  }
+  auto metadata =
+    required_quantity(specification.host_metadata_charged_bytes, field(prefix, "host_metadata_charged_bytes"));
+  if (!metadata.ok()) {
+    return metadata.status();
+  }
+  auto expected_metadata =
+    m37_data_edge_host_metadata_charged_bytes(max_items.value().value(), field(prefix, "host_metadata_charged_bytes"));
+  if (!expected_metadata.ok()) {
+    return expected_metadata.status();
+  }
+  if (metadata.value().value() != expected_metadata.value()) {
+    return validation(prefix + ".host_metadata_charged_bytes does not match '" +
+                      std::string(kM37DataEdgeStorageAccountingId) + "'.");
+  }
+  auto descriptors =
+    required_quantity(specification.descriptor_charged_count, field(prefix, "descriptor_charged_count"));
+  if (!descriptors.ok()) {
+    return descriptors.status();
+  }
+  if (descriptors.value().value() != max_items.value().value()) {
+    return validation(prefix + ".descriptor_charged_count must equal max_items.");
+  }
+  auto firing_lease_staging_bytes = required_quantity(specification.firing_lease_staging_charged_bytes,
+                                                      field(prefix, "firing_lease_staging_charged_bytes"));
+  if (!firing_lease_staging_bytes.ok()) {
+    return firing_lease_staging_bytes.status();
+  }
+  if (firing_lease_staging_bytes.value().value() != kM37FiringLeaseHostStagingChargedBytes) {
+    return validation(prefix + ".firing_lease_staging_charged_bytes must equal the frozen M3.7 synchronous "
+                               "Provider ABI staging charge.");
+  }
+  auto firing_lease_staging_descriptors = required_quantity(specification.firing_lease_staging_descriptor_count,
+                                                            field(prefix, "firing_lease_staging_descriptor_count"));
+  if (!firing_lease_staging_descriptors.ok()) {
+    return firing_lease_staging_descriptors.status();
+  }
+  if (firing_lease_staging_descriptors.value().value() != kM37FiringLeaseHostStagingDescriptorCount) {
+    return validation(prefix + ".firing_lease_staging_descriptor_count must equal the frozen M3.7 synchronous "
+                               "Provider ABI staging descriptor charge.");
+  }
+  return DataEdgePlan::from_validated(
+    specification.edge_id, specification.source_pool_id, specification.producer_node_id,
+    specification.producer_port_name, std::move(producer_abi_port).value(), specification.consumer_node_id,
+    specification.consumer_port_name, specification.type_descriptor, std::move(max_items).value(),
+    std::move(max_logical_bytes).value(), specification.storage_accounting_id, std::move(metadata).value(),
+    std::move(descriptors).value(), std::move(firing_lease_staging_bytes).value(),
+    std::move(firing_lease_staging_descriptors).value(), specification.terminal_policy);
 }
 
 [[nodiscard]] Result<EdgeCapacity> to_edge_capacity(const EdgeCapacitySpec& specification, const std::size_t index) {
@@ -1804,8 +2017,46 @@ Result<Quantity> dense_cartesian_reorder_host_metadata_charged_bytes(const Quant
   if (!buffered_slots.ok()) {
     return buffered_slots.status();
   }
-  return checked_add(ordinal_records.value(), buffered_slots.value(),
+  auto handle_sidecars = checked_multiply(max_ahead_items, kDenseCartesianReorderHandleSidecarChargedBytes,
+                                          std::string(field_name) + ".immutable_handle_sidecars");
+  if (!handle_sidecars.ok()) {
+    return handle_sidecars.status();
+  }
+  auto records_and_slots = checked_add(ordinal_records.value(), buffered_slots.value(),
+                                       std::string(field_name) + ".ordinal_records_and_buffered_slots");
+  if (!records_and_slots.ok()) {
+    return records_and_slots.status();
+  }
+  return checked_add(records_and_slots.value(), handle_sidecars.value(),
                      std::string(field_name) + ".total_dense_cartesian_reorder_metadata");
+}
+
+Result<Quantity> m37_buffer_pool_host_metadata_charged_bytes(const Quantity slot_count,
+                                                             const std::string_view field_name) {
+  return checked_multiply(slot_count, kM37BufferPoolControlChargedBytesPerSlot,
+                          std::string(field_name) + ".buffer_pool_control");
+}
+
+Result<Quantity> m37_buffer_pool_physical_charge_bytes(const Quantity slot_count, const Quantity payload_capacity_bytes,
+                                                       const Quantity metadata_capacity_bytes,
+                                                       const std::string_view field_name) {
+  auto payload_per_slot = checked_add(payload_capacity_bytes, metadata_capacity_bytes,
+                                      std::string(field_name) + ".payload_and_metadata_per_slot");
+  if (!payload_per_slot.ok()) {
+    return payload_per_slot.status();
+  }
+  auto slab_per_slot = checked_add(payload_per_slot.value(), kM37BufferPoolControlChargedBytesPerSlot,
+                                   std::string(field_name) + ".with_control_per_slot");
+  if (!slab_per_slot.ok()) {
+    return slab_per_slot.status();
+  }
+  return checked_multiply(slot_count, slab_per_slot.value(), std::string(field_name) + ".all_pool_slots");
+}
+
+Result<Quantity> m37_data_edge_host_metadata_charged_bytes(const Quantity max_items,
+                                                           const std::string_view field_name) {
+  return checked_multiply(max_items, kM37DataEdgeControlChargedBytesPerItem,
+                          std::string(field_name) + ".data_edge_control");
 }
 
 DenseKeySlotDimension DenseKeySlotDimension::from_validated(std::string field, CanonicalQuantity minimum,
@@ -1852,7 +2103,8 @@ ReorderPlan ReorderPlan::from_validated(
   CanonicalQuantity last_expected_ordinal, CanonicalQuantity max_ahead_items, CanonicalQuantity max_ahead_charged_bytes,
   CanonicalQuantity max_gap_ordinals, std::string occurrence_policy, std::string publish_policy,
   std::vector<Quantity> certified_skipped_ordinals, std::string end_of_input_policy,
-  CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count) noexcept {
+  CanonicalQuantity handle_storage_charged_bytes, CanonicalQuantity host_metadata_charged_bytes,
+  CanonicalQuantity descriptor_charged_count) noexcept {
   return ReorderPlan{std::move(node_id),
                      std::move(ordinal_dimensions),
                      std::move(order_domain_id),
@@ -1873,8 +2125,61 @@ ReorderPlan ReorderPlan::from_validated(
                      std::move(publish_policy),
                      std::move(certified_skipped_ordinals),
                      std::move(end_of_input_policy),
+                     handle_storage_charged_bytes,
                      host_metadata_charged_bytes,
                      descriptor_charged_count};
+}
+
+BufferPoolPlan BufferPoolPlan::from_validated(
+  std::string pool_id, std::string producer_node_id, std::string producer_port_name, std::string producer_provider_id,
+  ArtifactDigest producer_bundle_digest, std::string producer_operator_id, ArtifactDigest producer_contract_digest,
+  TypeDescriptor type_descriptor, const TypeMemoryDomain memory_domain, CanonicalQuantity slot_count,
+  CanonicalQuantity payload_capacity_bytes, CanonicalQuantity metadata_capacity_bytes,
+  CanonicalQuantity payload_alignment_bytes, std::string storage_accounting_id,
+  CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count,
+  CanonicalQuantity physical_charge_bytes) noexcept {
+  return BufferPoolPlan{std::move(pool_id),
+                        std::move(producer_node_id),
+                        std::move(producer_port_name),
+                        std::move(producer_provider_id),
+                        std::move(producer_bundle_digest),
+                        std::move(producer_operator_id),
+                        std::move(producer_contract_digest),
+                        std::move(type_descriptor),
+                        memory_domain,
+                        slot_count,
+                        payload_capacity_bytes,
+                        metadata_capacity_bytes,
+                        payload_alignment_bytes,
+                        std::move(storage_accounting_id),
+                        host_metadata_charged_bytes,
+                        descriptor_charged_count,
+                        physical_charge_bytes};
+}
+
+DataEdgePlan DataEdgePlan::from_validated(
+  std::string edge_id, std::string source_pool_id, std::string producer_node_id, std::string producer_port_name,
+  CanonicalQuantity producer_abi_port, std::string consumer_node_id, std::string consumer_port_name,
+  TypeDescriptor type_descriptor, CanonicalQuantity max_items, CanonicalQuantity max_logical_bytes,
+  std::string storage_accounting_id, CanonicalQuantity host_metadata_charged_bytes,
+  CanonicalQuantity descriptor_charged_count, CanonicalQuantity firing_lease_staging_charged_bytes,
+  CanonicalQuantity firing_lease_staging_descriptor_count, std::string terminal_policy) noexcept {
+  return DataEdgePlan{std::move(edge_id),
+                      std::move(source_pool_id),
+                      std::move(producer_node_id),
+                      std::move(producer_port_name),
+                      producer_abi_port,
+                      std::move(consumer_node_id),
+                      std::move(consumer_port_name),
+                      std::move(type_descriptor),
+                      max_items,
+                      max_logical_bytes,
+                      std::move(storage_accounting_id),
+                      host_metadata_charged_bytes,
+                      descriptor_charged_count,
+                      firing_lease_staging_charged_bytes,
+                      firing_lease_staging_descriptor_count,
+                      std::move(terminal_policy)};
 }
 
 EdgeCapacity EdgeCapacity::from_validated(std::string edge_id, Capacity capacity) noexcept {
@@ -1925,7 +2230,7 @@ Result<ExecutionPlan> ExecutionPlan::create(ArtifactDigest digest, const Executi
   reorder_node_ids.reserve(specification.reorder_plans.size());
   std::vector<std::string> reorder_order_domain_ids;
   reorder_order_domain_ids.reserve(specification.reorder_plans.size());
-  Quantity total_reorder_host_charge = 0U;
+  Quantity total_reorder_host_metadata = 0U;
   Quantity total_reorder_descriptors = 0U;
   for (std::size_t index = 0; index < specification.reorder_plans.size(); ++index) {
     auto reorder = to_reorder_plan(specification.reorder_plans[index], index);
@@ -1959,18 +2264,12 @@ Result<ExecutionPlan> ExecutionPlan::create(ArtifactDigest digest, const Executi
           "M3 ReorderPlan ordinal_dimensions must exactly equal its owning KeySlotTable dense_dimensions.");
       }
     }
-    auto plan_host_charge =
-      checked_add(reorder.value().host_metadata_charged_bytes(), reorder.value().max_ahead_charged_bytes(),
-                  "reorder_plans host-normal charge total");
-    if (!plan_host_charge.ok()) {
-      return plan_host_charge.status();
-    }
-    auto next_host_charge =
-      checked_add(total_reorder_host_charge, plan_host_charge.value(), "reorder_plans aggregate host-normal charge");
+    auto next_host_charge = checked_add(total_reorder_host_metadata, reorder.value().host_metadata_charged_bytes(),
+                                        "reorder_plans aggregate host metadata charge");
     if (!next_host_charge.ok()) {
       return next_host_charge.status();
     }
-    total_reorder_host_charge = next_host_charge.value();
+    total_reorder_host_metadata = next_host_charge.value();
     auto next_descriptors = checked_add(total_reorder_descriptors, reorder.value().descriptor_charged_count(),
                                         "reorder_plans aggregate descriptor charge");
     if (!next_descriptors.ok()) {
@@ -1991,6 +2290,178 @@ Result<ExecutionPlan> ExecutionPlan::create(ArtifactDigest digest, const Executi
     return validation("reorder_plans must not contain duplicate order_domain_id values.");
   }
 
+  if (specification.buffer_pool_plans.empty() != specification.data_edge_plans.empty()) {
+    return validation("M3.7 data-plane plans require both buffer_pool_plans and data_edge_plans; no legacy "
+                      "fallback exists for a buffer_handle topology.");
+  }
+  std::vector<BufferPoolPlan> buffer_pool_plans;
+  buffer_pool_plans.reserve(specification.buffer_pool_plans.size());
+  std::vector<std::string> pool_ids;
+  pool_ids.reserve(specification.buffer_pool_plans.size());
+  std::vector<std::string> pool_producer_endpoints;
+  pool_producer_endpoints.reserve(specification.buffer_pool_plans.size());
+  Quantity total_pool_physical_charge = 0U;
+  Quantity total_pool_descriptors = 0U;
+  for (std::size_t index = 0U; index < specification.buffer_pool_plans.size(); ++index) {
+    auto pool = to_buffer_pool_plan(specification.buffer_pool_plans[index], index);
+    if (!pool.ok()) {
+      return pool.status();
+    }
+    if (std::find(inputs.value().provider_contracts().begin(), inputs.value().provider_contracts().end(),
+                  pool.value().producer_contract_digest()) == inputs.value().provider_contracts().end()) {
+      return validation("BufferPoolPlan producer_contract_digest must occur in inputs.provider_contracts.");
+    }
+    auto next_physical = checked_add(total_pool_physical_charge, pool.value().physical_charge_bytes(),
+                                     "buffer_pool_plans aggregate physical charge");
+    if (!next_physical.ok()) {
+      return next_physical.status();
+    }
+    total_pool_physical_charge = next_physical.value();
+    auto next_descriptors = checked_add(total_pool_descriptors, pool.value().descriptor_charged_count(),
+                                        "buffer_pool_plans aggregate descriptor charge");
+    if (!next_descriptors.ok()) {
+      return next_descriptors.status();
+    }
+    total_pool_descriptors = next_descriptors.value();
+    pool_ids.emplace_back(pool.value().pool_id());
+    pool_producer_endpoints.push_back(pool.value().producer_node_id() + "." + pool.value().producer_port_name());
+    buffer_pool_plans.push_back(std::move(pool).value());
+  }
+  std::sort(pool_ids.begin(), pool_ids.end());
+  if (std::adjacent_find(pool_ids.begin(), pool_ids.end()) != pool_ids.end()) {
+    return validation("buffer_pool_plans must not contain duplicate pool_id values.");
+  }
+  std::sort(pool_producer_endpoints.begin(), pool_producer_endpoints.end());
+  if (std::adjacent_find(pool_producer_endpoints.begin(), pool_producer_endpoints.end()) !=
+      pool_producer_endpoints.end()) {
+    return validation("buffer_pool_plans must not duplicate a producer node/port endpoint.");
+  }
+
+  std::vector<DataEdgePlan> data_edge_plans;
+  data_edge_plans.reserve(specification.data_edge_plans.size());
+  std::vector<std::string> data_edge_ids;
+  data_edge_ids.reserve(specification.data_edge_plans.size());
+  std::vector<std::string> data_edge_source_pools;
+  data_edge_source_pools.reserve(specification.data_edge_plans.size());
+  Quantity total_data_edge_host_metadata = 0U;
+  Quantity total_data_edge_descriptors = 0U;
+  for (std::size_t index = 0U; index < specification.data_edge_plans.size(); ++index) {
+    auto edge = to_data_edge_plan(specification.data_edge_plans[index], index);
+    if (!edge.ok()) {
+      return edge.status();
+    }
+    const auto pool =
+      std::find_if(buffer_pool_plans.begin(), buffer_pool_plans.end(), [&](const BufferPoolPlan& candidate) {
+        return candidate.pool_id() == edge.value().source_pool_id();
+      });
+    if (pool == buffer_pool_plans.end()) {
+      return validation("DataEdgePlan source_pool_id must name one BufferPoolPlan.");
+    }
+    if (pool->producer_node_id() != edge.value().producer_node_id() ||
+        pool->producer_port_name() != edge.value().producer_port_name() ||
+        !pool->type_descriptor().exactly_matches(edge.value().type_descriptor())) {
+      return validation("DataEdgePlan source pool must exactly bind the same producer endpoint and TypeDescriptor.");
+    }
+    auto item_logical_bytes = checked_add(pool->payload_capacity_bytes(), pool->metadata_capacity_bytes(),
+                                          "DataEdgePlan source pool logical bytes per item");
+    if (!item_logical_bytes.ok()) {
+      return item_logical_bytes.status();
+    }
+    auto expected_logical_bytes =
+      checked_multiply(edge.value().max_items(), item_logical_bytes.value(), "DataEdgePlan full logical edge credit");
+    if (!expected_logical_bytes.ok()) {
+      return expected_logical_bytes.status();
+    }
+    if (edge.value().max_logical_bytes() != expected_logical_bytes.value()) {
+      return validation("DataEdgePlan max_logical_bytes must exactly cover max_items full source-pool slots.");
+    }
+    const auto matching_reorder =
+      std::find_if(reorder_plans.begin(), reorder_plans.end(), [&](const ReorderPlan& reorder) {
+        return reorder.node_id() == edge.value().producer_node_id() &&
+               reorder.ordered_output_port() == edge.value().producer_port_name();
+      });
+    if (matching_reorder == reorder_plans.end()) {
+      return validation("M3.7 DataEdgePlan producer endpoint must be the selected ordered output of one "
+                        "ReorderPlan; legacy buffer_handle topology is unsupported.");
+    }
+    // M3.7 reserves a DataEdge credit before obtaining a MutableBufferLease.
+    // The compiler includes both downstream FIFO occupancy and reorder-held
+    // handles in DataEdgePlan.max_items, then transfers that one credit at
+    // ordered publish.  Hence every live payload needs exactly one pool slot,
+    // not a second reorder-ahead term.
+    if (pool->slot_count() != edge.value().max_items()) {
+      return validation("BufferPoolPlan slot_count must equal the full DataEdgePlan max_items credit, including "
+                        "reorder-held handles; no additional physical slot term is permitted.");
+    }
+    auto edge_host_charge =
+      checked_add(edge.value().host_metadata_charged_bytes(), edge.value().firing_lease_staging_charged_bytes(),
+                  "DataEdgePlan control plus firing-lease staging host charge");
+    if (!edge_host_charge.ok()) {
+      return edge_host_charge.status();
+    }
+    auto next_metadata = checked_add(total_data_edge_host_metadata, edge_host_charge.value(),
+                                     "data_edge_plans aggregate host metadata/staging charge");
+    if (!next_metadata.ok()) {
+      return next_metadata.status();
+    }
+    total_data_edge_host_metadata = next_metadata.value();
+    auto edge_descriptor_charge =
+      checked_add(edge.value().descriptor_charged_count(), edge.value().firing_lease_staging_descriptor_count(),
+                  "DataEdgePlan control plus firing-lease staging descriptor charge");
+    if (!edge_descriptor_charge.ok()) {
+      return edge_descriptor_charge.status();
+    }
+    auto next_descriptors = checked_add(total_data_edge_descriptors, edge_descriptor_charge.value(),
+                                        "data_edge_plans aggregate descriptor/staging charge");
+    if (!next_descriptors.ok()) {
+      return next_descriptors.status();
+    }
+    total_data_edge_descriptors = next_descriptors.value();
+    data_edge_ids.emplace_back(edge.value().edge_id());
+    data_edge_source_pools.emplace_back(edge.value().source_pool_id());
+    data_edge_plans.push_back(std::move(edge).value());
+  }
+  std::sort(data_edge_ids.begin(), data_edge_ids.end());
+  if (std::adjacent_find(data_edge_ids.begin(), data_edge_ids.end()) != data_edge_ids.end()) {
+    return validation("data_edge_plans must not contain duplicate edge_id values.");
+  }
+  std::sort(data_edge_source_pools.begin(), data_edge_source_pools.end());
+  if (std::adjacent_find(data_edge_source_pools.begin(), data_edge_source_pools.end()) !=
+      data_edge_source_pools.end()) {
+    return validation(
+      "M3.7 permits exactly one DataEdgePlan consumer for each BufferPoolPlan; fan-out is unsupported.");
+  }
+  if (data_edge_source_pools.size() != buffer_pool_plans.size()) {
+    return validation("every M3.7 BufferPoolPlan must have exactly one DataEdgePlan consumer.");
+  }
+
+  Quantity legacy_reorder_payload_charge = 0U;
+  if (data_edge_plans.empty()) {
+    // Compatibility is intentionally all-or-nothing: an opaque legacy M3
+    // plan keeps its historical physical ahead payload only when the artifact
+    // contains no M3.7 pool/data-edge ownership model at all.
+    for (const auto& reorder : reorder_plans) {
+      auto next = checked_add(legacy_reorder_payload_charge, reorder.max_ahead_charged_bytes(),
+                              "legacy ReorderPlan ahead payload charge");
+      if (!next.ok()) {
+        return next.status();
+      }
+      legacy_reorder_payload_charge = next.value();
+    }
+  } else {
+    for (const auto& reorder : reorder_plans) {
+      const auto plan_bound_handle_path =
+        std::find_if(data_edge_plans.begin(), data_edge_plans.end(), [&](const DataEdgePlan& edge) {
+          return edge.producer_node_id() == reorder.node_id() &&
+                 edge.producer_port_name() == reorder.ordered_output_port();
+        });
+      if (plan_bound_handle_path == data_edge_plans.end()) {
+        return validation("M3.7 plan-bound artifacts may not mix a legacy opaque ReorderPlan; every ReorderPlan "
+                          "must bind its selected output to one DataEdgePlan.");
+      }
+    }
+  }
+
   std::vector<EdgeCapacity> edge_capacities;
   edge_capacities.reserve(specification.edge_capacities.size());
   std::vector<std::string_view> edge_ids;
@@ -2007,21 +2478,53 @@ Result<ExecutionPlan> ExecutionPlan::create(ArtifactDigest digest, const Executi
   if (std::adjacent_find(edge_ids.begin(), edge_ids.end()) != edge_ids.end()) {
     return validation("edge_capacities must not contain duplicate edge_id values.");
   }
+  for (const auto edge_id : edge_ids) {
+    if (std::binary_search(data_edge_ids.begin(), data_edge_ids.end(), edge_id)) {
+      return validation("an explicit buffer_handle DataEdgePlan must not also use the legacy EdgeCapacity model.");
+    }
+  }
   auto resources = ResourceVector::create(specification.resource_vector, "resource_vector");
   if (!resources.ok()) {
     return resources.status();
   }
-  auto required_host_normal = checked_add(total_key_slot_host_metadata, total_reorder_host_charge,
-                                          "ExecutionPlan fixed host-normal plan charges");
+  auto required_host_normal = checked_add(total_key_slot_host_metadata, total_reorder_host_metadata,
+                                          "ExecutionPlan KeySlot/Reorder host metadata charges");
+  if (!required_host_normal.ok()) {
+    return required_host_normal.status();
+  }
+  required_host_normal = checked_add(required_host_normal.value(), legacy_reorder_payload_charge,
+                                     "ExecutionPlan legacy Reorder payload charges");
+  if (!required_host_normal.ok()) {
+    return required_host_normal.status();
+  }
+  required_host_normal =
+    checked_add(required_host_normal.value(), total_pool_physical_charge, "ExecutionPlan BufferPool physical charges");
+  if (!required_host_normal.ok()) {
+    return required_host_normal.status();
+  }
+  required_host_normal =
+    checked_add(required_host_normal.value(), total_data_edge_host_metadata, "ExecutionPlan DataEdge metadata charges");
   if (!required_host_normal.ok()) {
     return required_host_normal.status();
   }
   if (resources.value().host_normal_bytes() < required_host_normal.value()) {
-    return validation("resource_vector.host_normal_bytes must cover every KeySlotTable metadata charge and every "
-                      "ReorderPlan metadata/ahead-payload charge.");
+    return validation("resource_vector.host_normal_bytes must cover KeySlot/Reorder metadata, legacy reorder payload, "
+                      "each BufferPool physical slab, each DataEdge control slab, and each firing-lease ABI staging "
+                      "slab exactly once.");
   }
-  if (resources.value().descriptor_count() < total_reorder_descriptors) {
-    return validation("resource_vector.descriptor_count must cover every ReorderPlan descriptor_charged_count.");
+  auto required_descriptors = checked_add(total_reorder_descriptors, total_pool_descriptors,
+                                          "ExecutionPlan Reorder/BufferPool descriptor charges");
+  if (!required_descriptors.ok()) {
+    return required_descriptors.status();
+  }
+  required_descriptors =
+    checked_add(required_descriptors.value(), total_data_edge_descriptors, "ExecutionPlan DataEdge descriptor charges");
+  if (!required_descriptors.ok()) {
+    return required_descriptors.status();
+  }
+  if (resources.value().descriptor_count() < required_descriptors.value()) {
+    return validation("resource_vector.descriptor_count must cover every ReorderPlan, BufferPoolPlan, and "
+                      "DataEdgePlan descriptor charge.");
   }
   auto terminal_occurrences = required_quantity(specification.terminal_occurrences, "terminal_occurrences");
   if (!terminal_occurrences.ok()) {
@@ -2039,11 +2542,23 @@ Result<ExecutionPlan> ExecutionPlan::create(ArtifactDigest digest, const Executi
       }
     }
   }
+  if (!data_edge_plans.empty()) {
+    for (const auto required :
+         {kM37PlanBoundDataPlaneProofObligation, kM37SinglePhysicalPayloadChargeRuntimeAssumption}) {
+      if (std::find(specification.proof_obligations.begin(), specification.proof_obligations.end(), required) ==
+          specification.proof_obligations.end()) {
+        return validation("M3.7 BufferPoolPlan/DataEdgePlan artifacts require obligation '" + std::string(required) +
+                          "'.");
+      }
+    }
+  }
   return ExecutionPlan{std::move(digest),
                        std::move(inputs).value(),
                        specification.execution_profile,
                        std::move(key_slot_tables),
                        std::move(reorder_plans),
+                       std::move(buffer_pool_plans),
+                       std::move(data_edge_plans),
                        std::move(edge_capacities),
                        std::move(resources).value(),
                        std::move(terminal_occurrences).value(),
@@ -2128,6 +2643,7 @@ Result<TypeDescriptor> completed_frame_slot_context_type() {
     {
       .type_id = std::string(kCompletedFrameSlotContextFrameTypeId),
       .revision = 1U,
+      .abi_descriptor_digest = std::string(kCompletedFrameSlotContextAbiDescriptorDigest),
       .payload_schema_digest = std::string(kCompletedFrameSlotContextPayloadSchemaDigest),
       .payload_kind = PayloadKind::buffer_handle,
       .element_type = ElementType::complex_int16,

@@ -3,6 +3,7 @@
 // Stable public entry point for the KSpaceJet scan-admission and execution
 // contract value models.  It intentionally exposes no ISMRMRD C++ types.
 #include "kspacejet/recon/artifact_json.hpp"
+#include "kspacejet/recon/artifact_digest.hpp"
 #include "kspacejet/recon/bounded_value.hpp"
 #include "kspacejet/recon/execution_plan.hpp"
 #include "kspacejet/recon/execution_profile.hpp"

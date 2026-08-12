@@ -38,6 +38,8 @@ struct OutputBound {
 struct DerivedPlanParts {
   std::vector<KeySlotTablePlanSpec> key_slot_tables;
   std::vector<ReorderPlanSpec> reorder_plans;
+  std::vector<BufferPoolPlanSpec> buffer_pool_plans;
+  std::vector<DataEdgePlanSpec> data_edge_plans;
   std::vector<EdgeCapacitySpec> edges;
   ResourceVectorSpec resources;
   Quantity terminal_occurrences{0};
@@ -186,6 +188,113 @@ template <typename T> [[nodiscard]] bool contains(const std::vector<T>& values, 
   return Status::Ok();
 }
 
+[[nodiscard]] Result<TypeDescriptor> m3_completed_frame_descriptor() {
+  return completed_frame_slot_context_type();
+}
+
+[[nodiscard]] bool is_m3_completed_frame_descriptor(const TypeDescriptor& descriptor,
+                                                    const TypeDescriptor& completed_frame_descriptor) noexcept {
+  return descriptor.exactly_matches(completed_frame_descriptor);
+}
+
+// A plan-bound M3.7 producer hands only its selected ordered output storage to
+// the BufferPoolPlan.  Other declared outputs remain conventional Provider
+// reservations.  This lets ABI port positions be non-zero while the compiler
+// removes exactly the selected physical output charge rather than assuming
+// every contract output is port zero.
+[[nodiscard]] Status validate_m37_plan_bound_source_contract(const OperatorContract& contract,
+                                                             const std::string_view node_id,
+                                                             const std::string_view port_name) {
+  const auto& phases = contract.rates().static_phases;
+  if (phases.size() != 1U) {
+    return validation("M3.7 plan-bound buffer producer '" + std::string(node_id) + "." + std::string(port_name) +
+                      "' must have one ordinary SDF phase.");
+  }
+  const auto selected = std::ranges::find(phases.front().outputs, port_name, &PortRateSpec::port_name);
+  if (selected == phases.front().outputs.end() || selected->items != 1U || selected->charged_bytes == 0U) {
+    return validation("M3.7 plan-bound buffer producer '" + std::string(node_id) + "." + std::string(port_name) +
+                      "' must declare exactly one positive selected ordinary output envelope.");
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Status validate_m37_buffer_handle_topology(const PlanBuildRequest& request) {
+  const auto completed_frame = m3_completed_frame_descriptor();
+  if (!completed_frame.ok()) {
+    return completed_frame.status();
+  }
+  const auto& definition = request.resolved_pipeline.definition();
+
+  // Public ISMRMRD egress needs an explicit adapter.  A plan-owned immutable
+  // handle has no public sink ownership model in M3.7, so it cannot bypass an
+  // internal DataEdgePlan by binding directly to egress.
+  for (const auto& egress : definition.egress_ports()) {
+    const auto* binding = find_contract_binding(request, egress.from.node);
+    const auto* port = binding == nullptr ? nullptr : find_contract_port(binding->contract, egress.from.port);
+    if (port != nullptr && port->type_descriptor.payload_kind() == PayloadKind::buffer_handle) {
+      return validation("M3.7 rejects public buffer_handle egress '" + egress.id +
+                        "'; insert an explicit internal adapter and DataEdgePlan boundary.");
+    }
+  }
+
+  for (const auto& edge : definition.edges()) {
+    const auto* source_binding = find_contract_binding(request, edge.from.node);
+    const auto* source_port =
+      source_binding == nullptr ? nullptr : find_contract_port(source_binding->contract, edge.from.port);
+    if (source_port == nullptr || source_port->type_descriptor.payload_kind() != PayloadKind::buffer_handle) {
+      continue;
+    }
+    // The pre-existing M3.5 completed-frame lease is a separate host-owned
+    // ingress boundary. It is not a Provider output and cannot be silently
+    // reinterpreted as a BufferPool/DataEdge path.
+    if (is_m3_completed_frame_descriptor(source_port->type_descriptor, completed_frame.value())) {
+      continue;
+    }
+    if (source_port->type_descriptor.mutability() != PayloadMutability::immutable_after_publish ||
+        std::ranges::find(source_port->type_descriptor.allowed_memory_domains(), TypeMemoryDomain::host_normal) ==
+          source_port->type_descriptor.allowed_memory_domains().end()) {
+      return validation("M3.7 buffer_handle edge '" + edge.id +
+                        "' must use an immutable_after_publish host_normal TypeDescriptor.");
+    }
+    const auto& reorder = source_binding->contract.reorder();
+    if (!reorder.has_value() || reorder->ordered_output_port != edge.from.port) {
+      return validation("M3.7 buffer_handle edge '" + edge.id +
+                        "' must be the selected ordered output of its producer ReorderSpec; unsupported "
+                        "buffer_handle topology has no legacy EdgeCapacity fallback.");
+    }
+    const auto producer_count = std::ranges::count_if(definition.edges(), [&](const PipelineEdge& candidate) {
+      return candidate.from.node == edge.from.node && candidate.from.port == edge.from.port;
+    });
+    // This avoids fan-out of move-only handles; it is deliberately not a
+    // retain/copy plan.
+    if (producer_count != 1U) {
+      return validation("M3.7 buffer_handle producer '" + edge.from.node + "." + edge.from.port +
+                        "' has fan-out; one pool-backed handle may have exactly one explicit internal consumer.");
+    }
+    const auto source_contract =
+      validate_m37_plan_bound_source_contract(source_binding->contract, edge.from.node, edge.from.port);
+    if (!source_contract.ok()) {
+      return source_contract;
+    }
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] bool has_m37_plan_bound_output(const PlanBuildRequest& request, const std::string_view node_id,
+                                             const OperatorContract& contract) {
+  if (!contract.reorder().has_value()) {
+    return false;
+  }
+  const auto& ordered_port = contract.reorder()->ordered_output_port;
+  const auto* port = find_contract_port(contract, ordered_port);
+  if (port == nullptr || port->type_descriptor.payload_kind() != PayloadKind::buffer_handle) {
+    return false;
+  }
+  return std::ranges::any_of(request.resolved_pipeline.definition().edges(), [&](const PipelineEdge& edge) {
+    return edge.from.node == node_id && edge.from.port == ordered_port;
+  });
+}
+
 // Authored nodes contain only Operator references.  Port existence, direction,
 // type and required-input closure are checked once against the frozen contracts
 // here, so there is never a second node-owned port authority.
@@ -301,7 +410,11 @@ template <typename T> [[nodiscard]] bool contains(const std::vector<T>& values, 
                         "'");
     }
   }
-  return validate_graph_ports(request);
+  const auto graph_ports = validate_graph_ports(request);
+  if (!graph_ports.ok()) {
+    return graph_ports;
+  }
+  return validate_m37_buffer_handle_topology(request);
 }
 
 [[nodiscard]] const CalibrationBinding* find_calibration_binding(const PipelineDefinition& definition,
@@ -767,6 +880,11 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
   if (!metadata.ok()) {
     return metadata.status();
   }
+  auto handle_storage = checked_multiply(reorder.max_ahead_items, kDenseCartesianReorderHandleSidecarChargedBytes,
+                                         "node '" + node.id + "' ReorderPlan immutable handle sidecars");
+  if (!handle_storage.ok()) {
+    return handle_storage.status();
+  }
   const auto ordinal_domain_bound = domain.value().cardinality;
   auto ordinal_dimensions = std::move(domain).value().dimensions;
   return ReorderPlanSpec{
@@ -792,6 +910,7 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
     .publish_policy = std::string(kNextExpectedOnlyReorderPublishPolicy),
     .certified_skipped_ordinals = {},
     .end_of_input_policy = std::string(kFailReorderEndOfInputPolicy),
+    .handle_storage_charged_bytes = handle_storage.value(),
     .host_metadata_charged_bytes = metadata.value(),
     .descriptor_charged_count = reorder.max_ahead_items,
   };
@@ -803,11 +922,10 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
   if (!metadata.ok()) {
     return metadata;
   }
-  auto payload = add_to(plan.host_normal_bytes, reorder.max_ahead_charged_bytes,
-                        "dense Cartesian ReorderPlan ahead payload reservation");
-  if (!payload.ok()) {
-    return payload;
-  }
+  // Payload is charged later as an all-or-nothing compatibility decision:
+  // either every ReorderPlan is legacy (no M3.7 data plane), or pools alone
+  // own all physical payload slabs.  Reorder metadata already contains its
+  // 64-B immutable-handle sidecars.
   return add_to(plan.descriptor_count, reorder.descriptor_charged_count,
                 "dense Cartesian ReorderPlan ahead descriptor reservation");
 }
@@ -875,6 +993,160 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
   return EdgeCapacitySpec{.edge_id = edge.id, .max_items = items.value(), .max_charged_bytes = bytes.value()};
 }
 
+// A DataEdgePlan carries only ordinary selected output handles.  Terminal
+// output accounting remains with the generic contract/terminal model; it is
+// not silently converted into a public or buffer-handle edge credit.
+[[nodiscard]] Result<EdgeCapacitySpec> derive_m37_base_edge_capacity(const PipelineEdge& edge,
+                                                                     const OperatorContract& source) {
+  auto output = output_bound_for_port(source, edge.from.port);
+  if (!output.ok()) {
+    return output.status();
+  }
+  auto items = multiply(output.value().items, source.execution().max_in_flight,
+                        "M3.7 edge " + edge.id + " ordinary downstream item capacity");
+  if (!items.ok()) {
+    return items.status();
+  }
+  auto bytes = multiply(output.value().bytes, source.execution().max_in_flight,
+                        "M3.7 edge " + edge.id + " ordinary downstream byte capacity");
+  if (!bytes.ok()) {
+    return bytes.status();
+  }
+  if (items.value() == 0U || bytes.value() == 0U) {
+    return validation("M3.7 buffer_handle edge '" + edge.id + "' has zero ordinary downstream capacity.");
+  }
+  return EdgeCapacitySpec{.edge_id = edge.id, .max_items = items.value(), .max_charged_bytes = bytes.value()};
+}
+
+struct DerivedM37DataEdge {
+  BufferPoolPlanSpec pool;
+  DataEdgePlanSpec edge;
+};
+
+// `ksj_output_grant.requested_port` is positional.  The plan serializes the
+// zero-based position among declared output ports, never a lexical ordering,
+// so a runtime bridge does not have to (and must not) derive it again.
+[[nodiscard]] Result<Quantity> derive_producer_abi_port(const OperatorContract& contract,
+                                                        const std::string_view selected_port) {
+  Quantity output_position = 0U;
+  for (const auto& port : contract.ports()) {
+    if (port.direction != PortDirection::output) {
+      continue;
+    }
+    if (port.name == selected_port) {
+      if (output_position > kM37MaximumProducerAbiPort) {
+        return validation("M3.7 producer output port position exceeds the uint32 Provider ABI range.");
+      }
+      return output_position;
+    }
+    auto next = checked_add(output_position, 1U, "M3.7 producer ABI output-port position");
+    if (!next.ok()) {
+      return next.status();
+    }
+    output_position = next.value();
+  }
+  return validation("M3.7 selected producer output port is absent from the resolved OperatorContract output order.");
+}
+
+[[nodiscard]] Result<DerivedM37DataEdge> derive_m37_data_edge(const PipelineEdge& graph_edge,
+                                                              const ResolvedProvider& source_provider,
+                                                              const OperatorContractBinding& source_binding,
+                                                              const PortSpec& source_port,
+                                                              const std::vector<ReorderPlanSpec>& reorder_plans) {
+  const auto& source_contract = source_binding.contract;
+  const auto matching_reorder = std::ranges::find_if(reorder_plans, [&](const ReorderPlanSpec& reorder) {
+    return reorder.node_id == graph_edge.from.node && reorder.ordered_output_port == graph_edge.from.port;
+  });
+  if (matching_reorder == reorder_plans.end()) {
+    return validation("M3.7 buffer_handle edge '" + graph_edge.id +
+                      "' has no derived ReorderPlan for its selected producer output.");
+  }
+  auto base_capacity = derive_m37_base_edge_capacity(graph_edge, source_contract);
+  if (!base_capacity.ok()) {
+    return base_capacity.status();
+  }
+  auto full_items = checked_add(base_capacity.value().max_items, matching_reorder->max_ahead_items,
+                                "M3.7 DataEdgePlan downstream plus reorder-ahead credits");
+  if (!full_items.ok()) {
+    return full_items.status();
+  }
+  auto expected_logical = checked_multiply(full_items.value(), matching_reorder->charged_bytes_per_ordinal,
+                                           "M3.7 DataEdgePlan full logical credit");
+  if (!expected_logical.ok()) {
+    return expected_logical.status();
+  }
+  auto base_logical = checked_multiply(base_capacity.value().max_items, matching_reorder->charged_bytes_per_ordinal,
+                                       "M3.7 DataEdgePlan ordinary downstream logical credit");
+  if (!base_logical.ok()) {
+    return base_logical.status();
+  }
+  if (base_capacity.value().max_charged_bytes != base_logical.value()) {
+    return validation("M3.7 buffer_handle edge '" + graph_edge.id +
+                      "' must have exactly one fixed selected-output byte bound per ordinary item.");
+  }
+  if (matching_reorder->charged_bytes_per_ordinal % source_port.type_descriptor.min_alignment_bytes() != 0U) {
+    return validation("M3.7 selected output charged bytes must be an integral multiple of its TypeDescriptor "
+                      "min_alignment_bytes for the fixed BufferPoolPlan.");
+  }
+  auto pool_metadata = m37_buffer_pool_host_metadata_charged_bytes(
+    full_items.value(), "M3.7 BufferPoolPlan host metadata for edge '" + graph_edge.id + "'");
+  if (!pool_metadata.ok()) {
+    return pool_metadata.status();
+  }
+  auto pool_physical =
+    m37_buffer_pool_physical_charge_bytes(full_items.value(), matching_reorder->charged_bytes_per_ordinal, 0U,
+                                          "M3.7 BufferPoolPlan physical charge for edge '" + graph_edge.id + "'");
+  if (!pool_physical.ok()) {
+    return pool_physical.status();
+  }
+  auto edge_metadata = m37_data_edge_host_metadata_charged_bytes(
+    full_items.value(), "M3.7 DataEdgePlan host metadata for edge '" + graph_edge.id + "'");
+  if (!edge_metadata.ok()) {
+    return edge_metadata.status();
+  }
+  auto producer_abi_port = derive_producer_abi_port(source_contract, graph_edge.from.port);
+  if (!producer_abi_port.ok()) {
+    return producer_abi_port.status();
+  }
+
+  const auto pool_id = graph_edge.id + ".pool";
+  return DerivedM37DataEdge{
+    .pool = {.pool_id = pool_id,
+             .producer_node_id = graph_edge.from.node,
+             .producer_port_name = graph_edge.from.port,
+             .producer_provider_id = source_provider.provider_id,
+             .producer_bundle_digest = source_provider.bundle_digest.value(),
+             .producer_operator_id = source_contract.operator_id(),
+             .producer_contract_digest = source_binding.contract_digest.value(),
+             .type_descriptor = source_port.type_descriptor,
+             .memory_domain = TypeMemoryDomain::host_normal,
+             .slot_count = full_items.value(),
+             .payload_capacity_bytes = matching_reorder->charged_bytes_per_ordinal,
+             .metadata_capacity_bytes = 0U,
+             .payload_alignment_bytes = source_port.type_descriptor.min_alignment_bytes(),
+             .storage_accounting_id = std::string(kM37BufferPoolStorageAccountingId),
+             .host_metadata_charged_bytes = pool_metadata.value(),
+             .descriptor_charged_count = full_items.value(),
+             .physical_charge_bytes = pool_physical.value()},
+    .edge = {.edge_id = graph_edge.id,
+             .source_pool_id = pool_id,
+             .producer_node_id = graph_edge.from.node,
+             .producer_port_name = graph_edge.from.port,
+             .producer_abi_port = producer_abi_port.value(),
+             .consumer_node_id = graph_edge.to.node,
+             .consumer_port_name = graph_edge.to.port,
+             .type_descriptor = source_port.type_descriptor,
+             .max_items = full_items.value(),
+             .max_logical_bytes = expected_logical.value(),
+             .storage_accounting_id = std::string(kM37DataEdgeStorageAccountingId),
+             .host_metadata_charged_bytes = edge_metadata.value(),
+             .descriptor_charged_count = full_items.value(),
+             .firing_lease_staging_charged_bytes = kM37FiringLeaseHostStagingChargedBytes,
+             .firing_lease_staging_descriptor_count = kM37FiringLeaseHostStagingDescriptorCount,
+             .terminal_policy = std::string(kM37NormalEoiDrainCancellationFailTerminalPolicy)},
+  };
+}
+
 [[nodiscard]] Result<Quantity*> host_memory_bucket(ResourceVectorSpec& vector, const MemoryDomain domain) {
   switch (domain) {
     case MemoryDomain::host:
@@ -893,6 +1165,7 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
 }
 
 [[nodiscard]] Status add_contract_resources(const OperatorContract& contract, const KeySlotTablePlanSpec& table,
+                                            const std::optional<OutputBound>& plan_bound_output,
                                             ResourceVectorSpec& plan) {
   const auto& resources = contract.resources();
   auto bucket = host_memory_bucket(plan, resources.memory_domain);
@@ -921,7 +1194,30 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
     multiply(resources.output_charged_bytes, contract.execution().max_in_flight, "in-flight output buffer reservation");
   if (!output.ok())
     return output.status();
-  status = add(output.value(), "in-flight output buffers");
+  auto ordinary_descriptors =
+    multiply(resources.output_items, contract.execution().max_in_flight, "in-flight output descriptor reservation");
+  if (!ordinary_descriptors.ok())
+    return ordinary_descriptors.status();
+  Quantity residual_output_bytes = output.value();
+  Quantity residual_output_descriptors = ordinary_descriptors.value();
+  if (plan_bound_output.has_value()) {
+    auto selected_bytes = multiply(plan_bound_output->bytes, contract.execution().max_in_flight,
+                                   "M3.7 selected output physical reservation replaced by BufferPoolPlan");
+    if (!selected_bytes.ok()) {
+      return selected_bytes.status();
+    }
+    auto selected_descriptors = multiply(plan_bound_output->items, contract.execution().max_in_flight,
+                                         "M3.7 selected output descriptor reservation replaced by BufferPoolPlan");
+    if (!selected_descriptors.ok()) {
+      return selected_descriptors.status();
+    }
+    if (selected_bytes.value() > residual_output_bytes || selected_descriptors.value() > residual_output_descriptors) {
+      return validation("M3.7 selected output reservation exceeds the resolved Provider aggregate output reservation.");
+    }
+    residual_output_bytes -= selected_bytes.value();
+    residual_output_descriptors -= selected_descriptors.value();
+  }
+  status = add(residual_output_bytes, "in-flight output buffers after plan-bound pool replacement");
   if (!status.ok())
     return status;
   status = add(resources.retention_charged_bytes, "retention");
@@ -956,12 +1252,8 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
   status = add(terminal_bytes, "terminal output bundle");
   if (!status.ok())
     return status;
-
-  auto ordinary_descriptors =
-    multiply(resources.output_items, contract.execution().max_in_flight, "in-flight output descriptor reservation");
-  if (!ordinary_descriptors.ok())
-    return ordinary_descriptors.status();
-  status = add_to(plan.descriptor_count, ordinary_descriptors.value(), "in-flight output descriptors");
+  status = add_to(plan.descriptor_count, residual_output_descriptors,
+                  "in-flight output descriptors after plan-bound pool replacement");
   if (!status.ok())
     return status;
   const auto terminal_descriptors = contract.terminal().normal_max_output_items;
@@ -1030,6 +1322,8 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
   DerivedPlanParts result;
   result.key_slot_tables.reserve(definition.nodes().size());
   result.reorder_plans.reserve(definition.nodes().size());
+  result.buffer_pool_plans.reserve(definition.edges().size());
+  result.data_edge_plans.reserve(definition.edges().size());
   for (const auto& node : definition.nodes()) {
     const auto* binding = find_contract_binding(request, node.id);
     const auto& contract = binding->contract;
@@ -1060,7 +1354,15 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
                                   "dense KeySlotTable host metadata reservation");
     if (!metadata_status.ok())
       return metadata_status;
-    auto resource_status = add_contract_resources(contract, table, result.resources);
+    std::optional<OutputBound> plan_bound_output;
+    if (has_m37_plan_bound_output(request, node.id, contract)) {
+      auto selected_output = output_bound_for_port(contract, contract.reorder()->ordered_output_port);
+      if (!selected_output.ok()) {
+        return selected_output.status();
+      }
+      plan_bound_output = selected_output.value();
+    }
+    auto resource_status = add_contract_resources(contract, table, plan_bound_output, result.resources);
     if (!resource_status.ok())
       return resource_status;
     if (contract.reorder().has_value()) {
@@ -1093,6 +1395,65 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
   result.edges.reserve(definition.edges().size());
   for (const auto& edge : definition.edges()) {
     const auto* source = find_contract_binding(request, edge.from.node);
+    if (source == nullptr) {
+      return validation("edge '" + edge.id + "' source has no OperatorContract binding.");
+    }
+    const auto* source_port = find_contract_port(source->contract, edge.from.port);
+    auto completed_frame = m3_completed_frame_descriptor();
+    if (!completed_frame.ok()) {
+      return completed_frame.status();
+    }
+    const auto plan_bound_buffer_edge =
+      source_port->type_descriptor.payload_kind() == PayloadKind::buffer_handle &&
+      !is_m3_completed_frame_descriptor(source_port->type_descriptor, completed_frame.value());
+    if (plan_bound_buffer_edge) {
+      const auto* source_node = find_node(definition, edge.from.node);
+      const auto* source_provider = source_node == nullptr
+                                      ? nullptr
+                                      : find_resolved_provider(request.resolved_pipeline, source_node->provider_alias);
+      if (source_node == nullptr || source_provider == nullptr) {
+        return validation("M3.7 buffer_handle edge '" + edge.id + "' has no resolved producer identity.");
+      }
+      auto data_edge = derive_m37_data_edge(edge, *source_provider, *source, *source_port, result.reorder_plans);
+      if (!data_edge.ok()) {
+        return data_edge.status();
+      }
+      auto derived = std::move(data_edge).value();
+      auto physical = add_to(result.resources.host_normal_bytes, derived.pool.physical_charge_bytes,
+                             "M3.7 BufferPoolPlan physical payload/control reservation");
+      if (!physical.ok()) {
+        return physical;
+      }
+      auto pool_descriptors = add_to(result.resources.descriptor_count, derived.pool.descriptor_charged_count,
+                                     "M3.7 BufferPoolPlan descriptor reservation");
+      if (!pool_descriptors.ok()) {
+        return pool_descriptors;
+      }
+      auto metadata = add_to(result.resources.host_normal_bytes, derived.edge.host_metadata_charged_bytes,
+                             "M3.7 DataEdgePlan control metadata reservation");
+      if (!metadata.ok()) {
+        return metadata;
+      }
+      auto edge_descriptors = add_to(result.resources.descriptor_count, derived.edge.descriptor_charged_count,
+                                     "M3.7 DataEdgePlan descriptor reservation");
+      if (!edge_descriptors.ok()) {
+        return edge_descriptors;
+      }
+      auto firing_staging = add_to(result.resources.host_normal_bytes, derived.edge.firing_lease_staging_charged_bytes,
+                                   "M3.7 DataEdgePlan synchronous firing-lease ABI staging reservation");
+      if (!firing_staging.ok()) {
+        return firing_staging;
+      }
+      auto firing_staging_descriptors =
+        add_to(result.resources.descriptor_count, derived.edge.firing_lease_staging_descriptor_count,
+               "M3.7 DataEdgePlan firing-lease staging descriptor reservation");
+      if (!firing_staging_descriptors.ok()) {
+        return firing_staging_descriptors;
+      }
+      result.buffer_pool_plans.push_back(std::move(derived.pool));
+      result.data_edge_plans.push_back(std::move(derived.edge));
+      continue;
+    }
     auto capacity = derive_edge_capacity(edge, source->contract);
     if (!capacity.ok())
       return capacity.status();
@@ -1104,6 +1465,27 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
     if (!descriptor_status.ok())
       return descriptor_status;
     result.edges.push_back(std::move(capacity).value());
+  }
+  if (result.data_edge_plans.empty()) {
+    // Compatibility mode: only a wholly legacy M3 artifact owns opaque
+    // reorder payload reservations here.
+    for (const auto& reorder : result.reorder_plans) {
+      auto legacy_payload = add_to(result.resources.host_normal_bytes, reorder.max_ahead_charged_bytes,
+                                   "legacy dense Cartesian ReorderPlan ahead payload reservation");
+      if (!legacy_payload.ok()) {
+        return legacy_payload;
+      }
+    }
+  } else {
+    for (const auto& reorder : result.reorder_plans) {
+      const auto data_edge = std::ranges::find_if(result.data_edge_plans, [&](const DataEdgePlanSpec& edge) {
+        return edge.producer_node_id == reorder.node_id && edge.producer_port_name == reorder.ordered_output_port;
+      });
+      if (data_edge == result.data_edge_plans.end()) {
+        return validation("M3.7 plan-bound compilation rejects a mixed legacy opaque ReorderPlan; every selected "
+                          "reorder output must have a DataEdgePlan.");
+      }
+    }
   }
   auto decoder = add_to(result.resources.transport_bytes, request.target_envelope.max_decoder_staging_bytes(),
                         "decoder staging reservation");
@@ -1120,6 +1502,8 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
 
   std::ranges::sort(result.key_slot_tables, {}, &KeySlotTablePlanSpec::node_id);
   std::ranges::sort(result.reorder_plans, {}, &ReorderPlanSpec::node_id);
+  std::ranges::sort(result.buffer_pool_plans, {}, &BufferPoolPlanSpec::pool_id);
+  std::ranges::sort(result.data_edge_plans, {}, &DataEdgePlanSpec::edge_id);
   std::ranges::sort(result.edges, {}, &EdgeCapacitySpec::edge_id);
   result.obligations = {
     "PO-01.typed_ports",
@@ -1132,6 +1516,10 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
   if (!result.reorder_plans.empty()) {
     result.obligations.insert(result.obligations.begin() + 4, std::string{kM3CompletedFrameSlotBindingProofObligation});
     result.obligations.insert(result.obligations.begin() + 5, std::string{kM3StrictDenseAllTuplesEoiRuntimeAssumption});
+  }
+  if (!result.data_edge_plans.empty()) {
+    result.obligations.push_back(std::string{kM37PlanBoundDataPlaneProofObligation});
+    result.obligations.push_back(std::string{kM37SinglePhysicalPayloadChargeRuntimeAssumption});
   }
   return result;
 }
@@ -1154,6 +1542,8 @@ derive_cartesian_reorder_plan(const PipelineNode& node, const OperatorContract& 
     .execution_profile = request.requested_profile,
     .key_slot_tables = parts.key_slot_tables,
     .reorder_plans = parts.reorder_plans,
+    .buffer_pool_plans = parts.buffer_pool_plans,
+    .data_edge_plans = parts.data_edge_plans,
     .edge_capacities = parts.edges,
     .resource_vector = parts.resources,
     .terminal_occurrences = parts.terminal_occurrences,

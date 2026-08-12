@@ -67,9 +67,63 @@ const FixedReorderOutput& M3PublishLease::output() const noexcept {
   return publish_.output();
 }
 
+bool M3PublishLease::has_buffer_handle() const {
+  return publish_.has_buffer_handle();
+}
+
+ksj::base::Status M3PublishLease::commit_to_edge(FixedBufferEdgeProducerReservation& edge_reservation) {
+  if (!publish_.valid()) {
+    return ksj::base::Status::StateError("commit_to_edge requires a live M3PublishLease");
+  }
+  if (!edge_reservation.valid()) {
+    return ksj::base::Status::StateError("commit_to_edge requires a live FixedBufferEdge producer reservation");
+  }
+  if (completed_frame_.host_failed_noexcept()) {
+    fail_closed_noexcept();
+    return {ksj::base::StatusCode::state_error};
+  }
+
+  auto handle_result = publish_.take_buffer_handle_for_ordered_edge_commit();
+  if (!handle_result.ok()) {
+    fail_closed_noexcept();
+    return handle_result.status();
+  }
+  auto handle = std::move(handle_result).value();
+  const auto edge_committed = edge_reservation.commit_from(handle);
+  if (!edge_committed.ok()) {
+    // Edge commit leaves the handle with us on failure. Let it release while
+    // fail_closed_noexcept() settles the reorder/source terminal authority.
+    fail_closed_noexcept();
+    return edge_committed;
+  }
+
+  const auto published = acknowledge_published();
+  if (!published.ok()) {
+    // The edge now owns the one handle, so it must be explicitly aborted to
+    // release the queued item and preserve the coupled fail-closed outcome.
+    // Failure of this terminal transition cannot resurrect the completed
+    // publish lease. The caller still owns the edge object and can observe
+    // its failed state.
+    static_cast<void>(edge_reservation.abort_committed_edge_for_coupled_handoff());
+    return published;
+  }
+  return ksj::base::Status::Ok();
+}
+
 ksj::base::Status M3PublishLease::acknowledge_published() {
   if (!publish_.valid()) {
     return ksj::base::Status::StateError("acknowledge_published requires a live M3PublishLease");
+  }
+  if (publish_.has_buffer_handle()) {
+    // A typed M3.7 sidecar retains the immutable payload that must move to
+    // its pre-acquired DataEdgePlan credit.  Direct acknowledgement would
+    // clear that handle without a downstream handoff.  This is a terminal
+    // protocol breach, not a retryable alternate route: fail the coupled
+    // source/reorder path closed and release the retained payload exactly
+    // once. commit_to_edge() is the sole typed settlement operation.
+    fail_closed_noexcept();
+    return ksj::base::Status::StateError(
+      "M3.7 typed publish requires commit_to_edge; direct acknowledge_published failed the coupled path");
   }
   if (completed_frame_.host_failed_noexcept()) {
     // The output may already have been observed while this publish lease was
@@ -222,6 +276,25 @@ ksj::base::Status FrameDispatch::commit() {
 }
 
 ksj::base::Status FrameDispatch::complete(const OpaqueReorderPayloadHandle payload) {
+  const auto phase_status = require_phase(Phase::in_flight, "complete");
+  if (!phase_status.ok()) {
+    return phase_status;
+  }
+  const auto completed = buffer_->complete(permit_, payload);
+  if (!completed.ok()) {
+    static_cast<void>(fail_closed_and_settle());
+    return completed;
+  }
+  const auto acknowledged = completed_frame_.acknowledge_consumed_from_m3_reorder_ingress(ingress_identity_);
+  if (!acknowledged.ok()) {
+    static_cast<void>(fail_closed_and_settle());
+    return acknowledged;
+  }
+  phase_ = Phase::completed;
+  return ksj::base::Status::Ok();
+}
+
+ksj::base::Status FrameDispatch::complete(ImmutableBufferHandle& payload) {
   const auto phase_status = require_phase(Phase::in_flight, "complete");
   if (!phase_status.ok()) {
     return phase_status;

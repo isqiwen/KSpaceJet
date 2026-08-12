@@ -11,6 +11,8 @@
     "execution_profile",
     "key_slot_tables",
     "reorder_plans",
+    "buffer_pool_plans",
+    "data_edge_plans",
     "edge_capacities",
     "resource_vector",
     "terminal_occurrences",
@@ -30,6 +32,14 @@
     "reorder_plans": {
       "type": "array",
       "items": { "$ref": "#/$defs/reorderPlan" }
+    },
+    "buffer_pool_plans": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bufferPoolPlan" }
+    },
+    "data_edge_plans": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dataEdgePlan" }
     },
     "edge_capacities": {
       "type": "array",
@@ -201,6 +211,7 @@
         "publish_policy",
         "certified_skipped_ordinals",
         "end_of_input_policy",
+        "handle_storage_charged_bytes",
         "host_metadata_charged_bytes",
         "descriptor_charged_count"
       ],
@@ -268,14 +279,106 @@
           "description": "Explicitly empty in M3; gaps are never certificate-skipped."
         },
         "end_of_input_policy": { "const": "fail" },
+        "handle_storage_charged_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger",
+          "description": "Must equal 64 * max_ahead_items for immutable BufferHandle sidecars; it is included in host_metadata_charged_bytes, not a second physical payload charge."
+        },
         "host_metadata_charged_bytes": {
           "$ref": "#/$defs/positiveSafeInteger",
-          "description": "Must equal 16 * ordinal_domain_bound + 16 * max_ahead_items under kspacejet.reorder-storage/dense-cartesian-v1."
+          "description": "Must equal 16 * ordinal_domain_bound + 16 * max_ahead_items + 64 * max_ahead_items under kspacejet.reorder-storage/dense-cartesian-v1."
         },
         "descriptor_charged_count": {
           "$ref": "#/$defs/positiveSafeInteger",
           "description": "Must equal max_ahead_items and is charged against the plan ResourceVector."
         }
+      },
+      "additionalProperties": false
+    },
+    "typeDescriptor": {
+      "type": "object",
+      "required": [
+        "type_id",
+        "revision",
+        "abi_descriptor_digest",
+        "payload_schema_digest",
+        "payload_kind",
+        "element_type",
+        "rank",
+        "dimensions",
+        "layout",
+        "strides",
+        "explicit_byte_strides",
+        "allowed_memory_domains",
+        "min_alignment_bytes",
+        "mutability",
+        "metadata_schema_digest"
+      ],
+      "properties": {
+        "type_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[a-z](?:[a-z0-9._-]*[a-z0-9])?$" },
+        "revision": { "$ref": "#/$defs/positiveSafeInteger" },
+        "abi_descriptor_digest": { "$ref": "#/$defs/digest" },
+        "payload_schema_digest": { "$ref": "#/$defs/digest" },
+        "payload_kind": { "const": "buffer_handle" },
+        "element_type": { "enum": ["uint8", "int16", "uint16", "int32", "uint32", "float32", "float64", "complex_int16", "complex_float32", "complex_float64"] },
+        "rank": { "$ref": "#/$defs/safeInteger" },
+        "dimensions": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[a-z](?:[a-z0-9._-]*[a-z0-9])?$" } },
+        "layout": { "enum": ["canonical_contiguous", "channel_major_contiguous", "row_major_contiguous", "column_major_contiguous", "opaque"] },
+        "strides": { "enum": ["canonical", "explicit_byte_strides"] },
+        "explicit_byte_strides": { "type": "array", "items": { "$ref": "#/$defs/positiveSafeInteger" } },
+        "allowed_memory_domains": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["host_normal", "host_pinned", "host_hugepage", "shared_host", "cuda_device"] } },
+        "min_alignment_bytes": { "$ref": "#/$defs/positiveSafeInteger" },
+        "mutability": { "const": "immutable_after_publish" },
+        "metadata_schema_digest": { "$ref": "#/$defs/digest" }
+      },
+      "allOf": [
+        { "if": { "properties": { "strides": { "const": "canonical" } } }, "then": { "properties": { "explicit_byte_strides": { "maxItems": 0 } } } }
+      ],
+      "additionalProperties": false
+    },
+    "bufferPoolPlan": {
+      "type": "object",
+      "required": ["pool_id", "producer_node_id", "producer_port_name", "producer_provider_id", "producer_bundle_digest", "producer_operator_id", "producer_contract_digest", "type_descriptor", "memory_domain", "slot_count", "payload_capacity_bytes", "metadata_capacity_bytes", "payload_alignment_bytes", "storage_accounting_id", "host_metadata_charged_bytes", "descriptor_charged_count", "physical_charge_bytes"],
+      "properties": {
+        "pool_id": { "$ref": "#/$defs/identifier" },
+        "producer_node_id": { "$ref": "#/$defs/identifier" },
+        "producer_port_name": { "$ref": "#/$defs/identifier" },
+        "producer_provider_id": { "$ref": "#/$defs/identifier", "description": "Resolved ProviderDescriptor.provider_id authorized to fill this pool." },
+        "producer_bundle_digest": { "$ref": "#/$defs/digest", "description": "Resolved ProviderDescriptor.bundle_digest authorized to fill this pool." },
+        "producer_operator_id": { "$ref": "#/$defs/identifier", "description": "Resolved Provider operator_id authorized to fill this pool." },
+        "producer_contract_digest": { "$ref": "#/$defs/digest", "description": "Resolved Provider operator contract digest authorized to fill this pool; it must also occur in input_digests.provider_contracts." },
+        "type_descriptor": { "$ref": "#/$defs/typeDescriptor" },
+        "memory_domain": { "const": "host_normal" },
+        "slot_count": { "$ref": "#/$defs/positiveSafeInteger", "description": "Must equal the full DataEdgePlan.max_items. That edge credit already includes base downstream occupancy plus matching ReorderPlan.max_ahead_items and is acquired before a mutable lease, so no extra physical slot term exists." },
+        "payload_capacity_bytes": { "$ref": "#/$defs/positiveSafeInteger" },
+        "metadata_capacity_bytes": { "$ref": "#/$defs/safeInteger" },
+        "payload_alignment_bytes": { "$ref": "#/$defs/positiveSafeInteger" },
+        "storage_accounting_id": { "const": "kspacejet.buffer-pool-storage/host-normal-v1" },
+        "host_metadata_charged_bytes": { "$ref": "#/$defs/positiveSafeInteger", "description": "Must equal 40 * slot_count." },
+        "descriptor_charged_count": { "$ref": "#/$defs/positiveSafeInteger", "description": "Must equal slot_count." },
+        "physical_charge_bytes": { "$ref": "#/$defs/positiveSafeInteger", "description": "Must equal slot_count * (payload_capacity_bytes + metadata_capacity_bytes + 40); this is the only physical payload charge." }
+      },
+      "additionalProperties": false
+    },
+    "dataEdgePlan": {
+      "type": "object",
+      "required": ["edge_id", "source_pool_id", "producer_node_id", "producer_port_name", "producer_abi_port", "consumer_node_id", "consumer_port_name", "type_descriptor", "max_items", "max_logical_bytes", "storage_accounting_id", "host_metadata_charged_bytes", "descriptor_charged_count", "firing_lease_staging_charged_bytes", "firing_lease_staging_descriptor_count", "terminal_policy"],
+      "properties": {
+        "edge_id": { "$ref": "#/$defs/identifier" },
+        "source_pool_id": { "$ref": "#/$defs/identifier" },
+        "producer_node_id": { "$ref": "#/$defs/identifier" },
+        "producer_port_name": { "$ref": "#/$defs/identifier" },
+        "producer_abi_port": { "type": "integer", "minimum": 0, "maximum": 4294967295, "description": "Zero-based position among OperatorContract ports whose direction is output, preserving declared array order. The resolved contract digest binds that order." },
+        "consumer_node_id": { "$ref": "#/$defs/identifier" },
+        "consumer_port_name": { "$ref": "#/$defs/identifier" },
+        "type_descriptor": { "$ref": "#/$defs/typeDescriptor" },
+        "max_items": { "$ref": "#/$defs/positiveSafeInteger", "description": "For M3.7 selected reordered output, must equal base downstream edge capacity plus ReorderPlan.max_ahead_items. One logical edge credit follows each payload across reorder to FIFO." },
+        "max_logical_bytes": { "$ref": "#/$defs/positiveSafeInteger", "description": "Logical pool payload/metadata credit only; it must not be charged as a second physical allocation." },
+        "storage_accounting_id": { "const": "kspacejet.data-edge-storage/fixed-fifo-v1" },
+        "host_metadata_charged_bytes": { "$ref": "#/$defs/positiveSafeInteger", "description": "Must equal 96 * max_items; frozen abstract fixed-FIFO control charge." },
+        "descriptor_charged_count": { "$ref": "#/$defs/positiveSafeInteger", "description": "Must equal max_items." },
+        "firing_lease_staging_charged_bytes": { "const": 4096, "description": "Frozen M3.7 synchronous Provider ABI staging for exactly one input batch/item, output grant/sealed output, and lease control; runtime proves concrete storage fits." },
+        "firing_lease_staging_descriptor_count": { "const": 5, "description": "Frozen descriptor charge for that one M3.7 ABI staging endpoint." },
+        "terminal_policy": { "const": "normal-eoi-drain-cancellation-fail" }
       },
       "additionalProperties": false
     },

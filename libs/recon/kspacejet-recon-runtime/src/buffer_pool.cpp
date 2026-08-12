@@ -201,6 +201,24 @@ struct FixedBufferPoolState final : std::enable_shared_from_this<FixedBufferPool
     return ksj::base::ByteSpan{payload_storage.data() + payload_offset(slot_index), payload_capacity_bytes};
   }
 
+  [[nodiscard]] ksj::base::Result<ksj::base::ByteSpan> writable_metadata(const std::uint64_t expected_pool_identity,
+                                                                         const Quantity slot_index,
+                                                                         const std::uint64_t generation) {
+    std::lock_guard lock(mutex);
+    if (failed) {
+      return failure_status_locked();
+    }
+    const auto validation =
+      validate_slot_locked(expected_pool_identity, slot_index, generation, SlotState::writable, "MutableBufferLease");
+    if (!validation.ok()) {
+      return validation;
+    }
+    if (metadata_capacity_bytes == 0U) {
+      return ksj::base::ByteSpan{};
+    }
+    return ksj::base::ByteSpan{metadata_storage.data() + metadata_offset(slot_index), metadata_capacity_bytes};
+  }
+
   [[nodiscard]] ksj::base::Result<ImmutableBufferHandle> seal(const std::uint64_t expected_pool_identity,
                                                               const Quantity slot_index, const std::uint64_t generation,
                                                               const TypeDescriptor& sealed_type_descriptor,
@@ -614,6 +632,13 @@ ksj::base::Result<ksj::base::ByteSpan> MutableBufferLease::writable_payload() {
     return ksj::base::Status::StateError("MutableBufferLease is invalid or moved from");
   }
   return state_->writable_payload(pool_identity_, slot_index_, generation_);
+}
+
+ksj::base::Result<ksj::base::ByteSpan> MutableBufferLease::writable_metadata() {
+  if (!valid()) {
+    return ksj::base::Status::StateError("MutableBufferLease is invalid or moved from");
+  }
+  return state_->writable_metadata(pool_identity_, slot_index_, generation_);
 }
 
 ksj::base::Result<ImmutableBufferHandle> MutableBufferLease::seal(const TypeDescriptor& type_descriptor,

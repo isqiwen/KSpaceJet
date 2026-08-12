@@ -3,7 +3,9 @@
 #include "kspacejet/base/result.hpp"
 #include "kspacejet/base/span.hpp"
 #include "kspacejet/recon/execution_plan.hpp"
+#include "kspacejet/recon/runtime/buffer_pool.hpp"
 #include "kspacejet/recon/runtime/cartesian_frame_slot.hpp"
+#include "kspacejet/recon/runtime/detail/slab_range_claim.hpp"
 #include "kspacejet/recon/runtime/resource_vector_ledger.hpp"
 
 #include <array>
@@ -12,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -20,27 +23,61 @@ namespace ksj::recon::runtime {
 class FrameDispatch;
 class HostFrameAssembler;
 class M3ReorderIngress;
+class M3PublishLease;
 
 namespace detail {
 struct HostFrameAssemblerState;
 } // namespace detail
 
-// The M3 ReorderPlan charges a 16-byte durable record for every ordinal in
-// its closed Cartesian domain and a 16-byte physical record for every
-// simultaneously retained output. FixedReorderBuffer uses exactly that
-// caller-owned byte layout through memcpy accessors. It therefore does not
-// materialize typed objects in the slab, and byte alignment is sufficient.
+// The M3.7 ReorderPlan charges a 16-byte durable record for every ordinal in
+// its closed Cartesian domain, a 16-byte physical record for every
+// simultaneously retained *ahead* output, and a 64-byte immutable-handle
+// sidecar per such output. The current next_expected output is direct and is
+// carried by its capability rather than the reorder slab. The durable/physical
+// records use caller-owned byte storage through memcpy accessors. Handle
+// sidecars are deliberately separate typed, aligned caller storage:
+// materializing an ImmutableBufferHandle in a raw byte-aligned slab would be
+// undefined.
 inline constexpr std::size_t kFixedReorderBufferStorageAlignment = alignof(ksj::base::byte);
 
 [[nodiscard]] constexpr std::size_t fixed_reorder_buffer_storage_alignment() noexcept {
   return kFixedReorderBufferStorageAlignment;
 }
 
+// This is the concrete runtime representation of the M3.7 fixed handle
+// sidecar. The artifact reserves 64 bytes per sidecar. Keep this proof at the
+// ABI boundary so a future handle representation cannot silently exceed the
+// frozen plan charge.
+struct FixedReorderBufferHandleSidecar final {
+  std::optional<ImmutableBufferHandle> handle{};
+};
+
+static_assert(sizeof(FixedReorderBufferHandleSidecar) <= ksj::recon::kDenseCartesianReorderHandleSidecarChargedBytes);
+static_assert(alignof(FixedReorderBufferHandleSidecar) >= alignof(ImmutableBufferHandle));
+
+// Product M3.7 creation uses this split storage form. `bookkeeping` owns the
+// 16-byte ordinal and 16-byte physical-slot records; `handle_sidecars` owns
+// the separately aligned slots for move-only ImmutableBufferHandle objects.
+// Both allocations are caller-owned and must outlive the buffer plus every
+// issued dispatch or publish lease. Creation claims both byte ranges
+// exclusively against all participating Pool/Edge/Reorder slabs in this
+// runtime image for that same lifetime.
+struct FixedReorderBufferStorage {
+  ksj::base::ByteSpan bookkeeping{};
+  std::span<FixedReorderBufferHandleSidecar> handle_sidecars{};
+};
+
 // Validates the frozen dense-v1 accounting identity and returns the precise
 // number of metadata bytes the caller must provide. A raw plan must outlive a
 // resulting mapper; FixedReorderBuffer copies its selected verified plan, but
 // caller storage must still outlive that buffer.
 [[nodiscard]] ksj::base::Result<std::size_t> required_storage_bytes(const ksj::recon::ReorderPlan& plan);
+
+// Returns only the raw memcpy bookkeeping prefix. M3.7 product creation uses
+// this alongside `max_ahead_items()` typed FixedReorderBufferHandleSidecars;
+// their charged capacity remains part of `required_storage_bytes(plan)`.
+[[nodiscard]] ksj::base::Result<std::size_t>
+fixed_reorder_buffer_required_bookkeeping_storage_bytes(const ksj::recon::ReorderPlan& plan);
 
 // Converts the M3 plan binding -- the semantic key of a claimed completed
 // FrameSlotContext -- to the frozen dense mixed-radix ordinal. This primitive
@@ -90,9 +127,8 @@ private:
   std::size_t dimension_count_{0U};
 };
 
-// The buffer receives and returns only opaque IDs. It neither dereferences a
-// payload nor establishes BufferHandle ownership; those boundaries belong to
-// the later BufferHandle/edge integration.
+// Legacy M3.5 compatibility payload. New plan-bound M3.7 creation rejects
+// this route and moves ImmutableBufferHandle objects through typed sidecars.
 class OpaqueReorderPayloadHandle final {
 public:
   [[nodiscard]] static constexpr OpaqueReorderPayloadHandle from_opaque_id(const std::uint64_t opaque_id) noexcept {
@@ -121,11 +157,15 @@ struct FixedReorderOutput {
 class FixedReorderBuffer;
 class PublishLease;
 
-// A move-only reservation of one frozen M3 ahead item, byte charge, and
-// descriptor credit. The credits are acquired before dispatch. commit()
-// marks the Provider callback as started; complete() is intentionally owned
-// by FixedReorderBuffer because it must bind one opaque output to this exact
-// completed-frame ordinal. Destroying an uncommitted permit rolls it back.
+// A move-only reservation of one frozen M3 dispatch. Ordinals strictly ahead
+// of next_expected consume one ReorderPlan ahead item, byte charge, and
+// descriptor credit. The current head is deliberately direct: it travels in
+// this capability and consumes no reorder slot, while still retaining its
+// one pool-backed payload until ordered handoff. commit() marks the Provider
+// callback as started; complete() is intentionally owned by
+// FixedReorderBuffer because it must bind one opaque compatibility output or
+// one typed ImmutableBufferHandle to this exact completed-frame ordinal.
+// Destroying an uncommitted permit rolls it back.
 // Destroying a started/completed permit is a runtime failure and aborts the
 // buffer rather than allowing an ambiguous retry.
 class DispatchPermit final {
@@ -173,6 +213,9 @@ private:
   std::uint64_t buffer_identity_{0U};
   ksj::recon::Quantity ordinal_{0U};
   ksj::recon::Quantity slot_id_{0U};
+  // Only the direct current-head path uses this inline capability. Ahead
+  // outputs remain in the fixed plan-charged sidecar slab.
+  std::optional<ImmutableBufferHandle> direct_head_handle_{};
   Phase phase_{Phase::invalid};
 };
 
@@ -194,18 +237,26 @@ public:
 
   [[nodiscard]] bool valid() const noexcept;
   [[nodiscard]] const FixedReorderOutput& output() const noexcept { return output_; }
+  [[nodiscard]] bool has_buffer_handle() const;
 
   [[nodiscard]] ksj::base::Status acknowledge_published();
 
 private:
   friend class FixedReorderBuffer;
+  friend class M3PublishLease;
 
   PublishLease(FixedReorderBuffer* owner, const std::uint64_t buffer_identity, DispatchPermit permit,
-               FixedReorderOutput output) noexcept
-      : owner_(owner), buffer_identity_(buffer_identity), permit_(std::move(permit)), output_(output) {}
+               FixedReorderOutput output, FixedReorderBufferHandleSidecar* handle_sidecar) noexcept
+      : owner_(owner), buffer_identity_(buffer_identity), permit_(std::move(permit)), output_(output),
+        handle_sidecar_(handle_sidecar) {}
 
   void release_noexcept() noexcept;
   void disarm() noexcept;
+  // This private transfer exists solely for M3PublishLease::commit_to_edge(),
+  // which immediately commits the handle into a pre-reserved internal edge
+  // before settling the publish credit. It is intentionally not a public
+  // escape hatch for a bound M3.7 product path.
+  [[nodiscard]] ksj::base::Result<ImmutableBufferHandle> take_buffer_handle_for_ordered_edge_commit();
 
   // The embedded permit retains the same sealed plan identity, so a lease
   // cannot be acknowledged against another node/buffer/output domain.
@@ -213,13 +264,14 @@ private:
   std::uint64_t buffer_identity_{0U};
   DispatchPermit permit_{};
   FixedReorderOutput output_{};
+  FixedReorderBufferHandleSidecar* handle_sidecar_{nullptr};
 };
 
-// Creation reserves the complete, immutable ReorderPlan pool in this shared
-// ledger: metadata plus every declared ahead byte and descriptor credit. It
-// is deliberately a conservative scan-local precommitted pool. Later M3
-// BufferHandle/edge work may transfer credits between stages; this primitive
-// does not claim that cross-stage reuse exists yet.
+// Creation reserves the complete, immutable ReorderPlan metadata and
+// descriptor pool in this shared ledger. `max_ahead_charged_bytes` is a
+// logical dataflow credit in M3.7, so it is intentionally not a second host
+// payload reservation here; the source BufferPoolPlan owns the one physical
+// payload charge.
 struct FixedReorderBufferConfig {
   std::shared_ptr<ResourceVectorLedger> resource_ledger;
 };
@@ -244,6 +296,9 @@ struct FixedReorderBufferSnapshot {
   ksj::recon::Quantity prepared_dispatches{0U};
   ksj::recon::Quantity in_flight_dispatches{0U};
   ksj::recon::Quantity publishing_outputs{0U};
+  // A current-head dispatch bypasses the ahead slab but remains live through
+  // prepare/complete/publish until it is acknowledged or failed.
+  ksj::recon::Quantity direct_head_items{0U};
   ksj::recon::Quantity retained_items{0U};
   ksj::recon::Quantity retained_charged_bytes{0U};
   ksj::recon::Quantity free_slots{0U};
@@ -275,11 +330,18 @@ public:
   create(const ksj::recon::ExecutionPlan& execution_plan, const ksj::recon::VerificationRecord& verification_record,
          std::string_view node_id, ksj::base::ByteSpan storage, FixedReorderBufferConfig config);
 
+  // M3.7 product creation. The typed sidecar span is required before a
+  // BufferHandle can enter reorder; raw `ByteSpan` creation above remains an
+  // opaque-payload compatibility seam for M3.5 tests only.
+  [[nodiscard]] static ksj::base::Result<FixedReorderBuffer>
+  create(const ksj::recon::ExecutionPlan& execution_plan, const ksj::recon::VerificationRecord& verification_record,
+         std::string_view node_id, FixedReorderBufferStorage storage, FixedReorderBufferConfig config);
+
   FixedReorderBuffer(const FixedReorderBuffer&) = delete;
   FixedReorderBuffer& operator=(const FixedReorderBuffer&) = delete;
   FixedReorderBuffer(FixedReorderBuffer&& other) noexcept;
   FixedReorderBuffer& operator=(FixedReorderBuffer&& other) noexcept;
-  ~FixedReorderBuffer() = default;
+  ~FixedReorderBuffer();
 
   // Input closure is a control fence, not a data item. It first blocks new
   // prepares, then returns unavailable while prepared/in-flight callbacks
@@ -289,8 +351,8 @@ public:
   // Freezes every ordinary output path. An abort with outstanding permits or
   // leases enters failed_draining and retains the scan-local precommitted
   // ledger pool until those owners explicitly settle or destruct; it never
-  // re-admits held credits while an opaque output may still be externally
-  // visible. A quiescent abort transitions directly to failed and releases
+  // re-admits held credits while an output may still be externally visible.
+  // A quiescent abort transitions directly to failed and releases
   // the pool.
   [[nodiscard]] ksj::base::Status abort();
 
@@ -328,7 +390,9 @@ private:
 
   FixedReorderBuffer(ksj::recon::ReorderPlan plan, std::string execution_plan_digest,
                      std::string verification_record_digest, std::shared_ptr<ResourceVectorLedger> resource_ledger,
-                     ksj::base::byte* storage, std::size_t storage_bytes, std::uint64_t buffer_identity) noexcept;
+                     detail::SlabRangeClaim slab_claim, ksj::base::byte* bookkeeping_storage,
+                     std::size_t charged_storage_bytes, FixedReorderBufferHandleSidecar* handle_sidecars,
+                     Quantity handle_sidecar_count, std::uint64_t buffer_identity) noexcept;
 
   [[nodiscard]] static ksj::base::Status validate_plan(const ksj::recon::ReorderPlan& plan);
   [[nodiscard]] static ksj::base::Result<ksj::recon::ResourceVector>
@@ -370,11 +434,14 @@ private:
                                                     const FrameSlotContext& completed_frame_context);
 
   [[nodiscard]] ksj::base::Status complete(DispatchPermit& permit, OpaqueReorderPayloadHandle payload);
+  [[nodiscard]] ksj::base::Status complete(DispatchPermit& permit, ImmutableBufferHandle& payload);
 
   // The dispatch retains a completed permit and calls this only for the
   // current next_expected ordinal. A non-next permit returns Unavailable
   // without consuming it; a successful call moves it into a PublishLease.
   [[nodiscard]] ksj::base::Result<PublishLease> try_acquire_publish(DispatchPermit& completed_permit);
+  [[nodiscard]] ksj::base::Result<ImmutableBufferHandle> take_published_buffer_handle(PublishLease& lease);
+  [[nodiscard]] bool publish_lease_has_buffer_handle(const PublishLease& lease) const;
 
   // Called with mutex_ held after the trusted semantic-key mapping has
   // succeeded. Keeping the ordinal form private prevents bypassing the
@@ -393,6 +460,11 @@ private:
   [[nodiscard]] ksj::base::Status validate_local_credit_invariants_unlocked() const;
   [[nodiscard]] ksj::base::Status release_slot_unlocked(ksj::recon::Quantity slot_id,
                                                         ksj::recon::Quantity expected_ordinal);
+  [[nodiscard]] FixedReorderBufferHandleSidecar* handle_sidecar_unlocked(ksj::recon::Quantity slot_id) noexcept;
+  [[nodiscard]] const FixedReorderBufferHandleSidecar*
+  handle_sidecar_unlocked(ksj::recon::Quantity slot_id) const noexcept;
+  void clear_handle_sidecar_unlocked(ksj::recon::Quantity slot_id) noexcept;
+  void clear_all_handle_sidecars_unlocked() noexcept;
   // Preserves an operation's diagnostic while freezing a currently valid
   // buffer on a strict-dense semantic or internal invariant violation.
   [[nodiscard]] ksj::base::Status fail_closed_unlocked(ksj::base::Status cause);
@@ -423,8 +495,15 @@ private:
   // its shared ledger state is still alive during destruction.
   std::shared_ptr<ResourceVectorLedger> resource_ledger_;
   std::optional<ResourceVectorLedgerReservation> credit_pool_reservation_;
+  // Retained through every dispatch/publish capability so bookkeeping and
+  // typed handle sidecars cannot overlap another live runtime slab.
+  detail::SlabRangeClaim slab_claim_{};
+  // `storage_` contains only raw ordinal/physical-slot bookkeeping. Typed
+  // sidecars are externally aligned objects and are never overlaid on it.
   ksj::base::byte* storage_{nullptr};
   std::size_t storage_bytes_{0U};
+  FixedReorderBufferHandleSidecar* handle_sidecars_{nullptr};
+  Quantity handle_sidecar_count_{0U};
   std::uint64_t buffer_identity_{0U};
   std::uint64_t m3_reorder_ingress_identity_{0U};
   mutable std::mutex mutex_;
@@ -434,6 +513,10 @@ private:
   ksj::recon::Quantity prepared_dispatches_{0U};
   ksj::recon::Quantity in_flight_dispatches_{0U};
   ksj::recon::Quantity publishing_outputs_{0U};
+  // At most one ordinal can be the direct head at a time. It is intentionally
+  // separate from retained_items_: the latter is exactly the frozen
+  // `max_ahead_items` future-output capacity.
+  ksj::recon::Quantity direct_head_items_{0U};
   ksj::recon::Quantity retained_items_{0U};
   ksj::recon::Quantity retained_charged_bytes_{0U};
   FixedReorderBufferState state_{FixedReorderBufferState::accepting};

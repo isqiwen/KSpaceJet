@@ -36,6 +36,34 @@ using Json = nlohmann::json;
   };
 }
 
+[[nodiscard]] Json type_descriptor_json(const TypeDescriptor& descriptor) {
+  Json allowed_memory_domains = Json::array();
+  for (const auto domain : descriptor.allowed_memory_domains()) {
+    allowed_memory_domains.push_back(to_string(domain));
+  }
+  Json explicit_byte_strides = Json::array();
+  for (const auto stride : descriptor.explicit_byte_strides()) {
+    explicit_byte_strides.push_back(stride);
+  }
+  return {
+    {"type_id", descriptor.type_id()},
+    {"revision", descriptor.revision()},
+    {"abi_descriptor_digest", descriptor.abi_descriptor_digest().value()},
+    {"payload_schema_digest", descriptor.payload_schema_digest().value()},
+    {"payload_kind", to_string(descriptor.payload_kind())},
+    {"element_type", to_string(descriptor.element_type())},
+    {"rank", descriptor.rank()},
+    {"dimensions", descriptor.dimensions()},
+    {"layout", to_string(descriptor.layout())},
+    {"strides", to_string(descriptor.strides())},
+    {"explicit_byte_strides", std::move(explicit_byte_strides)},
+    {"allowed_memory_domains", std::move(allowed_memory_domains)},
+    {"min_alignment_bytes", descriptor.min_alignment_bytes()},
+    {"mutability", to_string(descriptor.mutability())},
+    {"metadata_schema_digest", descriptor.metadata_schema_digest().value()},
+  };
+}
+
 [[nodiscard]] Json execution_plan_json(const ExecutionPlan& plan) {
   Json provider_contracts = Json::array();
   for (const auto& digest : plan.inputs().provider_contracts()) {
@@ -97,8 +125,54 @@ using Json = nlohmann::json;
       {"publish_policy", reorder.publish_policy()},
       {"certified_skipped_ordinals", reorder.certified_skipped_ordinals()},
       {"end_of_input_policy", reorder.end_of_input_policy()},
+      {"handle_storage_charged_bytes", reorder.handle_storage_charged_bytes()},
       {"host_metadata_charged_bytes", reorder.host_metadata_charged_bytes()},
       {"descriptor_charged_count", reorder.descriptor_charged_count()},
+    });
+  }
+
+  Json buffer_pool_plans = Json::array();
+  for (const auto& pool : plan.buffer_pool_plans()) {
+    buffer_pool_plans.push_back({
+      {"pool_id", pool.pool_id()},
+      {"producer_node_id", pool.producer_node_id()},
+      {"producer_port_name", pool.producer_port_name()},
+      {"producer_provider_id", pool.producer_provider_id()},
+      {"producer_bundle_digest", pool.producer_bundle_digest().value()},
+      {"producer_operator_id", pool.producer_operator_id()},
+      {"producer_contract_digest", pool.producer_contract_digest().value()},
+      {"type_descriptor", type_descriptor_json(pool.type_descriptor())},
+      {"memory_domain", to_string(pool.memory_domain())},
+      {"slot_count", pool.slot_count()},
+      {"payload_capacity_bytes", pool.payload_capacity_bytes()},
+      {"metadata_capacity_bytes", pool.metadata_capacity_bytes()},
+      {"payload_alignment_bytes", pool.payload_alignment_bytes()},
+      {"storage_accounting_id", pool.storage_accounting_id()},
+      {"host_metadata_charged_bytes", pool.host_metadata_charged_bytes()},
+      {"descriptor_charged_count", pool.descriptor_charged_count()},
+      {"physical_charge_bytes", pool.physical_charge_bytes()},
+    });
+  }
+
+  Json data_edge_plans = Json::array();
+  for (const auto& edge : plan.data_edge_plans()) {
+    data_edge_plans.push_back({
+      {"edge_id", edge.edge_id()},
+      {"source_pool_id", edge.source_pool_id()},
+      {"producer_node_id", edge.producer_node_id()},
+      {"producer_port_name", edge.producer_port_name()},
+      {"producer_abi_port", edge.producer_abi_port()},
+      {"consumer_node_id", edge.consumer_node_id()},
+      {"consumer_port_name", edge.consumer_port_name()},
+      {"type_descriptor", type_descriptor_json(edge.type_descriptor())},
+      {"max_items", edge.max_items()},
+      {"max_logical_bytes", edge.max_logical_bytes()},
+      {"storage_accounting_id", edge.storage_accounting_id()},
+      {"host_metadata_charged_bytes", edge.host_metadata_charged_bytes()},
+      {"descriptor_charged_count", edge.descriptor_charged_count()},
+      {"firing_lease_staging_charged_bytes", edge.firing_lease_staging_charged_bytes()},
+      {"firing_lease_staging_descriptor_count", edge.firing_lease_staging_descriptor_count()},
+      {"terminal_policy", edge.terminal_policy()},
     });
   }
 
@@ -121,6 +195,8 @@ using Json = nlohmann::json;
     {"execution_profile", to_string(plan.execution_profile())},
     {"key_slot_tables", std::move(key_slot_tables)},
     {"reorder_plans", std::move(reorder_plans)},
+    {"buffer_pool_plans", std::move(buffer_pool_plans)},
+    {"data_edge_plans", std::move(data_edge_plans)},
     {"edge_capacities", std::move(edge_capacities)},
     {"resource_vector", resource_vector_json(plan.resources())},
     {"terminal_occurrences", plan.terminal_occurrences()},

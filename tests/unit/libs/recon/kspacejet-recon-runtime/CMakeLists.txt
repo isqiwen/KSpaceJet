@@ -24,6 +24,8 @@ ksj_add_gtest(
   host_frame_assembler_tests.cpp
   ismrmrd_hdf5_replay_tests.cpp
   m3_reorder_ingress_tests.cpp
+  minimal_cartesian_plan_bound_e2e_tests.cpp
+  plan_bound_data_plane_tests.cpp
   resource_vector_ledger_tests.cpp
   runtime_primitives_tests.cpp
   serial_cartesian_pipeline_tests.cpp
@@ -35,8 +37,12 @@ ksj_add_gtest(
   recon
   runtime)
 
-add_dependencies(ksj_recon_runtime_tests ksj_reference_cartesian_provider ksj_synchronous_firing_lease_test_provider)
+add_dependencies(ksj_recon_runtime_tests
+                 ksj_minimal_cartesian_provider
+                 ksj_reference_cartesian_provider
+                 ksj_synchronous_firing_lease_test_provider)
 target_compile_definitions(
   ksj_recon_runtime_tests
-  PRIVATE KSJ_REFERENCE_CARTESIAN_PROVIDER_MODULE="$<TARGET_FILE:ksj_reference_cartesian_provider>"
+  PRIVATE KSJ_MINIMAL_CARTESIAN_PROVIDER_MODULE="$<TARGET_FILE:ksj_minimal_cartesian_provider>"
+          KSJ_REFERENCE_CARTESIAN_PROVIDER_MODULE="$<TARGET_FILE:ksj_reference_cartesian_provider>"
           KSJ_SYNCHRONOUS_FIRING_LEASE_TEST_PROVIDER_MODULE="$<TARGET_FILE:ksj_synchronous_firing_lease_test_provider>")

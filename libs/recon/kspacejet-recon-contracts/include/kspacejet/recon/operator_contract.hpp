@@ -1,6 +1,5 @@
 #pragma once
 
-#include "kspacejet/recon/execution_plan.hpp"
 #include "kspacejet/recon/resource_contracts.hpp"
 #include "kspacejet/recon/type_descriptor.hpp"
 
@@ -20,6 +19,8 @@ inline constexpr std::string_view kOperatorContractSchemaVersion = "kspacejet.op
 inline constexpr std::string_view kCompletedFrameSlotContextFrameTypeId = "ksj.kspace-frame";
 inline constexpr std::string_view kCompletedFrameSlotContextPayloadSchemaDigest =
   "sha256:7318daba9d4e9992d33ded54fcf8bd2db1ad9c501ca1bb4f30f351fcace94e9b";
+inline constexpr std::string_view kCompletedFrameSlotContextAbiDescriptorDigest =
+  "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 inline constexpr std::string_view kCompletedFrameSlotContextMetadataSchemaDigest =
   "sha256:2eb80e75da97288c839ca2c1d2c81e480f93c71739dd182a071e7b3145c72994";
 

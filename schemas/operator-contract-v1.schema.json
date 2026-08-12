@@ -93,6 +93,7 @@
       "required": [
         "type_id",
         "revision",
+        "abi_descriptor_digest",
         "payload_schema_digest",
         "payload_kind",
         "element_type",
@@ -109,6 +110,7 @@
       "properties": {
         "type_id": { "$ref": "#/$defs/lowerIdentifier" },
         "revision": { "$ref": "#/$defs/positiveSafeInteger" },
+        "abi_descriptor_digest": { "$ref": "#/$defs/digest" },
         "payload_schema_digest": { "$ref": "#/$defs/digest" },
         "payload_kind": { "enum": ["buffer_handle", "message_handle", "control_token", "opaque_handle"] },
         "element_type": {

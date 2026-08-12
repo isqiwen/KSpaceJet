@@ -57,6 +57,7 @@ namespace {
   auto descriptor = ksj::recon::TypeDescriptor::create({
     .type_id = std::string(type_id),
     .revision = 1U,
+    .abi_descriptor_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     .payload_schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     .payload_kind = ksj::recon::PayloadKind::message_handle,
     .element_type = ksj::recon::ElementType::none,
@@ -75,6 +76,29 @@ namespace {
 
 [[nodiscard]] ksj::recon::TypeDescriptor reference_completed_frame_type() {
   auto descriptor = ksj::recon::completed_frame_slot_context_type();
+  EXPECT_TRUE(descriptor.ok()) << descriptor.status();
+  return std::move(descriptor).value();
+}
+
+[[nodiscard]] ksj::recon::TypeDescriptor
+reference_image_buffer_type(const std::string_view type_id = "ksj.image-frame") {
+  auto descriptor = ksj::recon::TypeDescriptor::create({
+    .type_id = std::string(type_id),
+    .revision = 1U,
+    .abi_descriptor_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    .payload_schema_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    .payload_kind = ksj::recon::PayloadKind::buffer_handle,
+    .element_type = ksj::recon::ElementType::float32,
+    .rank = 2U,
+    .dimensions = {"y", "x"},
+    .layout = ksj::recon::LayoutKind::row_major_contiguous,
+    .strides = ksj::recon::StrideKind::canonical,
+    .explicit_byte_strides = {},
+    .allowed_memory_domains = {ksj::recon::TypeMemoryDomain::host_normal},
+    .min_alignment_bytes = 64U,
+    .mutability = ksj::recon::PayloadMutability::immutable_after_publish,
+    .metadata_schema_digest = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  });
   EXPECT_TRUE(descriptor.ok()) << descriptor.status();
   return std::move(descriptor).value();
 }
@@ -100,6 +124,16 @@ namespace {
     .id = "reference_frame_source",
     .interface_revision = "1",
     .contract_digest = parsed_digest("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+  });
+  return provider;
+}
+
+[[nodiscard]] ksj::recon::graph::ResolvedProvider matching_m37_provider() {
+  auto provider = matching_m3_provider();
+  provider.operators.push_back({
+    .id = "reference_image_sink",
+    .interface_revision = "1",
+    .contract_digest = parsed_digest("sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
   });
   return provider;
 }
@@ -132,6 +166,48 @@ namespace {
 }
 )json";
   return ksj::recon::graph::PipelineDefinition::parse_json(kM3Pipeline);
+}
+
+// The image buffer remains wholly internal: reconstruct produces the one
+// ordered immutable buffer stream, an explicit consumer accepts it, and only
+// that consumer's public message output reaches egress.  This is deliberately
+// not a synthetic public buffer endpoint.
+[[nodiscard]] ksj::base::Result<ksj::recon::graph::PipelineDefinition>
+parse_m37_plan_bound_pipeline_definition(const bool direct_public_buffer_egress = false) {
+  constexpr std::string_view kM37Pipeline = R"json(
+{
+  "schema_version": "kspacejet.pipeline/v1",
+  "kind": "PipelineDefinition",
+  "pipeline": {"id": "org.example.plan-bound-image-m3", "revision": "1.0.0", "display_name": "Plan-bound image buffer M3.7 test"},
+  "allowed_profiles": ["offline", "bounded-online"],
+  "parameters": {},
+  "provider_requirements": [{"alias": "reference", "provider_id": "org.kspacejet.reference", "version_requirement": ">=1.0.0 <2.0.0", "required_abi_major": 1}],
+  "nodes": [
+    {"id": "reconstruct", "operator": {"provider": "reference", "id": "reference_reconstruct", "requires_interface_revision": "1"}, "config": {}},
+    {"id": "frame_source", "operator": {"provider": "reference", "id": "reference_frame_source", "requires_interface_revision": "1"}, "config": {}},
+    {"id": "image_sink", "operator": {"provider": "reference", "id": "reference_image_sink", "requires_interface_revision": "1"}, "config": {}}
+  ],
+  "edges": [
+    {"id": "completed_frame", "from": {"node": "frame_source", "port": "frame"}, "to": {"node": "reconstruct", "port": "acquisition"}},
+    {"id": "image_edge", "from": {"node": "reconstruct", "port": "image"}, "to": {"node": "image_sink", "port": "image"}}
+  ],
+  "bindings": {
+    "ingress": [{"id": "acquisitions", "type": "ismrmrd.acquisition/v1", "to": {"node": "frame_source", "port": "acquisition"}}],
+    "egress": [{"id": "images", "type": "ismrmrd.image/v1", "from": {"node": "image_sink", "port": "public_image"}}],
+    "calibration": [],
+    "merge": []
+  },
+  "annotations": {}
+}
+)json";
+  auto document = std::string(kM37Pipeline);
+  if (direct_public_buffer_egress) {
+    document = replace_once(
+      std::move(document),
+      R"json("egress": [{"id": "images", "type": "ismrmrd.image/v1", "from": {"node": "image_sink", "port": "public_image"}}])json",
+      R"json("egress": [{"id": "images", "type": "ismrmrd.image/v1", "from": {"node": "image_sink", "port": "public_image"}}, {"id": "direct_buffers", "type": "ismrmrd.image/v1", "from": {"node": "reconstruct", "port": "image"}}])json");
+  }
+  return ksj::recon::graph::PipelineDefinition::parse_json(document);
 }
 
 [[nodiscard]] ksj::recon::OperatorContract reference_contract(
@@ -263,6 +339,127 @@ namespace {
   return std::move(contract).value();
 }
 
+// `diagnostic` is intentionally declared before `image` in the resolved
+// contract's output-port array.  It has no ordinary envelope in this minimal
+// plan; its purpose is to make the frozen Provider ABI port for `image` equal
+// one and prove that the compiler/verifier preserve contract declaration order
+// rather than sorting names or assuming port zero.
+[[nodiscard]] ksj::recon::OperatorContract
+reference_m37_reconstruct_contract(const bool public_named_image_buffer = false) {
+  using namespace ksj::recon;
+  auto contract = OperatorContract::create({
+    .operator_id = "reference_reconstruct",
+    .operator_revision = "1.0.0",
+    .provider_abi_major = 1U,
+    .supported_profiles = {ExecutionProfile::offline, ExecutionProfile::bounded_online},
+    .ports =
+      {
+        {.name = "acquisition",
+         .type_descriptor = reference_completed_frame_type(),
+         .direction = PortDirection::input,
+         .cardinality = PortCardinality::many,
+         .required = true},
+        {.name = "diagnostic",
+         .type_descriptor = reference_port_type("ksj.reconstruct-diagnostic"),
+         .direction = PortDirection::output,
+         .cardinality = PortCardinality::many,
+         .required = false},
+        {.name = "image",
+         .type_descriptor =
+           reference_image_buffer_type(public_named_image_buffer ? "ismrmrd.image" : "ksj.image-frame"),
+         .direction = PortDirection::output,
+         .cardinality = PortCardinality::many,
+         .required = false},
+      },
+    .execution = {.input_granularity = InputGranularity::frame,
+                  .partition_key = {"slice", "contrast"},
+                  .order_domain = OrderDomain::per_key,
+                  .max_active_keys = 4U,
+                  .max_in_flight = 1U,
+                  .call_model = CallModel::keyed_parallel,
+                  .max_items_per_activation = 1U,
+                  .cooperative_quantum_us = 100U},
+    .batch = {.min_items = 1U, .preferred_items = 1U, .max_items = 1U, .max_charged_bytes = 1024U, .max_wait_us = 100U},
+    .rates = {.kind = RateKind::sdf,
+              .static_phases = {{.inputs = {{.port_name = "acquisition", .items = 1U, .charged_bytes = 1024U}},
+                                 .outputs = {{.port_name = "image", .items = 1U, .charged_bytes = 128U}}}}},
+    .resources = {.scratch_charged_bytes_per_firing = 64U,
+                  .per_key_state_charged_bytes = 32U,
+                  .per_scan_workspace_charged_bytes = 16U,
+                  .output_items = 1U,
+                  .output_charged_bytes = 128U,
+                  .cpu_permits = 1U,
+                  .memory_domain = MemoryDomain::host},
+    .reorder = ReorderSpec{.completed_frame_input_port = "acquisition",
+                           .ordered_output_port = "image",
+                           .outputs_per_ordinal = 1U,
+                           .order_projection = {"slice", "contrast"},
+                           .max_ahead_items = 2U,
+                           .max_ahead_charged_bytes = 256U,
+                           .missing_at_end_of_input = EndOfInputPolicy::fail},
+    .terminal = {.normal = TerminalBehavior::flush_declared,
+                 .cancel = TerminalBehavior::cleanup_declared,
+                 .normal_max_output_items = 1U,
+                 .normal_max_output_charged_bytes = 128U,
+                 .normal_max_async_tokens = 1U,
+                 .cancel_max_async_tokens = 1U},
+  });
+  EXPECT_TRUE(contract.ok()) << contract.status();
+  return std::move(contract).value();
+}
+
+[[nodiscard]] ksj::recon::OperatorContract
+reference_m37_image_sink_contract(const bool public_named_image_buffer = false) {
+  using namespace ksj::recon;
+  auto contract = OperatorContract::create({
+    .operator_id = "reference_image_sink",
+    .operator_revision = "1.0.0",
+    .provider_abi_major = 1U,
+    .supported_profiles = {ExecutionProfile::offline, ExecutionProfile::bounded_online},
+    .ports =
+      {
+        {.name = "image",
+         .type_descriptor =
+           reference_image_buffer_type(public_named_image_buffer ? "ismrmrd.image" : "ksj.image-frame"),
+         .direction = PortDirection::input,
+         .cardinality = PortCardinality::many,
+         .required = true},
+        {.name = "public_image",
+         .type_descriptor = reference_port_type("ismrmrd.image"),
+         .direction = PortDirection::output,
+         .cardinality = PortCardinality::many,
+         .required = false},
+      },
+    .execution = {.input_granularity = InputGranularity::frame,
+                  .partition_key = {"slice", "contrast"},
+                  .order_domain = OrderDomain::per_key,
+                  .max_active_keys = 4U,
+                  .max_in_flight = 1U,
+                  .call_model = CallModel::keyed_parallel,
+                  .max_items_per_activation = 1U,
+                  .cooperative_quantum_us = 100U},
+    .batch = {.min_items = 1U, .preferred_items = 1U, .max_items = 1U, .max_charged_bytes = 128U, .max_wait_us = 100U},
+    .rates = {.kind = RateKind::sdf,
+              .static_phases = {{.inputs = {{.port_name = "image", .items = 1U, .charged_bytes = 128U}},
+                                 .outputs = {{.port_name = "public_image", .items = 1U, .charged_bytes = 128U}}}}},
+    .resources = {.scratch_charged_bytes_per_firing = 16U,
+                  .per_key_state_charged_bytes = 16U,
+                  .per_scan_workspace_charged_bytes = 16U,
+                  .output_items = 1U,
+                  .output_charged_bytes = 128U,
+                  .cpu_permits = 1U,
+                  .memory_domain = MemoryDomain::host},
+    .terminal = {.normal = TerminalBehavior::flush_declared,
+                 .cancel = TerminalBehavior::cleanup_declared,
+                 .normal_max_output_items = 1U,
+                 .normal_max_output_charged_bytes = 128U,
+                 .normal_max_async_tokens = 1U,
+                 .cancel_max_async_tokens = 1U},
+  });
+  EXPECT_TRUE(contract.ok()) << contract.status();
+  return std::move(contract).value();
+}
+
 [[nodiscard]] std::vector<ksj::recon::graph::OperatorContractBinding>
 m3_contract_bindings(const ksj::recon::OperatorContract& reconstruct) {
   return {
@@ -272,6 +469,21 @@ m3_contract_bindings(const ksj::recon::OperatorContract& reconstruct) {
     {.node_id = "frame_source",
      .contract_digest = parsed_digest("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
      .contract = reference_internal_frame_source_contract()},
+  };
+}
+
+[[nodiscard]] std::vector<ksj::recon::graph::OperatorContractBinding>
+m37_contract_bindings(const bool public_named_image_buffer = false) {
+  return {
+    {.node_id = "reconstruct",
+     .contract_digest = parsed_digest("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+     .contract = reference_m37_reconstruct_contract(public_named_image_buffer)},
+    {.node_id = "frame_source",
+     .contract_digest = parsed_digest("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+     .contract = reference_internal_frame_source_contract()},
+    {.node_id = "image_sink",
+     .contract_digest = parsed_digest("sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
+     .contract = reference_m37_image_sink_contract(public_named_image_buffer)},
   };
 }
 
@@ -532,6 +744,7 @@ reference_machine_policy(const std::uint64_t scan_memory_bytes = 4096U,
       .publish_policy = reorder.publish_policy(),
       .certified_skipped_ordinals = reorder.certified_skipped_ordinals(),
       .end_of_input_policy = reorder.end_of_input_policy(),
+      .handle_storage_charged_bytes = reorder.handle_storage_charged_bytes(),
       .host_metadata_charged_bytes = reorder.host_metadata_charged_bytes(),
       .descriptor_charged_count = reorder.descriptor_charged_count(),
     };
@@ -540,6 +753,47 @@ reference_machine_policy(const std::uint64_t scan_memory_bytes = 4096U,
         {.field = dimension.field(), .minimum = dimension.minimum(), .cardinality = dimension.cardinality()});
     }
     specification.reorder_plans.push_back(std::move(reorder_specification));
+  }
+  for (const auto& pool : plan.buffer_pool_plans()) {
+    specification.buffer_pool_plans.push_back({
+      .pool_id = pool.pool_id(),
+      .producer_node_id = pool.producer_node_id(),
+      .producer_port_name = pool.producer_port_name(),
+      .producer_provider_id = pool.producer_provider_id(),
+      .producer_bundle_digest = pool.producer_bundle_digest().value(),
+      .producer_operator_id = pool.producer_operator_id(),
+      .producer_contract_digest = pool.producer_contract_digest().value(),
+      .type_descriptor = pool.type_descriptor(),
+      .memory_domain = pool.memory_domain(),
+      .slot_count = pool.slot_count(),
+      .payload_capacity_bytes = pool.payload_capacity_bytes(),
+      .metadata_capacity_bytes = pool.metadata_capacity_bytes(),
+      .payload_alignment_bytes = pool.payload_alignment_bytes(),
+      .storage_accounting_id = pool.storage_accounting_id(),
+      .host_metadata_charged_bytes = pool.host_metadata_charged_bytes(),
+      .descriptor_charged_count = pool.descriptor_charged_count(),
+      .physical_charge_bytes = pool.physical_charge_bytes(),
+    });
+  }
+  for (const auto& edge : plan.data_edge_plans()) {
+    specification.data_edge_plans.push_back({
+      .edge_id = edge.edge_id(),
+      .source_pool_id = edge.source_pool_id(),
+      .producer_node_id = edge.producer_node_id(),
+      .producer_port_name = edge.producer_port_name(),
+      .producer_abi_port = edge.producer_abi_port(),
+      .consumer_node_id = edge.consumer_node_id(),
+      .consumer_port_name = edge.consumer_port_name(),
+      .type_descriptor = edge.type_descriptor(),
+      .max_items = edge.max_items(),
+      .max_logical_bytes = edge.max_logical_bytes(),
+      .storage_accounting_id = edge.storage_accounting_id(),
+      .host_metadata_charged_bytes = edge.host_metadata_charged_bytes(),
+      .descriptor_charged_count = edge.descriptor_charged_count(),
+      .firing_lease_staging_charged_bytes = edge.firing_lease_staging_charged_bytes(),
+      .firing_lease_staging_descriptor_count = edge.firing_lease_staging_descriptor_count(),
+      .terminal_policy = edge.terminal_policy(),
+    });
   }
   for (const auto& edge : plan.edge_capacities()) {
     specification.edge_capacities.push_back({.edge_id = edge.edge_id(),
@@ -972,13 +1226,14 @@ TEST(KSpaceJetReconGraphExecutionPlanCompiler, DerivesAndIndependentlyVerifiesTh
   EXPECT_EQ(5U, reorder.last_expected_ordinal());
   EXPECT_EQ(3U, reorder.max_ahead_items());
   EXPECT_EQ(512U, reorder.max_ahead_charged_bytes());
+  EXPECT_EQ(192U, reorder.handle_storage_charged_bytes());
   // Closed-domain arithmetic fact only, never a dispatch or skip grant.
   EXPECT_EQ(5U, reorder.max_gap_ordinals());
   EXPECT_EQ(ksj::recon::kStrictDenseAllTuplesReorderOccurrencePolicy, reorder.occurrence_policy());
   EXPECT_EQ("next-expected-only", reorder.publish_policy());
   EXPECT_TRUE(reorder.certified_skipped_ordinals().empty());
   EXPECT_EQ("fail", reorder.end_of_input_policy());
-  EXPECT_EQ(144U, reorder.host_metadata_charged_bytes());
+  EXPECT_EQ(336U, reorder.host_metadata_charged_bytes());
   EXPECT_EQ(3U, reorder.descriptor_charged_count());
   // The graph also carries a resolved internal typed source.  Its resources
   // are distinct from the M3 reservation, which must still be covered.
@@ -996,6 +1251,143 @@ TEST(KSpaceJetReconGraphExecutionPlanCompiler, DerivesAndIndependentlyVerifiesTh
   EXPECT_NE(std::string::npos, canonical.value().find("\"reorder_plans\":[{"));
   const auto verification = ksj::recon::graph::ExecutionPlanVerifier::verify(compiled.value().plan, request);
   ASSERT_TRUE(verification.ok()) << verification.status();
+}
+
+TEST(KSpaceJetReconGraphExecutionPlanCompiler,
+     DerivesPlanBoundBufferAndDataEdgeWithFullPreCallbackCreditAndDeclaredAbiPort) {
+  const auto definition = parse_m37_plan_bound_pipeline_definition();
+  ASSERT_TRUE(definition.ok()) << definition.status();
+  const auto resolved = ksj::recon::graph::ResolvedPipeline::resolve(definition.value(), {matching_m37_provider()});
+  ASSERT_TRUE(resolved.ok()) << resolved.status();
+
+  const ksj::recon::graph::PlanBuildRequest request{
+    .resolved_pipeline = resolved.value(),
+    .requested_profile = ksj::recon::ExecutionProfile::bounded_online,
+    .scan_descriptor = scan_descriptor_with_slice_and_contrast_limits(),
+    .target_envelope = reference_target_envelope(),
+    .machine_policy = reference_machine_policy(16U * 1024U),
+    .artifact_digests = test_plan_digests(),
+    .operator_contracts = m37_contract_bindings(),
+  };
+
+  const auto compiled = ksj::recon::graph::ExecutionPlanCompiler::compile(request);
+  ASSERT_TRUE(compiled.ok()) << compiled.status();
+  const auto& plan = compiled.value().plan;
+  ASSERT_EQ(1U, plan.buffer_pool_plans().size());
+  ASSERT_EQ(1U, plan.data_edge_plans().size());
+
+  const auto& pool = plan.buffer_pool_plans().front();
+  EXPECT_EQ("image_edge.pool", pool.pool_id());
+  EXPECT_EQ("reconstruct", pool.producer_node_id());
+  EXPECT_EQ("image", pool.producer_port_name());
+  EXPECT_EQ("org.kspacejet.reference", pool.producer_provider_id());
+  EXPECT_EQ("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            pool.producer_bundle_digest().value());
+  EXPECT_EQ("reference_reconstruct", pool.producer_operator_id());
+  EXPECT_EQ("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            pool.producer_contract_digest().value());
+  // One ordinary downstream credit plus two ordered-but-not-yet-published
+  // handles.  The same full three-credit set owns payload slots; the reorder
+  // does not add a second physical payload reservation.
+  EXPECT_EQ(3U, pool.slot_count());
+  EXPECT_EQ(128U, pool.payload_capacity_bytes());
+  EXPECT_EQ(120U, pool.host_metadata_charged_bytes());
+  EXPECT_EQ(504U, pool.physical_charge_bytes());
+
+  const auto& edge = plan.data_edge_plans().front();
+  EXPECT_EQ("image_edge", edge.edge_id());
+  EXPECT_EQ(pool.pool_id(), edge.source_pool_id());
+  EXPECT_EQ("reconstruct", edge.producer_node_id());
+  EXPECT_EQ("image", edge.producer_port_name());
+  // `diagnostic` is the first declared output, so the selected `image` ABI
+  // port is one even though it is the only ordinary output envelope.
+  EXPECT_EQ(1U, edge.producer_abi_port());
+  EXPECT_EQ("image_sink", edge.consumer_node_id());
+  EXPECT_EQ("image", edge.consumer_port_name());
+  EXPECT_EQ(3U, edge.max_items());
+  EXPECT_EQ(384U, edge.max_logical_bytes());
+  EXPECT_EQ(3U * ksj::recon::kM37DataEdgeControlChargedBytesPerItem, edge.host_metadata_charged_bytes());
+  EXPECT_EQ(288U, edge.host_metadata_charged_bytes());
+  EXPECT_EQ(ksj::recon::kM37FiringLeaseHostStagingChargedBytes, edge.firing_lease_staging_charged_bytes());
+  EXPECT_EQ(ksj::recon::kM37FiringLeaseHostStagingDescriptorCount, edge.firing_lease_staging_descriptor_count());
+  EXPECT_TRUE(std::ranges::none_of(plan.edge_capacities(), [](const ksj::recon::EdgeCapacity& capacity) {
+    return capacity.edge_id() == "image_edge";
+  }));
+  EXPECT_TRUE(std::ranges::any_of(plan.proof_obligations(), [](const std::string& obligation) {
+    return obligation == ksj::recon::kM37PlanBoundDataPlaneProofObligation;
+  }));
+  EXPECT_TRUE(std::ranges::any_of(plan.proof_obligations(), [](const std::string& obligation) {
+    return obligation == ksj::recon::kM37SinglePhysicalPayloadChargeRuntimeAssumption;
+  }));
+
+  const auto verification = ksj::recon::graph::ExecutionPlanVerifier::verify(plan, request);
+  ASSERT_TRUE(verification.ok()) << verification.status();
+
+  // ExecutionPlan validates self-consistent artifact arithmetic, while the
+  // independent verifier recomputes the ABI port from the resolved contract's
+  // declared output order.  A forged zero must therefore be rejected instead
+  // of being silently treated as an implicit default.
+  auto forged_spec = execution_plan_spec_from(plan);
+  forged_spec.data_edge_plans.front().producer_abi_port = 0U;
+  const auto forged = ksj::recon::ExecutionPlan::create(
+    parsed_digest("sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), forged_spec);
+  ASSERT_TRUE(forged.ok()) << forged.status();
+  const auto forged_verification = ksj::recon::graph::ExecutionPlanVerifier::verify(forged.value(), request);
+  ASSERT_FALSE(forged_verification.ok());
+  EXPECT_NE(std::string::npos, forged_verification.status().message().find("DataEdgePlan"));
+
+  // The artifact validates only local well-formedness.  The independent
+  // verifier must still reject every pool provenance value that diverges from
+  // the resolved Provider/operator binding used to derive the plan.
+  const auto expect_forged_pool_identity_is_rejected = [&](auto&& forge_pool) {
+    auto forged_identity_spec = execution_plan_spec_from(plan);
+    forge_pool(forged_identity_spec.buffer_pool_plans.front());
+    const auto forged_identity = ksj::recon::ExecutionPlan::create(
+      parsed_digest("sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"), forged_identity_spec);
+    ASSERT_TRUE(forged_identity.ok()) << forged_identity.status();
+    const auto identity_verification =
+      ksj::recon::graph::ExecutionPlanVerifier::verify(forged_identity.value(), request);
+    EXPECT_FALSE(identity_verification.ok());
+    EXPECT_NE(std::string::npos, identity_verification.status().message().find("BufferPoolPlan"));
+  };
+  expect_forged_pool_identity_is_rejected([](ksj::recon::BufferPoolPlanSpec& pool_specification) {
+    pool_specification.producer_provider_id = "org.kspacejet.forged";
+  });
+  expect_forged_pool_identity_is_rejected([](ksj::recon::BufferPoolPlanSpec& pool_specification) {
+    pool_specification.producer_bundle_digest =
+      "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+  });
+  expect_forged_pool_identity_is_rejected([](ksj::recon::BufferPoolPlanSpec& pool_specification) {
+    pool_specification.producer_operator_id = "forged_reconstruct";
+  });
+  expect_forged_pool_identity_is_rejected([](ksj::recon::BufferPoolPlanSpec& pool_specification) {
+    // This remains a declared plan input, so ExecutionPlan::create accepts
+    // the artifact and the independent resolved-binding comparison is what
+    // rejects the provenance forgery.
+    pool_specification.producer_contract_digest =
+      "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+  });
+}
+
+TEST(KSpaceJetReconGraphExecutionPlanCompiler, RejectsDirectPublicBufferHandleEgressInsteadOfLegacyFallback) {
+  const auto definition = parse_m37_plan_bound_pipeline_definition(true);
+  ASSERT_TRUE(definition.ok()) << definition.status();
+  const auto resolved = ksj::recon::graph::ResolvedPipeline::resolve(definition.value(), {matching_m37_provider()});
+  ASSERT_TRUE(resolved.ok()) << resolved.status();
+
+  const ksj::recon::graph::PlanBuildRequest request{
+    .resolved_pipeline = resolved.value(),
+    .requested_profile = ksj::recon::ExecutionProfile::bounded_online,
+    .scan_descriptor = scan_descriptor_with_slice_and_contrast_limits(),
+    .target_envelope = reference_target_envelope(),
+    .machine_policy = reference_machine_policy(16U * 1024U),
+    .artifact_digests = test_plan_digests(),
+    .operator_contracts = m37_contract_bindings(true),
+  };
+
+  const auto compilation = ksj::recon::graph::ExecutionPlanCompiler::compile(request);
+  ASSERT_FALSE(compilation.ok());
+  EXPECT_NE(std::string::npos, compilation.status().message().find("public buffer_handle egress"));
 }
 
 TEST(KSpaceJetReconGraphExecutionPlanCompiler, RejectsNonXmlAndIncompleteDenseCartesianReorderAxes) {
@@ -1474,6 +1866,8 @@ TEST(KSpaceJetReconGraphExecutionPlanVerifier,
     ASSERT_TRUE(metadata.ok()) << metadata.status();
     reorder.host_metadata_charged_bytes = metadata.value();
     reorder.descriptor_charged_count = reorder.max_ahead_items;
+    reorder.handle_storage_charged_bytes =
+      reorder.max_ahead_items * ksj::recon::kDenseCartesianReorderHandleSidecarChargedBytes;
     const auto tampered = ksj::recon::ExecutionPlan::create(compiled.value().plan.digest(), specification);
     ASSERT_TRUE(tampered.ok()) << tampered.status();
     const auto verification = ksj::recon::graph::ExecutionPlanVerifier::verify(tampered.value(), request);

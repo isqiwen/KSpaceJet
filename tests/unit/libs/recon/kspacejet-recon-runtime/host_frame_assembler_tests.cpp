@@ -96,6 +96,7 @@ struct RuntimeArtifacts {
       .publish_policy = std::string(ksj::recon::kNextExpectedOnlyReorderPublishPolicy),
       .certified_skipped_ordinals = {},
       .end_of_input_policy = std::string(ksj::recon::kFailReorderEndOfInputPolicy),
+      .handle_storage_charged_bytes = 2U * ksj::recon::kDenseCartesianReorderHandleSidecarChargedBytes,
       .host_metadata_charged_bytes = reorder_metadata.value(),
       .descriptor_charged_count = 2U,
     },

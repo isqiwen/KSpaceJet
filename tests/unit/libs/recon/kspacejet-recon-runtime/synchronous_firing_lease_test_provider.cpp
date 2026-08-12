@@ -153,9 +153,29 @@ void write_result(ksj_process_result* out_result, const ksj_provider_process_out
   return callbacks->get_info(callbacks->host_context, lease, out_info, out_error);
 }
 
+[[nodiscard]] ksj_status copy_first_input_identity(const ksj_firing_lease_callbacks_v1* callbacks,
+                                                   ksj_firing_lease* lease, std::uint64_t& semantic_key_hash,
+                                                   std::uint64_t& order_key, ksj_error_view* out_error) {
+  if (!full_header(callbacks) || callbacks->get_input_batch == nullptr) {
+    return KSJ_STATUS_BAD_ABI;
+  }
+  ksj_input_batch_view batch{};
+  batch.abi = header(sizeof(batch));
+  const auto status = callbacks->get_input_batch(callbacks->host_context, lease, 0U, &batch, out_error);
+  if (status != KSJ_STATUS_OK) {
+    return status;
+  }
+  if (!full_header(&batch) || batch.items == nullptr || batch.item_count == 0U || !full_header(&batch.items[0])) {
+    return KSJ_STATUS_CONTRACT_VIOLATION;
+  }
+  semantic_key_hash = batch.items[0].semantic_key_hash;
+  order_key = batch.items[0].order_key;
+  return KSJ_STATUS_OK;
+}
+
 [[nodiscard]] ksj_status produce_one(const ksj_firing_lease_callbacks_v1* callbacks, ksj_firing_lease* lease,
-                                     const bool settle, const bool include_metadata, std::uint32_t& sealed_count,
-                                     ksj_error_view* out_error) {
+                                     const bool settle, const bool include_metadata, const bool copy_input_identity,
+                                     std::uint32_t& sealed_count, ksj_error_view* out_error) {
   if (!full_header(callbacks) || callbacks->acquire_output_grant == nullptr || callbacks->output_grants == nullptr ||
       !full_header(callbacks->output_grants) || callbacks->output_grants->map_mutable_payload == nullptr ||
       callbacks->output_grants->seal == nullptr) {
@@ -177,11 +197,21 @@ void write_result(ksj_process_result* out_result, const ksj_provider_process_out
   if (!settle) {
     return KSJ_STATUS_OK;
   }
+  std::uint64_t semantic_key_hash = 0U;
+  std::uint64_t order_key = 0U;
+  if (copy_input_identity) {
+    const auto identity = copy_first_input_identity(callbacks, lease, semantic_key_hash, order_key, out_error);
+    if (identity != KSJ_STATUS_OK) {
+      return identity;
+    }
+  }
   ksj_output_seal_descriptor seal{};
   seal.abi = header(sizeof(seal));
   seal.output_port = 0U;
   seal.produced_item_count = 1U;
   seal.produced_byte_count = 4U;
+  seal.semantic_key_hash = semantic_key_hash;
+  seal.order_key = order_key;
   seal.type = payload.type;
   seal.metadata.abi = header(sizeof(seal.metadata));
   std::array<char, 9U> transient_metadata{{'t', 'e', 's', 't', '-', 'm', 'e', 't', 'a'}};
@@ -290,15 +320,16 @@ ksj_status KSJ_PROVIDER_CALL operator_process_batch(ksj_provider_operator* opera
 
   std::uint32_t sealed_count = 0U;
   if (operator_handle->mode == TestProviderMode::unsettled_output) {
-    const auto status = produce_one(callbacks, lease, false, false, sealed_count, out_error);
+    const auto status = produce_one(callbacks, lease, false, false, false, sealed_count, out_error);
     if (status != KSJ_STATUS_OK) {
       return status;
     }
     write_result(out_result, KSJ_PROVIDER_PROCESS_DONE, 0U, info.input_batch_count, info.terminal_epoch);
     return KSJ_STATUS_OK;
   }
-  const auto output_status = produce_one(
-    callbacks, lease, true, operator_handle->mode == TestProviderMode::metadata_output, sealed_count, out_error);
+  const auto output_status =
+    produce_one(callbacks, lease, true, operator_handle->mode == TestProviderMode::metadata_output,
+                info.input_batch_count != 0U, sealed_count, out_error);
   if (output_status != KSJ_STATUS_OK) {
     return output_status;
   }
@@ -327,7 +358,7 @@ ksj_status KSJ_PROVIDER_CALL operator_on_scan_end(ksj_provider_operator* operato
     return info_status;
   }
   std::uint32_t sealed_count = 0U;
-  const auto output_status = produce_one(callbacks, terminal_lease, true, false, sealed_count, out_error);
+  const auto output_status = produce_one(callbacks, terminal_lease, true, false, false, sealed_count, out_error);
   if (output_status != KSJ_STATUS_OK) {
     return output_status;
   }

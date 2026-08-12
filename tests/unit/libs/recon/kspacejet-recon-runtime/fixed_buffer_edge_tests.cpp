@@ -36,6 +36,7 @@ using ksj::recon::runtime::ImmutableBufferHandle;
 using ksj::recon::runtime::ResourceVectorLedger;
 
 constexpr auto kPayloadDigest = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+constexpr auto kAbiDescriptorDigest = "sha256:3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea";
 constexpr auto kMetadataDigest = "sha256:cb8379ac2098aa165029e3938a51da0bcecfc008fd6795f401178647f96c5b34";
 
 static_assert(!std::is_copy_constructible_v<FixedBufferEdgeProducerReservation>);
@@ -47,6 +48,7 @@ static_assert(!std::is_copy_assignable_v<FixedBufferEdgeConsumerLease>);
   const auto created = TypeDescriptor::create({
     .type_id = "ksj.fixed-buffer-edge-test",
     .revision = revision,
+    .abi_descriptor_digest = kAbiDescriptorDigest,
     .payload_schema_digest = kPayloadDigest,
     .payload_kind = PayloadKind::buffer_handle,
     .element_type = ksj::recon::ElementType::uint8,
@@ -362,6 +364,73 @@ TEST(KSpaceJetFixedBufferEdge, HoldsCapacityUntilConsumerAcknowledgesAndRollsBac
   auto after_ack = edge->try_reserve(1U);
   ASSERT_TRUE(after_ack.ok()) << after_ack.status();
   EXPECT_TRUE(std::move(after_ack).value().rollback().ok());
+}
+
+TEST(KSpaceJetFixedBufferEdge, DetachedPreReservedCreditsEnterFifoInCommitOrder) {
+  constexpr Quantity kPoolSlots = 2U;
+  constexpr Quantity kPayloadCapacity = 8U;
+  constexpr Quantity kMetadataCapacity = 0U;
+  constexpr Quantity kEdgeItems = 2U;
+  const auto type_descriptor = make_type();
+  auto pool_slabs = make_pool_slabs(kPoolSlots, kPayloadCapacity, kMetadataCapacity);
+  auto edge_control = make_edge_control_slab(kEdgeItems);
+  const auto ledger =
+    make_ledger(pool_external_slab_bytes(kPoolSlots, kPayloadCapacity, kMetadataCapacity) + edge_control.bytes,
+                kPoolSlots + kEdgeItems);
+  auto pool_result = create_pool(type_descriptor, ledger, pool_slabs, kPoolSlots, kPayloadCapacity, kMetadataCapacity);
+  ASSERT_TRUE(pool_result.ok()) << pool_result.status();
+  auto pool = std::move(pool_result).value();
+  auto edge_result = create_edge(ledger, *pool, edge_control, kEdgeItems, 16U);
+  ASSERT_TRUE(edge_result.ok()) << edge_result.status();
+  auto edge = std::move(edge_result).value();
+
+  // These credits are acquired before either Provider callback. They consume
+  // capacity but intentionally have no FIFO position yet.
+  auto first_credit_result = edge->try_reserve(1U);
+  ASSERT_TRUE(first_credit_result.ok()) << first_credit_result.status();
+  auto first_credit = std::move(first_credit_result).value();
+  auto second_credit_result = edge->try_reserve(3U);
+  ASSERT_TRUE(second_credit_result.ok()) << second_credit_result.status();
+  auto second_credit = std::move(second_credit_result).value();
+  const auto pending = edge->snapshot();
+  EXPECT_EQ(2U, pending.reserved_items);
+  EXPECT_EQ(0U, pending.queued_items);
+  EXPECT_EQ(2U, pending.occupied_items);
+  EXPECT_EQ(FixedBufferEdgePollKind::empty, edge->try_acquire().kind);
+
+  auto first_handle_result = seal_handle(*pool, type_descriptor, 1U, {});
+  ASSERT_TRUE(first_handle_result.ok()) << first_handle_result.status();
+  auto first_handle = std::move(first_handle_result).value();
+  auto second_handle_result = seal_handle(*pool, type_descriptor, 3U, {});
+  ASSERT_TRUE(second_handle_result.ok()) << second_handle_result.status();
+  auto second_handle = std::move(second_handle_result).value();
+
+  // A reorder stage can publish the later-acquired credit first. FIFO order
+  // follows this ordered commit sequence, not the earlier callback/credit
+  // acquisition order.
+  ASSERT_TRUE(second_credit.commit_from(second_handle).ok());
+  ASSERT_TRUE(first_credit.commit_from(first_handle).ok());
+  const auto queued = edge->snapshot();
+  EXPECT_EQ(0U, queued.reserved_items);
+  EXPECT_EQ(2U, queued.queued_items);
+  EXPECT_EQ(2U, queued.occupied_items);
+
+  auto first_poll = edge->try_acquire();
+  ASSERT_EQ(FixedBufferEdgePollKind::item, first_poll.kind);
+  auto first_consumer = std::move(*first_poll.lease);
+  const auto first_payload = first_consumer.buffer().payload();
+  ASSERT_TRUE(first_payload.ok()) << first_payload.status();
+  EXPECT_EQ(3U, first_payload.value().size());
+  ASSERT_TRUE(first_consumer.acknowledge_consumed().ok());
+
+  auto second_poll = edge->try_acquire();
+  ASSERT_EQ(FixedBufferEdgePollKind::item, second_poll.kind);
+  auto second_consumer = std::move(*second_poll.lease);
+  const auto second_payload = second_consumer.buffer().payload();
+  ASSERT_TRUE(second_payload.ok()) << second_payload.status();
+  EXPECT_EQ(1U, second_payload.value().size());
+  ASSERT_TRUE(second_consumer.acknowledge_consumed().ok());
+  EXPECT_EQ(kEdgeItems, edge->snapshot().free_slots);
 }
 
 TEST(KSpaceJetFixedBufferEdge, EndOfInputDrainsPreexistingReservationWhileExternalOccupancyPersists) {

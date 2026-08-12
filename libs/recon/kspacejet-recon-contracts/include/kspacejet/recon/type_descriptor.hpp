@@ -1,6 +1,7 @@
 #pragma once
 
-#include "kspacejet/recon/execution_plan.hpp"
+#include "kspacejet/recon/artifact_digest.hpp"
+#include "kspacejet/recon/bounded_value.hpp"
 
 #include <string>
 #include <string_view>
@@ -77,6 +78,11 @@ enum class PayloadMutability {
 struct TypeDescriptorSpec {
   std::string type_id;
   Quantity revision = 0;
+  // This is the exact Provider ABI descriptor identity, not a digest the
+  // runtime is permitted to reconstruct from a convenient subset of fields.
+  // M3.7 freezes it alongside the structural descriptor before handing a
+  // pool-backed output capability to a Provider.
+  std::string abi_descriptor_digest;
   std::string payload_schema_digest;
   PayloadKind payload_kind = PayloadKind::buffer_handle;
   ElementType element_type = ElementType::none;
@@ -98,6 +104,7 @@ public:
 
   [[nodiscard]] const std::string& type_id() const noexcept { return type_id_; }
   [[nodiscard]] constexpr Quantity revision() const noexcept { return revision_.value(); }
+  [[nodiscard]] const ArtifactDigest& abi_descriptor_digest() const noexcept { return abi_descriptor_digest_; }
   [[nodiscard]] const ArtifactDigest& payload_schema_digest() const noexcept { return payload_schema_digest_; }
   [[nodiscard]] constexpr PayloadKind payload_kind() const noexcept { return payload_kind_; }
   [[nodiscard]] constexpr ElementType element_type() const noexcept { return element_type_; }
@@ -121,20 +128,22 @@ public:
   friend bool operator==(const TypeDescriptor&, const TypeDescriptor&) noexcept = default;
 
 private:
-  TypeDescriptor(std::string type_id, CanonicalQuantity revision, ArtifactDigest payload_schema_digest,
-                 PayloadKind payload_kind, ElementType element_type, CanonicalQuantity rank,
-                 std::vector<std::string> dimensions, LayoutKind layout, StrideKind strides,
+  TypeDescriptor(std::string type_id, CanonicalQuantity revision, ArtifactDigest abi_descriptor_digest,
+                 ArtifactDigest payload_schema_digest, PayloadKind payload_kind, ElementType element_type,
+                 CanonicalQuantity rank, std::vector<std::string> dimensions, LayoutKind layout, StrideKind strides,
                  std::vector<Quantity> explicit_byte_strides, std::vector<TypeMemoryDomain> allowed_memory_domains,
                  CanonicalQuantity min_alignment_bytes, PayloadMutability mutability,
                  ArtifactDigest metadata_schema_digest) noexcept
-      : type_id_(std::move(type_id)), revision_(revision), payload_schema_digest_(std::move(payload_schema_digest)),
-        payload_kind_(payload_kind), element_type_(element_type), rank_(rank), dimensions_(std::move(dimensions)),
-        layout_(layout), strides_(strides), explicit_byte_strides_(std::move(explicit_byte_strides)),
+      : type_id_(std::move(type_id)), revision_(revision), abi_descriptor_digest_(std::move(abi_descriptor_digest)),
+        payload_schema_digest_(std::move(payload_schema_digest)), payload_kind_(payload_kind),
+        element_type_(element_type), rank_(rank), dimensions_(std::move(dimensions)), layout_(layout),
+        strides_(strides), explicit_byte_strides_(std::move(explicit_byte_strides)),
         allowed_memory_domains_(std::move(allowed_memory_domains)), min_alignment_bytes_(min_alignment_bytes),
         mutability_(mutability), metadata_schema_digest_(std::move(metadata_schema_digest)) {}
 
   std::string type_id_;
   CanonicalQuantity revision_;
+  ArtifactDigest abi_descriptor_digest_;
   ArtifactDigest payload_schema_digest_;
   PayloadKind payload_kind_;
   ElementType element_type_;

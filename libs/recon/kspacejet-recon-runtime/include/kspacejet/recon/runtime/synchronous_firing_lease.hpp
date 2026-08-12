@@ -16,6 +16,9 @@
 
 namespace ksj::recon::runtime {
 
+class PlanBoundSynchronousOutputBridge;
+class AdmittedPlanBoundDataPlane;
+
 /**
  * The intentionally small M3-A host boundary for one synchronous Provider
  * callback.  It is not a scheduler, BufferHandle implementation, edge, or
@@ -27,6 +30,12 @@ namespace ksj::recon::runtime {
  * that a registry cannot unload the module while a firing is in progress.
  */
 struct SynchronousProviderInvocation {
+  // The plan-bound M3.7 bridge verifies this loaded module's frozen provider
+  // bundle/operator/contract identity before entering Provider code. The
+  // opaque lifecycle handles must have been created with the resolved
+  // canonical node configuration and remain trusted in-process preconditions
+  // established by the caller: M3.7 does not attempt to reconstruct or attest
+  // them from raw ABI pointers.
   ksj::provider::loader::ProviderLease provider{};
   std::string operator_id;
   ksj_provider_operator* operator_handle{nullptr};
@@ -191,6 +200,32 @@ public:
   [[nodiscard]] SynchronousFiringLeaseSnapshot snapshot() const;
 
 private:
+  friend class PlanBoundSynchronousOutputBridge;
+  friend class AdmittedPlanBoundDataPlane;
+
+  enum class StagingAccounting : std::uint8_t {
+    self_reserved,
+    preaccounted_by_plan,
+  };
+
+  // This is intentionally private to the plan-bound bridge.  It preserves
+  // the public raw-span process() ABI while allowing an already-admitted
+  // BufferPool slot to serve as an output grant without adding those same
+  // payload bytes to the dynamic firing ResourceVector a second time.
+  [[nodiscard]] ksj::base::Result<SynchronousFiringResult>
+  process_preaccounted_output(const SynchronousProviderInvocation& invocation, const SynchronousFiringRequest& request);
+
+  // The plan-bound data plane has already reserved and committed the full
+  // frozen firing-lease staging allowance from its local ledger. This factory
+  // constructs the same fixed ABI workspace without taking a second
+  // actual-size staging reservation. It is deliberately unavailable to the
+  // public raw-span host API.
+  [[nodiscard]] static ksj::base::Result<SynchronousFiringLeaseHost>
+  create_preaccounted_staging(SynchronousFiringLeaseConfig config);
+
+  [[nodiscard]] static ksj::base::Result<SynchronousFiringLeaseHost> create_impl(SynchronousFiringLeaseConfig config,
+                                                                                 StagingAccounting staging_accounting);
+
   struct Impl;
 
   explicit SynchronousFiringLeaseHost(Impl* implementation) noexcept;

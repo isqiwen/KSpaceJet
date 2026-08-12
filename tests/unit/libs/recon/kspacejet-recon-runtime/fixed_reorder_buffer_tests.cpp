@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -16,23 +17,36 @@ namespace {
 using ksj::base::byte;
 using ksj::base::Result;
 using ksj::recon::ArtifactDigest;
+using ksj::recon::ElementType;
 using ksj::recon::ExecutionPlan;
 using ksj::recon::ExecutionPlanSpec;
+using ksj::recon::PayloadKind;
+using ksj::recon::PayloadMutability;
 using ksj::recon::Quantity;
 using ksj::recon::ResourceVector;
 using ksj::recon::ResourceVectorCapacity;
 using ksj::recon::ResourceVectorSpec;
+using ksj::recon::TypeDescriptor;
+using ksj::recon::TypeMemoryDomain;
 using ksj::recon::VerificationRecord;
 using ksj::recon::VerificationRecordSpec;
 using ksj::recon::runtime::CartesianFrameSlotConfig;
 using ksj::recon::runtime::CompletedFrameLease;
 using ksj::recon::runtime::DenseCartesianOrdinalMapper;
 using ksj::recon::runtime::DuplicateAcquisitionPolicy;
+using ksj::recon::runtime::FixedBufferEdge;
+using ksj::recon::runtime::FixedBufferEdgePollKind;
+using ksj::recon::runtime::FixedBufferEdgeStorage;
+using ksj::recon::runtime::FixedBufferPool;
+using ksj::recon::runtime::FixedBufferPoolStorage;
 using ksj::recon::runtime::FixedReorderBuffer;
+using ksj::recon::runtime::FixedReorderBufferHandleSidecar;
 using ksj::recon::runtime::FixedReorderBufferState;
+using ksj::recon::runtime::FixedReorderBufferStorage;
 using ksj::recon::runtime::FrameSlotContext;
 using ksj::recon::runtime::HostFrameAssembler;
 using ksj::recon::runtime::HostFrameAssemblerConfig;
+using ksj::recon::runtime::ImmutableBufferHandle;
 using ksj::recon::runtime::IncompleteFramePolicy;
 using ksj::recon::runtime::M3ReorderIngress;
 using ksj::recon::runtime::OpaqueReorderPayloadHandle;
@@ -44,6 +58,13 @@ constexpr std::string_view kVerificationDigest =
 constexpr std::string_view kOtherPlanDigest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 constexpr std::string_view kOtherVerificationDigest =
   "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+constexpr std::string_view kHandlePayloadDigest =
+  "sha256:abababababababababababababababababababababababababababababababab";
+constexpr std::string_view kHandleAbiDescriptorDigest =
+  "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+constexpr std::string_view kHandleMetadataDigest =
+  "sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef";
+constexpr Quantity kHandlePoolPayloadCapacity = 8U;
 
 struct SemanticDomain {
   Quantity encoding{1U};
@@ -161,11 +182,15 @@ ordinal_dimensions(const SemanticDomain& domain) {
       .publish_policy = std::string(ksj::recon::kNextExpectedOnlyReorderPublishPolicy),
       .certified_skipped_ordinals = {},
       .end_of_input_policy = std::string(ksj::recon::kFailReorderEndOfInputPolicy),
+      .handle_storage_charged_bytes = max_ahead_items * ksj::recon::kDenseCartesianReorderHandleSidecarChargedBytes,
       .host_metadata_charged_bytes = reorder_metadata.value(),
       .descriptor_charged_count = max_ahead_items,
     },
   };
   specification.resource_vector = {
+    // This fixture intentionally has no M3.7 BufferPoolPlan/DataEdgePlan.
+    // Its legacy opaque ReorderPlan therefore owns its full ahead payload in
+    // addition to the KeySlot and Reorder bookkeeping charges.
     .host_normal_bytes = key_metadata.value() + reorder_metadata.value() + max_ahead_items * charged_bytes,
     .descriptor_count = max_ahead_items,
   };
@@ -234,7 +259,7 @@ make_artifacts(const SemanticDomain domain = {}, const Quantity max_ahead_items 
 }
 
 [[nodiscard]] Quantity credit_pool_host_bytes(const ksj::recon::ReorderPlan& plan) {
-  return plan.host_metadata_charged_bytes() + plan.max_ahead_charged_bytes();
+  return plan.host_metadata_charged_bytes();
 }
 
 [[nodiscard]] Result<std::shared_ptr<ResourceVectorLedger>> make_ledger(const ksj::recon::ReorderPlan& plan) {
@@ -269,6 +294,114 @@ make_artifacts(const SemanticDomain domain = {}, const Quantity max_ahead_items 
                                     {storage.data(), storage.size()}, {.resource_ledger = ledger});
 }
 
+[[nodiscard]] Result<FixedReorderBuffer>
+make_typed_handle_buffer(const RuntimeArtifacts& artifacts, std::vector<byte>& bookkeeping,
+                         std::vector<FixedReorderBufferHandleSidecar>& handle_sidecars,
+                         std::shared_ptr<ResourceVectorLedger>& ledger) {
+  const auto& plan = artifacts.execution_plan.reorder_plans().front();
+  const auto required = ksj::recon::runtime::fixed_reorder_buffer_required_bookkeeping_storage_bytes(plan);
+  if (!required.ok()) {
+    return required.status();
+  }
+  bookkeeping.assign(required.value(), byte{0});
+  handle_sidecars.clear();
+  handle_sidecars.resize(static_cast<std::size_t>(plan.max_ahead_items()));
+  auto created_ledger = make_ledger(plan);
+  if (!created_ledger.ok()) {
+    return created_ledger.status();
+  }
+  ledger = std::move(created_ledger).value();
+  return FixedReorderBuffer::create(
+    artifacts.execution_plan, artifacts.verification_record, "test-node",
+    FixedReorderBufferStorage{
+      .bookkeeping = {bookkeeping.data(), bookkeeping.size()},
+      .handle_sidecars = std::span<FixedReorderBufferHandleSidecar>{handle_sidecars.data(), handle_sidecars.size()}},
+    {.resource_ledger = ledger});
+}
+
+[[nodiscard]] Result<TypeDescriptor> make_reorder_handle_type() {
+  return TypeDescriptor::create({
+    .type_id = "ksj.fixed-reorder-buffer-handle-test",
+    .revision = 1U,
+    .abi_descriptor_digest = std::string(kHandleAbiDescriptorDigest),
+    .payload_schema_digest = std::string(kHandlePayloadDigest),
+    .payload_kind = PayloadKind::buffer_handle,
+    .element_type = ElementType::uint8,
+    .rank = 1U,
+    .dimensions = {"sample"},
+    .layout = ksj::recon::LayoutKind::canonical_contiguous,
+    .strides = ksj::recon::StrideKind::canonical,
+    .explicit_byte_strides = {},
+    .allowed_memory_domains = {TypeMemoryDomain::host_normal},
+    .min_alignment_bytes = 1U,
+    .mutability = PayloadMutability::immutable_after_publish,
+    .metadata_schema_digest = std::string(kHandleMetadataDigest),
+  });
+}
+
+struct HandlePoolSlabs {
+  std::vector<byte> payload;
+  std::vector<byte> metadata;
+  std::vector<byte> control;
+
+  [[nodiscard]] FixedBufferPoolStorage view() {
+    return {
+      .payload = {payload.data(), payload.size()},
+      .metadata = {metadata.data(), metadata.size()},
+      .control = {control.data(), control.size()},
+    };
+  }
+};
+
+[[nodiscard]] Result<std::unique_ptr<FixedBufferPool>>
+make_handle_pool(const TypeDescriptor& type_descriptor, HandlePoolSlabs& slabs, const Quantity slot_count,
+                 std::shared_ptr<ResourceVectorLedger> occupancy_ledger = nullptr) {
+  const auto control = ksj::recon::runtime::fixed_buffer_pool_required_control_storage_bytes(slot_count);
+  if (!control.ok()) {
+    return control.status();
+  }
+  slabs = {.payload = std::vector<byte>(static_cast<std::size_t>(slot_count * kHandlePoolPayloadCapacity), byte{0}),
+           .metadata = {},
+           .control = std::vector<byte>(control.value(), byte{0})};
+  return FixedBufferPool::create({.occupancy_ledger = std::move(occupancy_ledger),
+                                  .type_descriptor = type_descriptor,
+                                  .slot_count = slot_count,
+                                  .payload_capacity_bytes = kHandlePoolPayloadCapacity,
+                                  .metadata_capacity_bytes = 0U},
+                                 slabs.view());
+}
+
+[[nodiscard]] Result<ImmutableBufferHandle> seal_handle(FixedBufferPool& pool, const TypeDescriptor& type_descriptor,
+                                                        const byte value) {
+  auto acquired = pool.try_acquire();
+  if (!acquired.ok()) {
+    return acquired.status();
+  }
+  auto lease = std::move(acquired).value();
+  const auto payload = lease.writable_payload();
+  if (!payload.ok()) {
+    return payload.status();
+  }
+  payload.value()[0] = value;
+  return lease.seal(type_descriptor, 1U, {});
+}
+
+struct AlignedEdgeControl {
+  std::vector<std::max_align_t> words;
+  std::size_t byte_count{0U};
+
+  [[nodiscard]] ksj::base::ByteSpan view() { return {reinterpret_cast<byte*>(words.data()), byte_count}; }
+};
+
+[[nodiscard]] Result<AlignedEdgeControl> make_edge_control(const Quantity max_items) {
+  const auto required = ksj::recon::runtime::fixed_buffer_edge_required_control_storage_bytes(max_items);
+  if (!required.ok()) {
+    return required.status();
+  }
+  const auto words = (required.value() + sizeof(std::max_align_t) - 1U) / sizeof(std::max_align_t);
+  return AlignedEdgeControl{.words = std::vector<std::max_align_t>(words), .byte_count = required.value()};
+}
+
 [[nodiscard]] CartesianFrameSlotConfig frame_slot_config(const std::uint32_t slot_id) {
   return {
     .slot_id = slot_id,
@@ -281,16 +414,19 @@ make_artifacts(const SemanticDomain domain = {}, const Quantity max_ahead_items 
   };
 }
 
-[[nodiscard]] HostFrameAssemblerConfig assembler_config() {
-  return {
-    .scan_instance_id = "m3-reorder-ingress-test-scan",
-    .frame_slots = {frame_slot_config(1U), frame_slot_config(2U), frame_slot_config(3U), frame_slot_config(4U)},
-  };
+[[nodiscard]] HostFrameAssemblerConfig assembler_config(const Quantity max_ahead_items = 3U) {
+  HostFrameAssemblerConfig configuration{.scan_instance_id = "m3-reorder-ingress-test-scan"};
+  configuration.frame_slots.reserve(static_cast<std::size_t>(max_ahead_items + 1U));
+  for (Quantity slot = 0U; slot <= max_ahead_items; ++slot) {
+    configuration.frame_slots.push_back(frame_slot_config(static_cast<std::uint32_t>(slot + 1U)));
+  }
+  return configuration;
 }
 
 [[nodiscard]] Result<BoundIngress> bind_ingress(const RuntimeArtifacts& artifacts, FixedReorderBuffer& buffer) {
+  const auto max_ahead_items = artifacts.execution_plan.reorder_plans().front().max_ahead_items();
   auto host = HostFrameAssembler::create(artifacts.execution_plan, artifacts.verification_record, "test-node",
-                                         assembler_config());
+                                         assembler_config(max_ahead_items));
   if (!host.ok()) {
     return host.status();
   }
@@ -409,7 +545,8 @@ TEST(KSpaceJetM3ReorderIngress, CouplesHostLeaseToOrderedPublishAndCompletesHost
 }
 
 TEST(KSpaceJetM3ReorderIngress, UnavailableKeepsCompletedLeaseForRetry) {
-  auto artifacts = make_artifacts();
+  // With A=2, ordinal three is beyond the frozen future-only window.
+  auto artifacts = make_artifacts({}, 2U);
   ASSERT_TRUE(artifacts.ok()) << artifacts.status();
   std::vector<byte> storage;
   std::shared_ptr<ResourceVectorLedger> ledger;
@@ -528,6 +665,396 @@ TEST(KSpaceJetM3ReorderIngress, SourceEoiBlocksReorderEoiUntilIngressCancelsTheC
   ASSERT_TRUE(runtime.ingress.abort().ok());
   EXPECT_EQ(FixedReorderBufferState::failed, buffer.snapshot().state);
   EXPECT_TRUE(runtime.assembler->snapshot().failed);
+}
+
+TEST(KSpaceJetFixedReorderBufferM37, RejectsTypedSidecarStorageThatDoesNotMatchTheFrozenPlan) {
+  auto artifacts = make_artifacts();
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  const auto& plan = artifacts.value().execution_plan.reorder_plans().front();
+  const auto bookkeeping_bytes = ksj::recon::runtime::fixed_reorder_buffer_required_bookkeeping_storage_bytes(plan);
+  ASSERT_TRUE(bookkeeping_bytes.ok()) << bookkeeping_bytes.status();
+  std::vector<byte> bookkeeping(bookkeeping_bytes.value(), byte{0});
+  std::vector<FixedReorderBufferHandleSidecar> undersized_sidecars(
+    static_cast<std::size_t>(plan.max_ahead_items() - 1U));
+  auto ledger = make_ledger(plan);
+  ASSERT_TRUE(ledger.ok()) << ledger.status();
+
+  const auto rejected =
+    FixedReorderBuffer::create(artifacts.value().execution_plan, artifacts.value().verification_record, "test-node",
+                               FixedReorderBufferStorage{.bookkeeping = {bookkeeping.data(), bookkeeping.size()},
+                                                         .handle_sidecars =
+                                                           std::span<FixedReorderBufferHandleSidecar>{
+                                                             undersized_sidecars.data(), undersized_sidecars.size()}},
+                               {.resource_ledger = ledger.value()});
+  EXPECT_FALSE(rejected.ok());
+  EXPECT_EQ(ksj::base::StatusCode::invalid_argument, rejected.status().code());
+  EXPECT_TRUE(ledger.value()->snapshot().reserved.empty());
+  EXPECT_TRUE(ledger.value()->snapshot().used.empty());
+}
+
+TEST(KSpaceJetFixedReorderBufferM37, ClaimsBookkeepingAndTypedSidecarRangesForItsFullCapabilityLifetime) {
+  auto artifacts = make_artifacts();
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  std::vector<byte> bookkeeping;
+  std::vector<FixedReorderBufferHandleSidecar> sidecars;
+  std::shared_ptr<ResourceVectorLedger> first_ledger;
+  auto first = make_typed_handle_buffer(artifacts.value(), bookkeeping, sidecars, first_ledger);
+  ASSERT_TRUE(first.ok()) << first.status();
+
+  const auto& plan = artifacts.value().execution_plan.reorder_plans().front();
+  auto second_ledger = make_ledger(plan);
+  ASSERT_TRUE(second_ledger.ok()) << second_ledger.status();
+  const auto overlapping = FixedReorderBuffer::create(
+    artifacts.value().execution_plan, artifacts.value().verification_record, "test-node",
+    FixedReorderBufferStorage{.bookkeeping = {bookkeeping.data(), bookkeeping.size()},
+                              .handle_sidecars =
+                                std::span<FixedReorderBufferHandleSidecar>{sidecars.data(), sidecars.size()}},
+    {.resource_ledger = second_ledger.value()});
+  EXPECT_FALSE(overlapping.ok());
+  EXPECT_EQ(ksj::base::StatusCode::unavailable, overlapping.status().code());
+  EXPECT_TRUE(second_ledger.value()->snapshot().reserved.empty());
+  EXPECT_TRUE(second_ledger.value()->snapshot().used.empty());
+}
+
+TEST(KSpaceJetFixedReorderBufferM37,
+     PreacquiredOutOfOrderEdgeCreditsCommitHandlesInReorderPublishOrderWithoutPayloadDoubleCharge) {
+  SemanticDomain domain{};
+  domain.slice = 2U;
+  // One frozen ahead slot holds ordinal one; ordinal zero travels in the
+  // direct head capability. Together they exercise the A=1, domain=2 bound.
+  auto artifacts = make_artifacts(domain, 1U, 8U);
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  std::vector<byte> bookkeeping;
+  std::vector<FixedReorderBufferHandleSidecar> sidecars;
+  std::shared_ptr<ResourceVectorLedger> ledger;
+  auto created_buffer = make_typed_handle_buffer(artifacts.value(), bookkeeping, sidecars, ledger);
+  ASSERT_TRUE(created_buffer.ok()) << created_buffer.status();
+  auto buffer = std::move(created_buffer).value();
+  auto bound = bind_ingress(artifacts.value(), buffer);
+  ASSERT_TRUE(bound.ok()) << bound.status();
+  auto runtime = std::move(bound).value();
+  auto type_descriptor = make_reorder_handle_type();
+  ASSERT_TRUE(type_descriptor.ok()) << type_descriptor.status();
+  HandlePoolSlabs pool_slabs;
+  const auto pool_control_bytes = ksj::recon::runtime::fixed_buffer_pool_required_control_storage_bytes(2U);
+  ASSERT_TRUE(pool_control_bytes.ok()) << pool_control_bytes.status();
+  const auto pool_physical_bytes = static_cast<Quantity>(2U * kHandlePoolPayloadCapacity + pool_control_bytes.value());
+  const auto pool_capacity = ResourceVectorCapacity::create({
+    .domains =
+      {
+        .host_normal_bytes = pool_physical_bytes,
+        .descriptor_count = 2U,
+      },
+    .host_total_cap_bytes = pool_physical_bytes,
+  });
+  ASSERT_TRUE(pool_capacity.ok()) << pool_capacity.status();
+  auto pool_ledger = std::make_shared<ResourceVectorLedger>(pool_capacity.value());
+  auto created_pool = make_handle_pool(type_descriptor.value(), pool_slabs, 2U, pool_ledger);
+  ASSERT_TRUE(created_pool.ok()) << created_pool.status();
+  auto pool = std::move(created_pool).value();
+  EXPECT_EQ(pool_physical_bytes, pool_ledger->snapshot().used.host_normal_bytes);
+  EXPECT_EQ(2U, pool_ledger->snapshot().used.descriptor_count);
+  const auto& plan = artifacts.value().execution_plan.reorder_plans().front();
+  EXPECT_EQ(plan.host_metadata_charged_bytes(), ledger->snapshot().used.host_normal_bytes);
+  EXPECT_EQ(plan.descriptor_charged_count(), ledger->snapshot().used.descriptor_count);
+
+  auto edge_control = make_edge_control(2U);
+  ASSERT_TRUE(edge_control.ok()) << edge_control.status();
+  auto created_edge = FixedBufferEdge::create({.occupancy_ledger = nullptr,
+                                               .source_pool = pool.get(),
+                                               .max_items = 2U,
+                                               .max_logical_bytes = 2U * plan.charged_bytes_per_ordinal()},
+                                              FixedBufferEdgeStorage{.control = edge_control.value().view()});
+  ASSERT_TRUE(created_edge.ok()) << created_edge.status();
+  auto edge = std::move(created_edge).value();
+
+  // Reserve both downstream credits before either Provider callback. The
+  // ordinal-one reservation intentionally comes first, proving that detached
+  // credit acquisition cannot dictate FIFO order at ordered publication.
+  auto ordinal_one_edge_credit = edge->try_reserve(plan.charged_bytes_per_ordinal());
+  ASSERT_TRUE(ordinal_one_edge_credit.ok()) << ordinal_one_edge_credit.status();
+  auto ordinal_zero_edge_credit = edge->try_reserve(plan.charged_bytes_per_ordinal());
+  ASSERT_TRUE(ordinal_zero_edge_credit.ok()) << ordinal_zero_edge_credit.status();
+  EXPECT_EQ(2U, edge->snapshot().reserved_items);
+  EXPECT_EQ(0U, edge->snapshot().queued_items);
+  EXPECT_EQ(2U, edge->snapshot().occupied_items);
+  EXPECT_EQ(2U * plan.charged_bytes_per_ordinal(), edge->snapshot().occupied_logical_bytes);
+
+  auto ordinal_one_frame = complete_frame(*runtime.assembler, context(1U));
+  ASSERT_TRUE(ordinal_one_frame.ok()) << ordinal_one_frame.status();
+  auto ordinal_one_dispatch_result = runtime.ingress.try_prepare(ordinal_one_frame.value());
+  ASSERT_TRUE(ordinal_one_dispatch_result.ok()) << ordinal_one_dispatch_result.status();
+  auto ordinal_one_dispatch = std::move(ordinal_one_dispatch_result).value();
+  ASSERT_TRUE(ordinal_one_dispatch.commit().ok());
+  auto ordinal_one_handle = seal_handle(*pool, type_descriptor.value(), byte{0xD4U});
+  ASSERT_TRUE(ordinal_one_handle.ok()) << ordinal_one_handle.status();
+  ASSERT_TRUE(ordinal_one_dispatch.complete(ordinal_one_handle.value()).ok());
+  EXPECT_EQ(ksj::base::StatusCode::unavailable, ordinal_one_dispatch.try_acquire_publish().status().code());
+
+  auto ordinal_zero_frame = complete_frame(*runtime.assembler, context(0U));
+  ASSERT_TRUE(ordinal_zero_frame.ok()) << ordinal_zero_frame.status();
+  auto ordinal_zero_dispatch_result = runtime.ingress.try_prepare(ordinal_zero_frame.value());
+  ASSERT_TRUE(ordinal_zero_dispatch_result.ok()) << ordinal_zero_dispatch_result.status();
+  auto ordinal_zero_dispatch = std::move(ordinal_zero_dispatch_result).value();
+  ASSERT_TRUE(ordinal_zero_dispatch.commit().ok());
+  auto ordinal_zero_handle = seal_handle(*pool, type_descriptor.value(), byte{0xC3U});
+  ASSERT_TRUE(ordinal_zero_handle.ok()) << ordinal_zero_handle.status();
+  ASSERT_TRUE(ordinal_zero_dispatch.complete(ordinal_zero_handle.value()).ok());
+  EXPECT_EQ(1U, buffer.snapshot().retained_items);
+  EXPECT_EQ(1U, buffer.snapshot().direct_head_items);
+  EXPECT_EQ(0U, buffer.snapshot().free_slots);
+
+  auto ordinal_zero_publish = ordinal_zero_dispatch.try_acquire_publish();
+  ASSERT_TRUE(ordinal_zero_publish.ok()) << ordinal_zero_publish.status();
+  ASSERT_TRUE(ordinal_zero_publish.value().commit_to_edge(ordinal_zero_edge_credit.value()).ok());
+  EXPECT_FALSE(ordinal_zero_publish.value().valid());
+  EXPECT_FALSE(ordinal_zero_edge_credit.value().valid());
+  EXPECT_EQ(1U, edge->snapshot().reserved_items);
+  EXPECT_EQ(1U, edge->snapshot().queued_items);
+  EXPECT_EQ(1U, buffer.snapshot().retained_items);
+  EXPECT_EQ(0U, buffer.snapshot().direct_head_items);
+
+  auto ordinal_one_publish = ordinal_one_dispatch.try_acquire_publish();
+  ASSERT_TRUE(ordinal_one_publish.ok()) << ordinal_one_publish.status();
+  ASSERT_TRUE(ordinal_one_publish.value().commit_to_edge(ordinal_one_edge_credit.value()).ok());
+  EXPECT_FALSE(ordinal_one_publish.value().valid());
+  EXPECT_FALSE(ordinal_one_edge_credit.value().valid());
+  EXPECT_EQ(0U, edge->snapshot().reserved_items);
+  EXPECT_EQ(2U, edge->snapshot().queued_items);
+  EXPECT_EQ(2U, edge->snapshot().occupied_items);
+
+  auto first_edge_item = edge->try_acquire();
+  ASSERT_EQ(FixedBufferEdgePollKind::item, first_edge_item.kind);
+  ASSERT_TRUE(first_edge_item.lease.has_value());
+  const auto first_bytes = first_edge_item.lease->buffer().payload();
+  ASSERT_TRUE(first_bytes.ok()) << first_bytes.status();
+  ASSERT_EQ(1U, first_bytes.value().size());
+  EXPECT_EQ(byte{0xC3U}, first_bytes.value()[0]);
+  ASSERT_TRUE(first_edge_item.lease->acknowledge_consumed().ok());
+
+  auto second_edge_item = edge->try_acquire();
+  ASSERT_EQ(FixedBufferEdgePollKind::item, second_edge_item.kind);
+  ASSERT_TRUE(second_edge_item.lease.has_value());
+  const auto second_bytes = second_edge_item.lease->buffer().payload();
+  ASSERT_TRUE(second_bytes.ok()) << second_bytes.status();
+  ASSERT_EQ(1U, second_bytes.value().size());
+  EXPECT_EQ(byte{0xD4U}, second_bytes.value()[0]);
+  ASSERT_TRUE(second_edge_item.lease->acknowledge_consumed().ok());
+  EXPECT_EQ(2U, pool->snapshot().free_slots);
+  EXPECT_EQ(0U, edge->snapshot().occupied_items);
+  EXPECT_EQ(2U, edge->snapshot().free_slots);
+
+  ASSERT_TRUE(edge->end_of_input().ok());
+  ASSERT_TRUE(runtime.ingress.end_of_input().ok());
+  EXPECT_EQ(FixedBufferEdgePollKind::completed, edge->try_acquire().kind);
+  EXPECT_EQ(FixedReorderBufferState::completed, buffer.snapshot().state);
+  EXPECT_TRUE(ledger->snapshot().used.empty());
+  edge.reset();
+  pool.reset();
+  EXPECT_TRUE(pool_ledger->snapshot().used.empty());
+}
+
+TEST(KSpaceJetFixedReorderBufferM37, FailedInternalEdgeCommitClosesReorderAndReleasesTheUntransferredHandle) {
+  SemanticDomain domain{};
+  domain.slice = 2U;
+  auto artifacts = make_artifacts(domain, 1U, 8U);
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  std::vector<byte> bookkeeping;
+  std::vector<FixedReorderBufferHandleSidecar> sidecars;
+  std::shared_ptr<ResourceVectorLedger> ledger;
+  auto created_buffer = make_typed_handle_buffer(artifacts.value(), bookkeeping, sidecars, ledger);
+  ASSERT_TRUE(created_buffer.ok()) << created_buffer.status();
+  auto buffer = std::move(created_buffer).value();
+  auto bound = bind_ingress(artifacts.value(), buffer);
+  ASSERT_TRUE(bound.ok()) << bound.status();
+  auto runtime = std::move(bound).value();
+  auto type_descriptor = make_reorder_handle_type();
+  ASSERT_TRUE(type_descriptor.ok()) << type_descriptor.status();
+  HandlePoolSlabs pool_slabs;
+  auto created_pool = make_handle_pool(type_descriptor.value(), pool_slabs, 1U);
+  ASSERT_TRUE(created_pool.ok()) << created_pool.status();
+  auto pool = std::move(created_pool).value();
+  auto edge_control = make_edge_control(1U);
+  ASSERT_TRUE(edge_control.ok()) << edge_control.status();
+  auto created_edge = FixedBufferEdge::create(
+    {.occupancy_ledger = nullptr, .source_pool = pool.get(), .max_items = 1U, .max_logical_bytes = 0U},
+    FixedBufferEdgeStorage{.control = edge_control.value().view()});
+  ASSERT_TRUE(created_edge.ok()) << created_edge.status();
+  auto edge = std::move(created_edge).value();
+
+  auto frame = complete_frame(*runtime.assembler, context(0U));
+  ASSERT_TRUE(frame.ok()) << frame.status();
+  auto dispatch_result = runtime.ingress.try_prepare(frame.value());
+  ASSERT_TRUE(dispatch_result.ok()) << dispatch_result.status();
+  auto dispatch = std::move(dispatch_result).value();
+  ASSERT_TRUE(dispatch.commit().ok());
+  auto handle = seal_handle(*pool, type_descriptor.value(), byte{0xE5U});
+  ASSERT_TRUE(handle.ok()) << handle.status();
+  ASSERT_TRUE(dispatch.complete(handle.value()).ok());
+  auto publish = dispatch.try_acquire_publish();
+  ASSERT_TRUE(publish.ok()) << publish.status();
+  auto edge_reservation = edge->try_reserve(0U);
+  ASSERT_TRUE(edge_reservation.ok()) << edge_reservation.status();
+  EXPECT_FALSE(publish.value().commit_to_edge(edge_reservation.value()).ok());
+  EXPECT_EQ(FixedReorderBufferState::failed, buffer.snapshot().state);
+  EXPECT_EQ(1U, pool->snapshot().free_slots);
+}
+
+TEST(KSpaceJetFixedReorderBufferM37, TypedPublishDirectAcknowledgementFailsClosedInsteadOfDroppingItsHandle) {
+  SemanticDomain domain{};
+  domain.slice = 2U;
+  auto artifacts = make_artifacts(domain, 1U, 8U);
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  std::vector<byte> bookkeeping;
+  std::vector<FixedReorderBufferHandleSidecar> sidecars;
+  std::shared_ptr<ResourceVectorLedger> ledger;
+  auto created_buffer = make_typed_handle_buffer(artifacts.value(), bookkeeping, sidecars, ledger);
+  ASSERT_TRUE(created_buffer.ok()) << created_buffer.status();
+  auto buffer = std::move(created_buffer).value();
+  auto bound = bind_ingress(artifacts.value(), buffer);
+  ASSERT_TRUE(bound.ok()) << bound.status();
+  auto runtime = std::move(bound).value();
+  auto type_descriptor = make_reorder_handle_type();
+  ASSERT_TRUE(type_descriptor.ok()) << type_descriptor.status();
+  HandlePoolSlabs pool_slabs;
+  auto created_pool = make_handle_pool(type_descriptor.value(), pool_slabs, 1U);
+  ASSERT_TRUE(created_pool.ok()) << created_pool.status();
+  auto pool = std::move(created_pool).value();
+
+  auto frame = complete_frame(*runtime.assembler, context(0U));
+  ASSERT_TRUE(frame.ok()) << frame.status();
+  auto dispatch_result = runtime.ingress.try_prepare(frame.value());
+  ASSERT_TRUE(dispatch_result.ok()) << dispatch_result.status();
+  auto dispatch = std::move(dispatch_result).value();
+  ASSERT_TRUE(dispatch.commit().ok());
+  auto handle = seal_handle(*pool, type_descriptor.value(), byte{0xB7U});
+  ASSERT_TRUE(handle.ok()) << handle.status();
+  ASSERT_TRUE(dispatch.complete(handle.value()).ok());
+  auto publish = dispatch.try_acquire_publish();
+  ASSERT_TRUE(publish.ok()) << publish.status();
+  ASSERT_TRUE(publish.value().has_buffer_handle());
+
+  const auto acknowledged = publish.value().acknowledge_published();
+  EXPECT_EQ(ksj::base::StatusCode::state_error, acknowledged.code());
+  EXPECT_FALSE(publish.value().valid());
+  EXPECT_EQ(FixedReorderBufferState::failed, buffer.snapshot().state);
+  EXPECT_EQ(1U, pool->snapshot().free_slots);
+}
+
+TEST(KSpaceJetFixedReorderBufferM37, DroppedOrGapFailedPublishReleasesItsRetainedHandleExactlyOnce) {
+  {
+    SemanticDomain domain{};
+    domain.slice = 2U;
+    auto artifacts = make_artifacts(domain, 1U, 8U);
+    ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+    std::vector<byte> bookkeeping;
+    std::vector<FixedReorderBufferHandleSidecar> sidecars;
+    std::shared_ptr<ResourceVectorLedger> ledger;
+    auto created_buffer = make_typed_handle_buffer(artifacts.value(), bookkeeping, sidecars, ledger);
+    ASSERT_TRUE(created_buffer.ok()) << created_buffer.status();
+    auto buffer = std::move(created_buffer).value();
+    auto bound = bind_ingress(artifacts.value(), buffer);
+    ASSERT_TRUE(bound.ok()) << bound.status();
+    auto runtime = std::move(bound).value();
+    auto type_descriptor = make_reorder_handle_type();
+    ASSERT_TRUE(type_descriptor.ok()) << type_descriptor.status();
+    HandlePoolSlabs pool_slabs;
+    auto created_pool = make_handle_pool(type_descriptor.value(), pool_slabs, 1U);
+    ASSERT_TRUE(created_pool.ok()) << created_pool.status();
+    auto pool = std::move(created_pool).value();
+
+    auto frame = complete_frame(*runtime.assembler, context(0U));
+    ASSERT_TRUE(frame.ok()) << frame.status();
+    auto dispatch_result = runtime.ingress.try_prepare(frame.value());
+    ASSERT_TRUE(dispatch_result.ok()) << dispatch_result.status();
+    auto dispatch = std::move(dispatch_result).value();
+    ASSERT_TRUE(dispatch.commit().ok());
+    auto handle = seal_handle(*pool, type_descriptor.value(), byte{0x6DU});
+    ASSERT_TRUE(handle.ok()) << handle.status();
+    ASSERT_TRUE(dispatch.complete(handle.value()).ok());
+    {
+      auto publish = dispatch.try_acquire_publish();
+      ASSERT_TRUE(publish.ok()) << publish.status();
+      EXPECT_TRUE(publish.value().has_buffer_handle());
+    }
+    EXPECT_EQ(FixedReorderBufferState::failed, buffer.snapshot().state);
+    EXPECT_EQ(1U, pool->snapshot().free_slots);
+  }
+
+  {
+    SemanticDomain domain{};
+    domain.slice = 2U;
+    auto artifacts = make_artifacts(domain, 1U, 8U);
+    ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+    std::vector<byte> bookkeeping;
+    std::vector<FixedReorderBufferHandleSidecar> sidecars;
+    std::shared_ptr<ResourceVectorLedger> ledger;
+    auto created_buffer = make_typed_handle_buffer(artifacts.value(), bookkeeping, sidecars, ledger);
+    ASSERT_TRUE(created_buffer.ok()) << created_buffer.status();
+    auto buffer = std::move(created_buffer).value();
+    auto bound = bind_ingress(artifacts.value(), buffer);
+    ASSERT_TRUE(bound.ok()) << bound.status();
+    auto runtime = std::move(bound).value();
+    auto type_descriptor = make_reorder_handle_type();
+    ASSERT_TRUE(type_descriptor.ok()) << type_descriptor.status();
+    HandlePoolSlabs pool_slabs;
+    auto created_pool = make_handle_pool(type_descriptor.value(), pool_slabs, 1U);
+    ASSERT_TRUE(created_pool.ok()) << created_pool.status();
+    auto pool = std::move(created_pool).value();
+
+    auto frame = complete_frame(*runtime.assembler, context(1U));
+    ASSERT_TRUE(frame.ok()) << frame.status();
+    {
+      auto dispatch_result = runtime.ingress.try_prepare(frame.value());
+      ASSERT_TRUE(dispatch_result.ok()) << dispatch_result.status();
+      auto dispatch = std::move(dispatch_result).value();
+      ASSERT_TRUE(dispatch.commit().ok());
+      auto handle = seal_handle(*pool, type_descriptor.value(), byte{0x73U});
+      ASSERT_TRUE(handle.ok()) << handle.status();
+      ASSERT_TRUE(dispatch.complete(handle.value()).ok());
+      EXPECT_EQ(ksj::base::StatusCode::validation_error, runtime.ingress.end_of_input().code());
+      EXPECT_EQ(FixedReorderBufferState::failed_draining, buffer.snapshot().state);
+    }
+    EXPECT_EQ(FixedReorderBufferState::failed, buffer.snapshot().state);
+    EXPECT_EQ(1U, pool->snapshot().free_slots);
+  }
+}
+
+TEST(KSpaceJetFixedReorderBufferM37, ExplicitIngressAbortReleasesACompletedDirectHeadHandle) {
+  SemanticDomain domain{};
+  domain.slice = 2U;
+  auto artifacts = make_artifacts(domain, 1U, 8U);
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  std::vector<byte> bookkeeping;
+  std::vector<FixedReorderBufferHandleSidecar> sidecars;
+  std::shared_ptr<ResourceVectorLedger> ledger;
+  auto created_buffer = make_typed_handle_buffer(artifacts.value(), bookkeeping, sidecars, ledger);
+  ASSERT_TRUE(created_buffer.ok()) << created_buffer.status();
+  auto buffer = std::move(created_buffer).value();
+  auto bound = bind_ingress(artifacts.value(), buffer);
+  ASSERT_TRUE(bound.ok()) << bound.status();
+  auto runtime = std::move(bound).value();
+  auto type_descriptor = make_reorder_handle_type();
+  ASSERT_TRUE(type_descriptor.ok()) << type_descriptor.status();
+  HandlePoolSlabs pool_slabs;
+  auto created_pool = make_handle_pool(type_descriptor.value(), pool_slabs, 1U);
+  ASSERT_TRUE(created_pool.ok()) << created_pool.status();
+  auto pool = std::move(created_pool).value();
+
+  auto frame = complete_frame(*runtime.assembler, context(0U));
+  ASSERT_TRUE(frame.ok()) << frame.status();
+  auto dispatch_result = runtime.ingress.try_prepare(frame.value());
+  ASSERT_TRUE(dispatch_result.ok()) << dispatch_result.status();
+  auto dispatch = std::move(dispatch_result).value();
+  ASSERT_TRUE(dispatch.commit().ok());
+  auto handle = seal_handle(*pool, type_descriptor.value(), byte{0xA7U});
+  ASSERT_TRUE(handle.ok()) << handle.status();
+  ASSERT_TRUE(dispatch.complete(handle.value()).ok());
+  ASSERT_TRUE(runtime.ingress.abort().ok());
+  EXPECT_EQ(FixedReorderBufferState::failed_draining, buffer.snapshot().state);
+  dispatch = ksj::recon::runtime::FrameDispatch{};
+  EXPECT_EQ(FixedReorderBufferState::failed, buffer.snapshot().state);
+  EXPECT_EQ(1U, pool->snapshot().free_slots);
 }
 
 } // namespace

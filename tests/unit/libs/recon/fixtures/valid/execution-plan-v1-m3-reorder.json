@@ -57,13 +57,16 @@
       "publish_policy": "next-expected-only",
       "certified_skipped_ordinals": [],
       "end_of_input_policy": "fail",
-      "host_metadata_charged_bytes": 32,
+      "handle_storage_charged_bytes": 64,
+      "host_metadata_charged_bytes": 96,
       "descriptor_charged_count": 1
     }
   ],
+  "buffer_pool_plans": [],
+  "data_edge_plans": [],
   "edge_capacities": [],
   "resource_vector": {
-    "host_normal_bytes": 192,
+    "host_normal_bytes": 256,
     "host_pinned_bytes": 0,
     "host_hugepage_bytes": 0,
     "shared_host_bytes": 0,

@@ -144,11 +144,15 @@ struct Runtime {
       .publish_policy = std::string(ksj::recon::kNextExpectedOnlyReorderPublishPolicy),
       .certified_skipped_ordinals = {},
       .end_of_input_policy = std::string(ksj::recon::kFailReorderEndOfInputPolicy),
+      .handle_storage_charged_bytes = max_ahead_items * ksj::recon::kDenseCartesianReorderHandleSidecarChargedBytes,
       .host_metadata_charged_bytes = reorder_metadata.value(),
       .descriptor_charged_count = max_ahead_items,
     },
   };
   specification.resource_vector = {
+    // This fixture intentionally has no M3.7 BufferPoolPlan/DataEdgePlan.
+    // Its legacy opaque ReorderPlan therefore owns its full ahead payload in
+    // addition to the KeySlot and Reorder bookkeeping charges.
     .host_normal_bytes = key_metadata.value() + reorder_metadata.value() + max_ahead_items * kChargedBytes,
     .descriptor_count = max_ahead_items,
   };
@@ -220,7 +224,7 @@ struct Runtime {
     return storage_bytes.status();
   }
   auto storage = std::make_unique<std::vector<byte>>(storage_bytes.value(), byte{0});
-  const auto host_charge = reorder_plan.host_metadata_charged_bytes() + reorder_plan.max_ahead_charged_bytes();
+  const auto host_charge = reorder_plan.host_metadata_charged_bytes();
   const auto capacity = ResourceVectorCapacity::create(
     {.domains = {.host_normal_bytes = host_charge, .descriptor_count = reorder_plan.descriptor_charged_count()},
      .host_total_cap_bytes = host_charge});
@@ -303,6 +307,27 @@ struct Runtime {
   return firing;
 }
 
+TEST(KSpaceJetM3ReorderIngressRegression, CompletedFrameDispatchBytesMeetFrozenProviderAbiAlignment) {
+  auto created = make_runtime();
+  ASSERT_TRUE(created.ok()) << created.status();
+  auto runtime = std::move(created).value();
+
+  auto completed = complete_frame(*runtime.host, 0U);
+  ASSERT_TRUE(completed.ok()) << completed.status();
+  auto prepared = runtime.ingress->try_prepare(completed.value());
+  ASSERT_TRUE(prepared.ok()) << prepared.status();
+  auto dispatch = std::move(prepared).value();
+  ASSERT_TRUE(dispatch.commit().ok());
+
+  const auto bytes = dispatch.input_bytes();
+  ASSERT_TRUE(bytes.ok()) << bytes.status();
+  ASSERT_NE(nullptr, bytes.value().data());
+  EXPECT_EQ(0U, reinterpret_cast<std::uintptr_t>(bytes.value().data()) %
+                  ksj::recon::runtime::kCartesianFrameSlotStorageAlignment);
+
+  ASSERT_TRUE(dispatch.abort().ok());
+}
+
 TEST(KSpaceJetM3ReorderIngressRegression, OutOfOrderCompletionGatesPublishAndRetriesAfterHeadAcknowledgement) {
   auto created = make_runtime(3U);
   ASSERT_TRUE(created.ok()) << created.status();
@@ -361,7 +386,8 @@ TEST(KSpaceJetM3ReorderIngressRegression, DroppedCompletedFrameDispatchFailsBoth
   {
     auto dispatch = prepare_complete(runtime, 0U, 100U);
     ASSERT_TRUE(dispatch.ok()) << dispatch.status();
-    EXPECT_EQ(1U, runtime.buffer->snapshot().retained_items);
+    EXPECT_EQ(1U, runtime.buffer->snapshot().direct_head_items);
+    EXPECT_EQ(0U, runtime.buffer->snapshot().retained_items);
   }
   EXPECT_EQ(FixedReorderBufferState::failed, runtime.buffer->snapshot().state);
   EXPECT_TRUE(runtime.host->snapshot().failed);
@@ -415,7 +441,7 @@ TEST(KSpaceJetM3ReorderIngressRegression, DroppedM3PublishLeaseFailsBothSidesWit
   EXPECT_TRUE(runtime.ledger->snapshot().used.empty());
 }
 
-TEST(KSpaceJetM3ReorderIngressRegression, CompleteRecyclesHostSlotButRetainsReorderCreditUntilPublishAck) {
+TEST(KSpaceJetM3ReorderIngressRegression, CompleteRecyclesHostSlotAndKeepsTheCurrentHeadOutOfAheadCredits) {
   auto created = make_runtime();
   ASSERT_TRUE(created.ok()) << created.status();
   auto runtime = std::move(created).value();
@@ -423,12 +449,15 @@ TEST(KSpaceJetM3ReorderIngressRegression, CompleteRecyclesHostSlotButRetainsReor
   auto dispatch = prepare_complete(runtime, 0U, 100U);
   ASSERT_TRUE(dispatch.ok()) << dispatch.status();
   EXPECT_EQ(4U, runtime.host->snapshot().free_slots);
-  EXPECT_EQ(1U, runtime.buffer->snapshot().retained_items);
+  EXPECT_EQ(1U, runtime.buffer->snapshot().direct_head_items);
+  EXPECT_EQ(0U, runtime.buffer->snapshot().retained_items);
 
   auto publish = dispatch.value().try_acquire_publish();
   ASSERT_TRUE(publish.ok()) << publish.status();
-  EXPECT_EQ(1U, runtime.buffer->snapshot().retained_items);
+  EXPECT_EQ(1U, runtime.buffer->snapshot().direct_head_items);
+  EXPECT_EQ(0U, runtime.buffer->snapshot().retained_items);
   ASSERT_TRUE(publish.value().acknowledge_published().ok());
+  EXPECT_EQ(0U, runtime.buffer->snapshot().direct_head_items);
   EXPECT_EQ(0U, runtime.buffer->snapshot().retained_items);
   ASSERT_TRUE(runtime.ingress->abort().ok());
 }
@@ -477,8 +506,8 @@ TEST(KSpaceJetM3ReorderIngressRegression, DroppedLaterSourceLeaseBlocksHeldPubli
   EXPECT_TRUE(runtime.ledger->snapshot().used.empty());
 }
 
-TEST(KSpaceJetM3ReorderIngressRegression, ExactAheadCapacityKeepsLeaseForRetryAfterHeadPublish) {
-  auto created = make_runtime(2U);
+TEST(KSpaceJetM3ReorderIngressRegression, AheadCapacityCountsOnlyFutureOrdinalsAndLeavesTheHeadForProgress) {
+  auto created = make_runtime(1U);
   ASSERT_TRUE(created.ok()) << created.status();
   auto runtime = std::move(created).value();
 
@@ -486,7 +515,10 @@ TEST(KSpaceJetM3ReorderIngressRegression, ExactAheadCapacityKeepsLeaseForRetryAf
   ASSERT_TRUE(one.ok()) << one.status();
   auto zero = prepare_complete(runtime, 0U, 100U);
   ASSERT_TRUE(zero.ok()) << zero.status();
-  EXPECT_EQ(2U, runtime.buffer->snapshot().retained_items);
+  // Ordinal one occupies the one plan-charged future slot. Ordinal zero is
+  // the direct current head, so both can make progress with A=1.
+  EXPECT_EQ(1U, runtime.buffer->snapshot().retained_items);
+  EXPECT_EQ(1U, runtime.buffer->snapshot().direct_head_items);
   EXPECT_EQ(0U, runtime.buffer->snapshot().free_slots);
 
   auto two_lease = complete_frame(*runtime.host, 2U);
@@ -497,16 +529,21 @@ TEST(KSpaceJetM3ReorderIngressRegression, ExactAheadCapacityKeepsLeaseForRetryAf
   auto zero_publish = zero.value().try_acquire_publish();
   ASSERT_TRUE(zero_publish.ok()) << zero_publish.status();
   ASSERT_TRUE(zero_publish.value().acknowledge_published().ok());
+  // The window now reaches ordinal two, but its only ahead slot remains
+  // owned by ordinal one until ordinal one is published.
+  EXPECT_EQ(ksj::base::StatusCode::unavailable, runtime.ingress->try_prepare(two_lease.value()).status().code());
+  EXPECT_TRUE(two_lease.value().valid());
+
+  auto one_publish = one.value().try_acquire_publish();
+  ASSERT_TRUE(one_publish.ok()) << one_publish.status();
+  ASSERT_TRUE(one_publish.value().acknowledge_published().ok());
+
   auto two = runtime.ingress->try_prepare(two_lease.value());
   ASSERT_TRUE(two.ok()) << two.status();
   EXPECT_FALSE(two_lease.value().valid());
   auto two_dispatch = std::move(two).value();
   ASSERT_TRUE(two_dispatch.commit().ok());
   ASSERT_TRUE(two_dispatch.complete(OpaqueReorderPayloadHandle::from_opaque_id(102U)).ok());
-
-  auto one_publish = one.value().try_acquire_publish();
-  ASSERT_TRUE(one_publish.ok()) << one_publish.status();
-  ASSERT_TRUE(one_publish.value().acknowledge_published().ok());
   auto two_publish = two_dispatch.try_acquire_publish();
   ASSERT_TRUE(two_publish.ok()) << two_publish.status();
   ASSERT_TRUE(two_publish.value().acknowledge_published().ok());

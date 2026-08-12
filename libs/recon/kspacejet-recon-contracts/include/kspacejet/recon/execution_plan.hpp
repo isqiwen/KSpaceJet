@@ -1,8 +1,12 @@
 #pragma once
 
+#include "kspacejet/recon/artifact_digest.hpp"
 #include "kspacejet/recon/execution_profile.hpp"
 #include "kspacejet/recon/resource_vector.hpp"
+#include "kspacejet/recon/type_descriptor.hpp"
 
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -14,21 +18,6 @@ namespace ksj::recon {
 inline constexpr std::string_view kExecutionPlanSchemaVersion = "kspacejet.execution-plan/v1";
 inline constexpr std::string_view kVerificationRecordSchemaVersion = "kspacejet.verification-record/v1";
 inline constexpr std::string_view kAdmissionRecordSchemaVersion = "kspacejet.admission-record/v1";
-
-class ArtifactDigest final {
-public:
-  // v1 artifact identities are lower-case `sha256:` hexadecimal digests.
-  [[nodiscard]] static Result<ArtifactDigest> parse(std::string_view value, std::string_view field_name);
-
-  [[nodiscard]] const std::string& value() const noexcept { return value_; }
-
-  friend bool operator==(const ArtifactDigest&, const ArtifactDigest&) noexcept = default;
-
-private:
-  explicit ArtifactDigest(std::string value) : value_(std::move(value)) {}
-
-  std::string value_;
-};
 
 struct PlanInputDigestSpec {
   std::string resolved_pipeline;
@@ -240,11 +229,18 @@ inline constexpr std::string_view kFailReorderEndOfInputPolicy = "fail";
 inline constexpr Quantity kFirstExpectedReorderOrdinal = 0U;
 inline constexpr Quantity kDenseCartesianReorderOrdinalRecordChargedBytes = 16U;
 inline constexpr Quantity kDenseCartesianReorderBufferedSlotChargedBytes = 16U;
+// M3.7 reserves a fixed caller-slab sidecar for a move-only immutable buffer
+// handle at every ahead position.  This is an abstract ABI/storage charge,
+// not a claim about `sizeof(ImmutableBufferHandle)`: the future runtime must
+// statically prove its concrete sidecar representation fits this frozen
+// budget before binding a plan.
+inline constexpr Quantity kDenseCartesianReorderHandleSidecarChargedBytes = 64U;
 
 // This abstract charge owns one durable state/seen record for every ordinal
-// in the closed dense domain and one physical buffered-slot record for every
-// concurrently retained ahead item.  The payload bytes themselves are
-// charged separately by ReorderPlan::max_ahead_charged_bytes().
+// in the closed dense domain, one physical buffered-slot record, and one
+// fixed immutable-handle sidecar for every concurrently retained ahead item.
+// `max_ahead_charged_bytes` is a logical credit only in M3.7: the backing
+// payload is charged exactly once by its BufferPoolPlan.
 [[nodiscard]] Result<Quantity> dense_cartesian_reorder_host_metadata_charged_bytes(Quantity ordinal_domain_bound,
                                                                                    Quantity max_ahead_items,
                                                                                    std::string_view field_name);
@@ -301,6 +297,11 @@ struct ReorderPlanSpec {
   Quantity first_expected_ordinal = kFirstExpectedReorderOrdinal;
   Quantity last_expected_ordinal = 0;
   Quantity max_ahead_items = 0;
+  // Logical bytes retained by ahead-order credit.  In a plan-bound M3.7
+  // path this does not create a second physical payload charge: the source
+  // BufferPoolPlan owns it.  A legacy opaque M3 ReorderPlan retains the
+  // historical physical reservation only in an ExecutionPlan with no M3.7
+  // BufferPoolPlan/DataEdgePlan artifacts at all.
   Quantity max_ahead_charged_bytes = 0;
   // This is a closed-domain arithmetic fact, always
   // ordinal_domain_bound - 1.  It is not a runtime dispatch window, a skip
@@ -315,6 +316,9 @@ struct ReorderPlanSpec {
   // the artifact so a later extension cannot silently reinterpret a gap.
   std::vector<Quantity> certified_skipped_ordinals;
   std::string end_of_input_policy = std::string(kFailReorderEndOfInputPolicy);
+  // Must equal max_ahead_items * kDenseCartesianReorderHandleSidecarChargedBytes.
+  // It is included in host_metadata_charged_bytes under the M3.7 storage id.
+  Quantity handle_storage_charged_bytes = 0;
   Quantity host_metadata_charged_bytes = 0;
   Quantity descriptor_charged_count = 0;
 };
@@ -353,6 +357,9 @@ public:
     return certified_skipped_ordinals_;
   }
   [[nodiscard]] const std::string& end_of_input_policy() const noexcept { return end_of_input_policy_; }
+  [[nodiscard]] constexpr Quantity handle_storage_charged_bytes() const noexcept {
+    return handle_storage_charged_bytes_.value();
+  }
   [[nodiscard]] constexpr Quantity host_metadata_charged_bytes() const noexcept {
     return host_metadata_charged_bytes_.value();
   }
@@ -360,17 +367,16 @@ public:
     return descriptor_charged_count_.value();
   }
 
-  [[nodiscard]] static ReorderPlan
-  from_validated(std::string node_id, std::vector<DenseCartesianOrdinalDimension> ordinal_dimensions,
-                 std::string order_domain_id, std::string ordinal_binding_id, std::string completed_frame_input_port,
-                 std::string ordered_output_port, CanonicalQuantity outputs_per_ordinal,
-                 CanonicalQuantity charged_bytes_per_ordinal, std::string mapping_algorithm_id,
-                 std::string storage_accounting_id, CanonicalQuantity ordinal_domain_bound,
-                 CanonicalQuantity first_expected_ordinal, CanonicalQuantity last_expected_ordinal,
-                 CanonicalQuantity max_ahead_items, CanonicalQuantity max_ahead_charged_bytes,
-                 CanonicalQuantity max_gap_ordinals, std::string occurrence_policy, std::string publish_policy,
-                 std::vector<Quantity> certified_skipped_ordinals, std::string end_of_input_policy,
-                 CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count) noexcept;
+  [[nodiscard]] static ReorderPlan from_validated(
+    std::string node_id, std::vector<DenseCartesianOrdinalDimension> ordinal_dimensions, std::string order_domain_id,
+    std::string ordinal_binding_id, std::string completed_frame_input_port, std::string ordered_output_port,
+    CanonicalQuantity outputs_per_ordinal, CanonicalQuantity charged_bytes_per_ordinal,
+    std::string mapping_algorithm_id, std::string storage_accounting_id, CanonicalQuantity ordinal_domain_bound,
+    CanonicalQuantity first_expected_ordinal, CanonicalQuantity last_expected_ordinal,
+    CanonicalQuantity max_ahead_items, CanonicalQuantity max_ahead_charged_bytes, CanonicalQuantity max_gap_ordinals,
+    std::string occurrence_policy, std::string publish_policy, std::vector<Quantity> certified_skipped_ordinals,
+    std::string end_of_input_policy, CanonicalQuantity handle_storage_charged_bytes,
+    CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count) noexcept;
 
 private:
   ReorderPlan(std::string node_id, std::vector<DenseCartesianOrdinalDimension> ordinal_dimensions,
@@ -382,7 +388,8 @@ private:
               CanonicalQuantity max_ahead_items, CanonicalQuantity max_ahead_charged_bytes,
               CanonicalQuantity max_gap_ordinals, std::string occurrence_policy, std::string publish_policy,
               std::vector<Quantity> certified_skipped_ordinals, std::string end_of_input_policy,
-              CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count) noexcept
+              CanonicalQuantity handle_storage_charged_bytes, CanonicalQuantity host_metadata_charged_bytes,
+              CanonicalQuantity descriptor_charged_count) noexcept
       : node_id_(std::move(node_id)), order_domain_id_(std::move(order_domain_id)),
         ordinal_binding_id_(std::move(ordinal_binding_id)),
         completed_frame_input_port_(std::move(completed_frame_input_port)),
@@ -394,8 +401,10 @@ private:
         max_ahead_items_(max_ahead_items), max_ahead_charged_bytes_(max_ahead_charged_bytes),
         max_gap_ordinals_(max_gap_ordinals), occurrence_policy_(std::move(occurrence_policy)),
         publish_policy_(std::move(publish_policy)), certified_skipped_ordinals_(std::move(certified_skipped_ordinals)),
-        end_of_input_policy_(std::move(end_of_input_policy)), host_metadata_charged_bytes_(host_metadata_charged_bytes),
-        descriptor_charged_count_(descriptor_charged_count) {}
+        end_of_input_policy_(std::move(end_of_input_policy)),
+        handle_storage_charged_bytes_(handle_storage_charged_bytes),
+        host_metadata_charged_bytes_(host_metadata_charged_bytes), descriptor_charged_count_(descriptor_charged_count) {
+  }
 
   std::string node_id_;
   std::string order_domain_id_;
@@ -417,8 +426,249 @@ private:
   std::string publish_policy_;
   std::vector<Quantity> certified_skipped_ordinals_;
   std::string end_of_input_policy_;
+  CanonicalQuantity handle_storage_charged_bytes_;
   CanonicalQuantity host_metadata_charged_bytes_;
   CanonicalQuantity descriptor_charged_count_;
+};
+
+// M3.7 freezes one narrow host-normal immutable data plane.  The pool is the
+// only owner of payload physical memory; all downstream structures retain
+// only move-only handles, logical byte credits, and descriptor/control state.
+inline constexpr std::string_view kM37BufferPoolStorageAccountingId = "kspacejet.buffer-pool-storage/host-normal-v1";
+inline constexpr std::string_view kM37DataEdgeStorageAccountingId = "kspacejet.data-edge-storage/fixed-fifo-v1";
+inline constexpr std::string_view kM37NormalEoiDrainCancellationFailTerminalPolicy =
+  "normal-eoi-drain-cancellation-fail";
+inline constexpr std::string_view kM37PlanBoundDataPlaneProofObligation = "PO-13.m3_7_plan_bound_data_plane";
+inline constexpr std::string_view kM37SinglePhysicalPayloadChargeRuntimeAssumption =
+  "RA-02.m3_7_single_physical_payload_charge";
+inline constexpr std::string_view kM37PlanBoundDataPlaneVerificationObligation = "M3.7.plan_bound_data_plane";
+inline constexpr std::string_view kM37SinglePhysicalPayloadChargeVerificationObligation =
+  "M3.7.single_physical_payload_charge_runtime_assumption";
+
+// These are stable artifact accounting units, not implementation object-layout
+// assertions.  Concrete caller-slab runtime storage must prove it fits the
+// frozen charge before instantiating the corresponding plan.
+inline constexpr Quantity kM37BufferPoolControlChargedBytesPerSlot = 40U;
+inline constexpr Quantity kM37DataEdgeControlChargedBytesPerItem = 96U;
+// Stable abstract staging for the one M3.7 synchronous Provider ABI endpoint:
+// one lease-control record, one input batch view, one input item view, one
+// output grant state, and one sealed-output view.  It is intentionally not a
+// C/C++ object-layout assertion; the runtime must prove its concrete staging
+// fits this frozen charge before it creates the bridge.
+inline constexpr Quantity kM37FiringLeaseHostStagingChargedBytes = 4096U;
+inline constexpr Quantity kM37FiringLeaseHostStagingDescriptorCount = 5U;
+// `ksj_output_grant` names an output port with a uint32_t.  The plan freezes
+// the exact zero-based position in the resolved OperatorContract output-port
+// array so the runtime never guesses or lexically re-sorts Provider ports.
+inline constexpr Quantity kM37MaximumProducerAbiPort = static_cast<Quantity>(std::numeric_limits<std::uint32_t>::max());
+
+[[nodiscard]] Result<Quantity> m37_buffer_pool_host_metadata_charged_bytes(Quantity slot_count,
+                                                                           std::string_view field_name);
+[[nodiscard]] Result<Quantity> m37_buffer_pool_physical_charge_bytes(Quantity slot_count,
+                                                                     Quantity payload_capacity_bytes,
+                                                                     Quantity metadata_capacity_bytes,
+                                                                     std::string_view field_name);
+[[nodiscard]] Result<Quantity> m37_data_edge_host_metadata_charged_bytes(Quantity max_items,
+                                                                         std::string_view field_name);
+
+struct BufferPoolPlanSpec {
+  std::string pool_id;
+  std::string producer_node_id;
+  std::string producer_port_name;
+  // Frozen provider provenance for the one producer endpoint.  Node/port
+  // names alone identify graph topology, not the Provider ABI descriptor
+  // authorized to fill this pool.
+  std::string producer_provider_id;
+  std::string producer_bundle_digest;
+  std::string producer_operator_id;
+  std::string producer_contract_digest;
+  TypeDescriptor type_descriptor;
+  TypeMemoryDomain memory_domain{TypeMemoryDomain::host_normal};
+  Quantity slot_count = 0;
+  Quantity payload_capacity_bytes = 0;
+  Quantity metadata_capacity_bytes = 0;
+  Quantity payload_alignment_bytes = 0;
+  std::string storage_accounting_id = std::string(kM37BufferPoolStorageAccountingId);
+  Quantity host_metadata_charged_bytes = 0;
+  Quantity descriptor_charged_count = 0;
+  // Exact fixed caller-slab bytes: payload + metadata + pool control.  It is
+  // an accounting scalar and not a claim that the runtime allocated slabs.
+  Quantity physical_charge_bytes = 0;
+};
+
+class BufferPoolPlan final {
+public:
+  [[nodiscard]] const std::string& pool_id() const noexcept { return pool_id_; }
+  [[nodiscard]] const std::string& producer_node_id() const noexcept { return producer_node_id_; }
+  [[nodiscard]] const std::string& producer_port_name() const noexcept { return producer_port_name_; }
+  [[nodiscard]] const std::string& producer_provider_id() const noexcept { return producer_provider_id_; }
+  [[nodiscard]] const ArtifactDigest& producer_bundle_digest() const noexcept { return producer_bundle_digest_; }
+  [[nodiscard]] const std::string& producer_operator_id() const noexcept { return producer_operator_id_; }
+  [[nodiscard]] const ArtifactDigest& producer_contract_digest() const noexcept { return producer_contract_digest_; }
+  [[nodiscard]] const TypeDescriptor& type_descriptor() const noexcept { return type_descriptor_; }
+  [[nodiscard]] constexpr TypeMemoryDomain memory_domain() const noexcept { return memory_domain_; }
+  [[nodiscard]] constexpr Quantity slot_count() const noexcept { return slot_count_.value(); }
+  [[nodiscard]] constexpr Quantity payload_capacity_bytes() const noexcept { return payload_capacity_bytes_.value(); }
+  [[nodiscard]] constexpr Quantity metadata_capacity_bytes() const noexcept { return metadata_capacity_bytes_.value(); }
+  [[nodiscard]] constexpr Quantity payload_alignment_bytes() const noexcept { return payload_alignment_bytes_.value(); }
+  [[nodiscard]] const std::string& storage_accounting_id() const noexcept { return storage_accounting_id_; }
+  [[nodiscard]] constexpr Quantity host_metadata_charged_bytes() const noexcept {
+    return host_metadata_charged_bytes_.value();
+  }
+  [[nodiscard]] constexpr Quantity descriptor_charged_count() const noexcept {
+    return descriptor_charged_count_.value();
+  }
+  [[nodiscard]] constexpr Quantity physical_charge_bytes() const noexcept { return physical_charge_bytes_.value(); }
+
+  [[nodiscard]] static BufferPoolPlan
+  from_validated(std::string pool_id, std::string producer_node_id, std::string producer_port_name,
+                 std::string producer_provider_id, ArtifactDigest producer_bundle_digest,
+                 std::string producer_operator_id, ArtifactDigest producer_contract_digest,
+                 TypeDescriptor type_descriptor, TypeMemoryDomain memory_domain, CanonicalQuantity slot_count,
+                 CanonicalQuantity payload_capacity_bytes, CanonicalQuantity metadata_capacity_bytes,
+                 CanonicalQuantity payload_alignment_bytes, std::string storage_accounting_id,
+                 CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count,
+                 CanonicalQuantity physical_charge_bytes) noexcept;
+
+private:
+  BufferPoolPlan(std::string pool_id, std::string producer_node_id, std::string producer_port_name,
+                 std::string producer_provider_id, ArtifactDigest producer_bundle_digest,
+                 std::string producer_operator_id, ArtifactDigest producer_contract_digest,
+                 TypeDescriptor type_descriptor, TypeMemoryDomain memory_domain, CanonicalQuantity slot_count,
+                 CanonicalQuantity payload_capacity_bytes, CanonicalQuantity metadata_capacity_bytes,
+                 CanonicalQuantity payload_alignment_bytes, std::string storage_accounting_id,
+                 CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count,
+                 CanonicalQuantity physical_charge_bytes) noexcept
+      : pool_id_(std::move(pool_id)), producer_node_id_(std::move(producer_node_id)),
+        producer_port_name_(std::move(producer_port_name)), producer_provider_id_(std::move(producer_provider_id)),
+        producer_bundle_digest_(std::move(producer_bundle_digest)),
+        producer_operator_id_(std::move(producer_operator_id)),
+        producer_contract_digest_(std::move(producer_contract_digest)), type_descriptor_(std::move(type_descriptor)),
+        memory_domain_(memory_domain), slot_count_(slot_count), payload_capacity_bytes_(payload_capacity_bytes),
+        metadata_capacity_bytes_(metadata_capacity_bytes), payload_alignment_bytes_(payload_alignment_bytes),
+        storage_accounting_id_(std::move(storage_accounting_id)),
+        host_metadata_charged_bytes_(host_metadata_charged_bytes), descriptor_charged_count_(descriptor_charged_count),
+        physical_charge_bytes_(physical_charge_bytes) {}
+
+  std::string pool_id_;
+  std::string producer_node_id_;
+  std::string producer_port_name_;
+  std::string producer_provider_id_;
+  ArtifactDigest producer_bundle_digest_;
+  std::string producer_operator_id_;
+  ArtifactDigest producer_contract_digest_;
+  TypeDescriptor type_descriptor_;
+  TypeMemoryDomain memory_domain_;
+  CanonicalQuantity slot_count_;
+  CanonicalQuantity payload_capacity_bytes_;
+  CanonicalQuantity metadata_capacity_bytes_;
+  CanonicalQuantity payload_alignment_bytes_;
+  std::string storage_accounting_id_;
+  CanonicalQuantity host_metadata_charged_bytes_;
+  CanonicalQuantity descriptor_charged_count_;
+  CanonicalQuantity physical_charge_bytes_;
+};
+
+struct DataEdgePlanSpec {
+  std::string edge_id;
+  std::string source_pool_id;
+  std::string producer_node_id;
+  std::string producer_port_name;
+  // Zero-based position among the resolved producer OperatorContract's output
+  // ports, preserving the contract array order.  It is an ABI-facing value;
+  // zero is valid and therefore this is a canonical (not positive) quantity.
+  Quantity producer_abi_port = 0;
+  std::string consumer_node_id;
+  std::string consumer_port_name;
+  TypeDescriptor type_descriptor;
+  // Full logical edge-credit capacity: downstream FIFO capacity plus the
+  // matching ReorderPlan's ahead-held handles.  One credit follows a payload
+  // from a pre-callback lease, through reorder, into the FIFO.
+  Quantity max_items = 0;
+  // Logical payload + metadata credit only.  It must never be added to a
+  // physical-memory reservation because source_pool_id already owns bytes.
+  Quantity max_logical_bytes = 0;
+  std::string storage_accounting_id = std::string(kM37DataEdgeStorageAccountingId);
+  Quantity host_metadata_charged_bytes = 0;
+  Quantity descriptor_charged_count = 0;
+  // Persistent M3.7 Provider ABI view storage, distinct from FIFO control
+  // metadata and charged once per plan-owned producer/edge bridge.
+  Quantity firing_lease_staging_charged_bytes = 0;
+  Quantity firing_lease_staging_descriptor_count = 0;
+  std::string terminal_policy = std::string(kM37NormalEoiDrainCancellationFailTerminalPolicy);
+};
+
+class DataEdgePlan final {
+public:
+  [[nodiscard]] const std::string& edge_id() const noexcept { return edge_id_; }
+  [[nodiscard]] const std::string& source_pool_id() const noexcept { return source_pool_id_; }
+  [[nodiscard]] const std::string& producer_node_id() const noexcept { return producer_node_id_; }
+  [[nodiscard]] const std::string& producer_port_name() const noexcept { return producer_port_name_; }
+  [[nodiscard]] constexpr Quantity producer_abi_port() const noexcept { return producer_abi_port_.value(); }
+  [[nodiscard]] const std::string& consumer_node_id() const noexcept { return consumer_node_id_; }
+  [[nodiscard]] const std::string& consumer_port_name() const noexcept { return consumer_port_name_; }
+  [[nodiscard]] const TypeDescriptor& type_descriptor() const noexcept { return type_descriptor_; }
+  [[nodiscard]] constexpr Quantity max_items() const noexcept { return max_items_.value(); }
+  [[nodiscard]] constexpr Quantity max_logical_bytes() const noexcept { return max_logical_bytes_.value(); }
+  [[nodiscard]] const std::string& storage_accounting_id() const noexcept { return storage_accounting_id_; }
+  [[nodiscard]] constexpr Quantity host_metadata_charged_bytes() const noexcept {
+    return host_metadata_charged_bytes_.value();
+  }
+  [[nodiscard]] constexpr Quantity descriptor_charged_count() const noexcept {
+    return descriptor_charged_count_.value();
+  }
+  [[nodiscard]] constexpr Quantity firing_lease_staging_charged_bytes() const noexcept {
+    return firing_lease_staging_charged_bytes_.value();
+  }
+  [[nodiscard]] constexpr Quantity firing_lease_staging_descriptor_count() const noexcept {
+    return firing_lease_staging_descriptor_count_.value();
+  }
+  [[nodiscard]] const std::string& terminal_policy() const noexcept { return terminal_policy_; }
+
+  [[nodiscard]] static DataEdgePlan
+  from_validated(std::string edge_id, std::string source_pool_id, std::string producer_node_id,
+                 std::string producer_port_name, CanonicalQuantity producer_abi_port, std::string consumer_node_id,
+                 std::string consumer_port_name, TypeDescriptor type_descriptor, CanonicalQuantity max_items,
+                 CanonicalQuantity max_logical_bytes, std::string storage_accounting_id,
+                 CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count,
+                 CanonicalQuantity firing_lease_staging_charged_bytes,
+                 CanonicalQuantity firing_lease_staging_descriptor_count, std::string terminal_policy) noexcept;
+
+private:
+  DataEdgePlan(std::string edge_id, std::string source_pool_id, std::string producer_node_id,
+               std::string producer_port_name, CanonicalQuantity producer_abi_port, std::string consumer_node_id,
+               std::string consumer_port_name, TypeDescriptor type_descriptor, CanonicalQuantity max_items,
+               CanonicalQuantity max_logical_bytes, std::string storage_accounting_id,
+               CanonicalQuantity host_metadata_charged_bytes, CanonicalQuantity descriptor_charged_count,
+               CanonicalQuantity firing_lease_staging_charged_bytes,
+               CanonicalQuantity firing_lease_staging_descriptor_count, std::string terminal_policy) noexcept
+      : edge_id_(std::move(edge_id)), source_pool_id_(std::move(source_pool_id)),
+        producer_node_id_(std::move(producer_node_id)), producer_port_name_(std::move(producer_port_name)),
+        producer_abi_port_(producer_abi_port), consumer_node_id_(std::move(consumer_node_id)),
+        consumer_port_name_(std::move(consumer_port_name)), type_descriptor_(std::move(type_descriptor)),
+        max_items_(max_items), max_logical_bytes_(max_logical_bytes),
+        storage_accounting_id_(std::move(storage_accounting_id)),
+        host_metadata_charged_bytes_(host_metadata_charged_bytes), descriptor_charged_count_(descriptor_charged_count),
+        firing_lease_staging_charged_bytes_(firing_lease_staging_charged_bytes),
+        firing_lease_staging_descriptor_count_(firing_lease_staging_descriptor_count),
+        terminal_policy_(std::move(terminal_policy)) {}
+
+  std::string edge_id_;
+  std::string source_pool_id_;
+  std::string producer_node_id_;
+  std::string producer_port_name_;
+  CanonicalQuantity producer_abi_port_;
+  std::string consumer_node_id_;
+  std::string consumer_port_name_;
+  TypeDescriptor type_descriptor_;
+  CanonicalQuantity max_items_;
+  CanonicalQuantity max_logical_bytes_;
+  std::string storage_accounting_id_;
+  CanonicalQuantity host_metadata_charged_bytes_;
+  CanonicalQuantity descriptor_charged_count_;
+  CanonicalQuantity firing_lease_staging_charged_bytes_;
+  CanonicalQuantity firing_lease_staging_descriptor_count_;
+  std::string terminal_policy_;
 };
 
 struct EdgeCapacitySpec {
@@ -448,6 +698,8 @@ struct ExecutionPlanSpec {
   ExecutionProfile execution_profile = ExecutionProfile::bounded_online;
   std::vector<KeySlotTablePlanSpec> key_slot_tables;
   std::vector<ReorderPlanSpec> reorder_plans;
+  std::vector<BufferPoolPlanSpec> buffer_pool_plans;
+  std::vector<DataEdgePlanSpec> data_edge_plans;
   std::vector<EdgeCapacitySpec> edge_capacities;
   ResourceVectorSpec resource_vector;
   Quantity terminal_occurrences = 0;
@@ -472,6 +724,8 @@ public:
   [[nodiscard]] constexpr ExecutionProfile execution_profile() const noexcept { return execution_profile_; }
   [[nodiscard]] const std::vector<KeySlotTablePlan>& key_slot_tables() const noexcept { return key_slot_tables_; }
   [[nodiscard]] const std::vector<ReorderPlan>& reorder_plans() const noexcept { return reorder_plans_; }
+  [[nodiscard]] const std::vector<BufferPoolPlan>& buffer_pool_plans() const noexcept { return buffer_pool_plans_; }
+  [[nodiscard]] const std::vector<DataEdgePlan>& data_edge_plans() const noexcept { return data_edge_plans_; }
   [[nodiscard]] const std::vector<EdgeCapacity>& edge_capacities() const noexcept { return edge_capacities_; }
   [[nodiscard]] const ResourceVector& resources() const noexcept { return resources_; }
   [[nodiscard]] constexpr Quantity terminal_occurrences() const noexcept { return terminal_occurrences_.value(); }
@@ -480,10 +734,12 @@ public:
 private:
   ExecutionPlan(ArtifactDigest digest, PlanInputDigests inputs, ExecutionProfile execution_profile,
                 std::vector<KeySlotTablePlan> key_slot_tables, std::vector<ReorderPlan> reorder_plans,
+                std::vector<BufferPoolPlan> buffer_pool_plans, std::vector<DataEdgePlan> data_edge_plans,
                 std::vector<EdgeCapacity> edge_capacities, ResourceVector resources,
                 CanonicalQuantity terminal_occurrences, std::vector<std::string> proof_obligations) noexcept
       : digest_(std::move(digest)), inputs_(std::move(inputs)), execution_profile_(execution_profile),
         key_slot_tables_(std::move(key_slot_tables)), reorder_plans_(std::move(reorder_plans)),
+        buffer_pool_plans_(std::move(buffer_pool_plans)), data_edge_plans_(std::move(data_edge_plans)),
         edge_capacities_(std::move(edge_capacities)), resources_(std::move(resources)),
         terminal_occurrences_(terminal_occurrences), proof_obligations_(std::move(proof_obligations)) {}
 
@@ -492,6 +748,8 @@ private:
   ExecutionProfile execution_profile_;
   std::vector<KeySlotTablePlan> key_slot_tables_;
   std::vector<ReorderPlan> reorder_plans_;
+  std::vector<BufferPoolPlan> buffer_pool_plans_;
+  std::vector<DataEdgePlan> data_edge_plans_;
   std::vector<EdgeCapacity> edge_capacities_;
   ResourceVector resources_;
   CanonicalQuantity terminal_occurrences_;

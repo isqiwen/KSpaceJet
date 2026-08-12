@@ -137,6 +137,48 @@ typedef uint32_t ksj_provider_memory_domain;
 #define KSJ_PROVIDER_MEMORY_DEVICE UINT32_C(4)
 #define KSJ_PROVIDER_MEMORY_SHARED UINT32_C(8)
 
+/*
+ * Exact TypeDescriptor v1 enum encodings.
+ *
+ * These fields intentionally remain fixed-width integer fields in
+ * ksj_type_descriptor_view.  Publish their values here rather than making
+ * Providers duplicate private C++ enum ordinals.  A host must still compare
+ * the complete descriptor (including descriptor_digest); matching one enum
+ * value alone never establishes payload compatibility.
+ */
+typedef uint32_t ksj_payload_kind;
+#define KSJ_PAYLOAD_KIND_BUFFER_HANDLE UINT32_C(0)
+#define KSJ_PAYLOAD_KIND_MESSAGE_HANDLE UINT32_C(1)
+#define KSJ_PAYLOAD_KIND_CONTROL_TOKEN UINT32_C(2)
+#define KSJ_PAYLOAD_KIND_OPAQUE_HANDLE UINT32_C(3)
+
+typedef uint32_t ksj_element_type;
+#define KSJ_ELEMENT_TYPE_NONE UINT32_C(0)
+#define KSJ_ELEMENT_TYPE_UINT8 UINT32_C(1)
+#define KSJ_ELEMENT_TYPE_INT16 UINT32_C(2)
+#define KSJ_ELEMENT_TYPE_UINT16 UINT32_C(3)
+#define KSJ_ELEMENT_TYPE_INT32 UINT32_C(4)
+#define KSJ_ELEMENT_TYPE_UINT32 UINT32_C(5)
+#define KSJ_ELEMENT_TYPE_FLOAT32 UINT32_C(6)
+#define KSJ_ELEMENT_TYPE_FLOAT64 UINT32_C(7)
+#define KSJ_ELEMENT_TYPE_COMPLEX_INT16 UINT32_C(8)
+#define KSJ_ELEMENT_TYPE_COMPLEX_FLOAT32 UINT32_C(9)
+#define KSJ_ELEMENT_TYPE_COMPLEX_FLOAT64 UINT32_C(10)
+
+typedef uint32_t ksj_payload_mutability;
+#define KSJ_PAYLOAD_MUTABILITY_IMMUTABLE_AFTER_PUBLISH UINT32_C(0)
+#define KSJ_PAYLOAD_MUTABILITY_MUTABLE_EXCLUSIVE UINT32_C(1)
+
+/* Exactly one layout and exactly one stride encoding bit must be present. */
+typedef uint64_t ksj_type_layout_flags;
+#define KSJ_TYPE_LAYOUT_CANONICAL_CONTIGUOUS (UINT64_C(1) << 0)
+#define KSJ_TYPE_LAYOUT_CHANNEL_MAJOR_CONTIGUOUS (UINT64_C(1) << 1)
+#define KSJ_TYPE_LAYOUT_ROW_MAJOR_CONTIGUOUS (UINT64_C(1) << 2)
+#define KSJ_TYPE_LAYOUT_COLUMN_MAJOR_CONTIGUOUS (UINT64_C(1) << 3)
+#define KSJ_TYPE_LAYOUT_OPAQUE (UINT64_C(1) << 4)
+#define KSJ_TYPE_STRIDES_CANONICAL (UINT64_C(1) << 16)
+#define KSJ_TYPE_STRIDES_EXPLICIT_BYTE (UINT64_C(1) << 17)
+
 /* Provider descriptor capability_bits. */
 #define KSJ_PROVIDER_CAP_SYNC_PROCESS (UINT64_C(1) << 0)
 #define KSJ_PROVIDER_CAP_ASYNC_PROCESS (UINT64_C(1) << 1)

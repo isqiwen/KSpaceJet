@@ -41,6 +41,8 @@ struct VerifierOutputBound {
 struct IndependentlyDerivedPlan {
   std::vector<KeySlotTablePlanSpec> key_slot_tables;
   std::vector<ReorderPlanSpec> reorder_plans;
+  std::vector<BufferPoolPlanSpec> buffer_pool_plans;
+  std::vector<DataEdgePlanSpec> data_edge_plans;
   std::vector<EdgeCapacitySpec> edge_capacities;
   ResourceVectorSpec resource_vector;
   Quantity terminal_occurrences{0};
@@ -84,6 +86,11 @@ template <typename T> [[nodiscard]] bool contains(const std::vector<T>& values, 
 // charges, not C++ object-layout assumptions.
 constexpr Quantity kVerifierM3OrdinalRecordChargedBytes = 16U;
 constexpr Quantity kVerifierM3BufferedSlotChargedBytes = 16U;
+constexpr Quantity kVerifierM3ImmutableHandleSidecarChargedBytes = 64U;
+constexpr Quantity kVerifierM37PoolControlChargedBytesPerSlot = 40U;
+constexpr Quantity kVerifierM37DataEdgeControlChargedBytesPerItem = 96U;
+constexpr Quantity kVerifierM37FiringLeaseHostStagingChargedBytes = 4096U;
+constexpr Quantity kVerifierM37FiringLeaseHostStagingDescriptorCount = 5U;
 
 [[nodiscard]] Result<Quantity> derive_m3_host_metadata_independently(const Quantity ordinal_domain_bound,
                                                                      const Quantity max_ahead_items,
@@ -98,7 +105,17 @@ constexpr Quantity kVerifierM3BufferedSlotChargedBytes = 16U;
   if (!buffered_slots.ok()) {
     return buffered_slots.status();
   }
-  return checked_add(ordinal_records.value(), buffered_slots.value(),
+  auto handles = checked_multiply(max_ahead_items, kVerifierM3ImmutableHandleSidecarChargedBytes,
+                                  std::string(expression) + ".immutable_handle_sidecars");
+  if (!handles.ok()) {
+    return handles.status();
+  }
+  auto base = checked_add(ordinal_records.value(), buffered_slots.value(),
+                          std::string(expression) + ".ordinal_records_and_buffered_slots");
+  if (!base.ok()) {
+    return base.status();
+  }
+  return checked_add(base.value(), handles.value(),
                      std::string(expression) + ".total_dense_cartesian_reorder_metadata");
 }
 
@@ -206,6 +223,89 @@ constexpr Quantity kVerifierM3BufferedSlotChargedBytes = 16U;
     }
   }
   return Status::Ok();
+}
+
+[[nodiscard]] Status validate_independent_m37_source_contract(const OperatorContract& contract,
+                                                              const std::string_view node_id,
+                                                              const std::string_view port_name) {
+  const auto& phases = contract.rates().static_phases;
+  if (phases.size() != 1U) {
+    return validation("independent M3.7 buffer producer '" + std::string(node_id) + "." + std::string(port_name) +
+                      " must declare one ordinary SDF phase.");
+  }
+  const auto selected = std::ranges::find(phases.front().outputs, port_name, &PortRateSpec::port_name);
+  if (selected == phases.front().outputs.end() || selected->items != 1U || selected->charged_bytes == 0U) {
+    return validation("independent M3.7 buffer producer '" + std::string(node_id) + "." + std::string(port_name) +
+                      " must declare exactly one positive selected ordinary output envelope.");
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Status validate_m37_buffer_topology_independently(const PlanBuildRequest& request) {
+  const auto completed = completed_frame_slot_context_type();
+  if (!completed.ok()) {
+    return completed.status();
+  }
+  const auto& definition = request.resolved_pipeline.definition();
+  for (const auto& egress : definition.egress_ports()) {
+    const auto* binding = find_binding(request, egress.from.node);
+    const auto* port = binding == nullptr ? nullptr : find_port(binding->contract, egress.from.port);
+    if (port != nullptr && port->type_descriptor.payload_kind() == PayloadKind::buffer_handle) {
+      return validation("independent M3.7 rejects public buffer_handle egress '" + egress.id +
+                        "'; the v1 plan has no public ownership boundary for it.");
+    }
+  }
+  for (const auto& edge : definition.edges()) {
+    const auto* binding = find_binding(request, edge.from.node);
+    const auto* port = binding == nullptr ? nullptr : find_port(binding->contract, edge.from.port);
+    if (port == nullptr || port->type_descriptor.payload_kind() != PayloadKind::buffer_handle) {
+      continue;
+    }
+    if (port->type_descriptor.exactly_matches(completed.value())) {
+      continue;
+    }
+    const auto supports_host_normal =
+      std::ranges::find(port->type_descriptor.allowed_memory_domains(), TypeMemoryDomain::host_normal) !=
+      port->type_descriptor.allowed_memory_domains().end();
+    if (port->type_descriptor.mutability() != PayloadMutability::immutable_after_publish || !supports_host_normal) {
+      return validation("independent M3.7 buffer_handle edge '" + edge.id +
+                        "' requires immutable_after_publish host_normal payload identity.");
+    }
+    const auto& reorder = binding->contract.reorder();
+    if (!reorder.has_value() || reorder->ordered_output_port != edge.from.port) {
+      return validation(
+        "independent M3.7 buffer_handle edge '" + edge.id +
+        "' must originate at its producer's selected ReorderSpec output; no EdgeCapacity fallback exists.");
+    }
+    const auto copies = std::ranges::count_if(definition.edges(), [&](const PipelineEdge& candidate) {
+      return candidate.from.node == edge.from.node && candidate.from.port == edge.from.port;
+    });
+    if (copies != 1U) {
+      return validation(
+        "independent M3.7 rejects buffer-handle fan-out because its move-only pool lease has one consumer.");
+    }
+    const auto source_contract =
+      validate_independent_m37_source_contract(binding->contract, edge.from.node, edge.from.port);
+    if (!source_contract.ok()) {
+      return source_contract;
+    }
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] bool independent_has_m37_pool_output(const PlanBuildRequest& request, const std::string_view node_id,
+                                                   const OperatorContract& contract) {
+  if (!contract.reorder().has_value()) {
+    return false;
+  }
+  const auto& port_name = contract.reorder()->ordered_output_port;
+  const auto* port = find_port(contract, port_name);
+  if (port == nullptr || port->type_descriptor.payload_kind() != PayloadKind::buffer_handle) {
+    return false;
+  }
+  return std::ranges::any_of(request.resolved_pipeline.definition().edges(), [&](const PipelineEdge& edge) {
+    return edge.from.node == node_id && edge.from.port == port_name;
+  });
 }
 
 [[nodiscard]] Status validate_graph_ports_independently(const PlanBuildRequest& request) {
@@ -332,7 +432,11 @@ constexpr Quantity kVerifierM3BufferedSlotChargedBytes = 16U;
                         "'");
     }
   }
-  return validate_graph_ports_independently(request);
+  const auto graph_ports = validate_graph_ports_independently(request);
+  if (!graph_ports.ok()) {
+    return graph_ports;
+  }
+  return validate_m37_buffer_topology_independently(request);
 }
 
 [[nodiscard]] const CalibrationBinding* find_calibration_binding(const PipelineDefinition& definition,
@@ -795,6 +899,11 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
   if (!metadata.ok()) {
     return metadata.status();
   }
+  auto handle_storage = checked_multiply(reorder.max_ahead_items, kVerifierM3ImmutableHandleSidecarChargedBytes,
+                                         "independent M3 immutable handle sidecars");
+  if (!handle_storage.ok()) {
+    return handle_storage.status();
+  }
   const auto ordinal_domain_bound = domain.value().cardinality;
   auto ordinal_dimensions = std::move(domain).value().dimensions;
   return ReorderPlanSpec{
@@ -818,6 +927,7 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
     .publish_policy = std::string(kNextExpectedOnlyReorderPublishPolicy),
     .certified_skipped_ordinals = {},
     .end_of_input_policy = std::string(kFailReorderEndOfInputPolicy),
+    .handle_storage_charged_bytes = handle_storage.value(),
     .host_metadata_charged_bytes = metadata.value(),
     .descriptor_charged_count = reorder.max_ahead_items,
   };
@@ -830,11 +940,9 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
   if (!metadata.ok()) {
     return metadata;
   }
-  auto payload = add_to(resource_vector.host_normal_bytes, reorder.max_ahead_charged_bytes,
-                        "independent dense Cartesian ReorderPlan ahead payload reservation");
-  if (!payload.ok()) {
-    return payload;
-  }
+  // Physical ahead payload is added after all edges are independently
+  // derived, so compatibility remains all-or-nothing: no M3.7 data edge
+  // means legacy payload ownership; otherwise pools own payload exclusively.
   return add_to(resource_vector.descriptor_count, reorder.descriptor_charged_count,
                 "independent dense Cartesian ReorderPlan ahead descriptor reservation");
 }
@@ -908,6 +1016,159 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
   return EdgeCapacitySpec{.edge_id = edge.id, .max_items = items.value(), .max_charged_bytes = bytes.value()};
 }
 
+[[nodiscard]] Result<EdgeCapacitySpec> derive_m37_base_edge_capacity_independently(const PipelineEdge& edge,
+                                                                                   const OperatorContract& source) {
+  auto output = output_bound_for_port_independently(source, edge.from.port);
+  if (!output.ok()) {
+    return output.status();
+  }
+  auto items = multiply(output.value().items, source.execution().max_in_flight,
+                        "independent M3.7 ordinary downstream item capacity");
+  if (!items.ok()) {
+    return items.status();
+  }
+  auto bytes = multiply(output.value().bytes, source.execution().max_in_flight,
+                        "independent M3.7 ordinary downstream byte capacity");
+  if (!bytes.ok()) {
+    return bytes.status();
+  }
+  if (items.value() == 0U || bytes.value() == 0U) {
+    return validation("independent M3.7 buffer handle has no ordinary downstream capacity.");
+  }
+  return EdgeCapacitySpec{.edge_id = edge.id, .max_items = items.value(), .max_charged_bytes = bytes.value()};
+}
+
+struct IndependentM37DataEdge {
+  BufferPoolPlanSpec pool;
+  DataEdgePlanSpec edge;
+};
+
+[[nodiscard]] Result<Quantity> independent_provider_output_index(const OperatorContract& contract,
+                                                                 const std::string_view requested_port) {
+  Quantity index = 0U;
+  for (const auto& port : contract.ports()) {
+    if (port.direction != PortDirection::output) {
+      continue;
+    }
+    if (port.name == requested_port) {
+      if (index > kM37MaximumProducerAbiPort) {
+        return validation("independent M3.7 Provider output index does not fit uint32.");
+      }
+      return index;
+    }
+    auto successor = checked_add(index, 1U, "independent M3.7 Provider output index");
+    if (!successor.ok()) {
+      return successor.status();
+    }
+    index = successor.value();
+  }
+  return validation("independent M3.7 could not find selected output in the declared OperatorContract output order.");
+}
+
+[[nodiscard]] Result<IndependentM37DataEdge>
+derive_m37_data_edge_independently(const PipelineEdge& graph_edge, const ResolvedProvider& source_provider,
+                                   const OperatorContractBinding& source_binding, const PortSpec& source_port,
+                                   const std::vector<ReorderPlanSpec>& independently_derived_reorders) {
+  const auto& contract = source_binding.contract;
+  const auto reorder = std::ranges::find_if(independently_derived_reorders, [&](const ReorderPlanSpec& candidate) {
+    return candidate.node_id == graph_edge.from.node && candidate.ordered_output_port == graph_edge.from.port;
+  });
+  if (reorder == independently_derived_reorders.end()) {
+    return validation("independent M3.7 cannot attach a DataEdgePlan without its producer ReorderPlan.");
+  }
+  auto base_capacity = derive_m37_base_edge_capacity_independently(graph_edge, contract);
+  if (!base_capacity.ok()) {
+    return base_capacity.status();
+  }
+  auto full_items = checked_add(base_capacity.value().max_items, reorder->max_ahead_items,
+                                "independent M3.7 downstream plus reorder-ahead credits");
+  if (!full_items.ok()) {
+    return full_items.status();
+  }
+  auto logical_bytes =
+    checked_multiply(full_items.value(), reorder->charged_bytes_per_ordinal, "independent M3.7 logical edge bytes");
+  if (!logical_bytes.ok()) {
+    return logical_bytes.status();
+  }
+  auto base_logical = checked_multiply(base_capacity.value().max_items, reorder->charged_bytes_per_ordinal,
+                                       "independent M3.7 ordinary downstream logical credit");
+  if (!base_logical.ok()) {
+    return base_logical.status();
+  }
+  if (base_capacity.value().max_charged_bytes != base_logical.value()) {
+    return validation("independent M3.7 selected buffer output must have one ordinary byte envelope with no "
+                      "terminal-output credit.");
+  }
+  const auto alignment = source_port.type_descriptor.min_alignment_bytes();
+  if (reorder->charged_bytes_per_ordinal % alignment != 0U) {
+    return validation("independent M3.7 pool payload capacity must be aligned to its frozen TypeDescriptor.");
+  }
+  auto per_slot =
+    checked_add(reorder->charged_bytes_per_ordinal, 0U, "independent M3.7 pool payload plus metadata capacity");
+  if (!per_slot.ok()) {
+    return per_slot.status();
+  }
+  per_slot = checked_add(per_slot.value(), kVerifierM37PoolControlChargedBytesPerSlot,
+                         "independent M3.7 pool payload plus control charge");
+  if (!per_slot.ok()) {
+    return per_slot.status();
+  }
+  auto physical = checked_multiply(full_items.value(), per_slot.value(), "independent M3.7 all fixed pool slabs");
+  if (!physical.ok()) {
+    return physical.status();
+  }
+  auto pool_metadata =
+    checked_multiply(full_items.value(), kVerifierM37PoolControlChargedBytesPerSlot, "independent M3.7 pool metadata");
+  if (!pool_metadata.ok()) {
+    return pool_metadata.status();
+  }
+  auto edge_metadata = checked_multiply(full_items.value(), kVerifierM37DataEdgeControlChargedBytesPerItem,
+                                        "independent M3.7 fixed edge control metadata");
+  if (!edge_metadata.ok()) {
+    return edge_metadata.status();
+  }
+  auto abi_port = independent_provider_output_index(contract, graph_edge.from.port);
+  if (!abi_port.ok()) {
+    return abi_port.status();
+  }
+  const auto pool_id = graph_edge.id + ".pool";
+  return IndependentM37DataEdge{
+    .pool = {.pool_id = pool_id,
+             .producer_node_id = graph_edge.from.node,
+             .producer_port_name = graph_edge.from.port,
+             .producer_provider_id = source_provider.provider_id,
+             .producer_bundle_digest = source_provider.bundle_digest.value(),
+             .producer_operator_id = contract.operator_id(),
+             .producer_contract_digest = source_binding.contract_digest.value(),
+             .type_descriptor = source_port.type_descriptor,
+             .memory_domain = TypeMemoryDomain::host_normal,
+             .slot_count = full_items.value(),
+             .payload_capacity_bytes = reorder->charged_bytes_per_ordinal,
+             .metadata_capacity_bytes = 0U,
+             .payload_alignment_bytes = alignment,
+             .storage_accounting_id = std::string(kM37BufferPoolStorageAccountingId),
+             .host_metadata_charged_bytes = pool_metadata.value(),
+             .descriptor_charged_count = full_items.value(),
+             .physical_charge_bytes = physical.value()},
+    .edge = {.edge_id = graph_edge.id,
+             .source_pool_id = pool_id,
+             .producer_node_id = graph_edge.from.node,
+             .producer_port_name = graph_edge.from.port,
+             .producer_abi_port = abi_port.value(),
+             .consumer_node_id = graph_edge.to.node,
+             .consumer_port_name = graph_edge.to.port,
+             .type_descriptor = source_port.type_descriptor,
+             .max_items = full_items.value(),
+             .max_logical_bytes = logical_bytes.value(),
+             .storage_accounting_id = std::string(kM37DataEdgeStorageAccountingId),
+             .host_metadata_charged_bytes = edge_metadata.value(),
+             .descriptor_charged_count = full_items.value(),
+             .firing_lease_staging_charged_bytes = kVerifierM37FiringLeaseHostStagingChargedBytes,
+             .firing_lease_staging_descriptor_count = kVerifierM37FiringLeaseHostStagingDescriptorCount,
+             .terminal_policy = std::string(kM37NormalEoiDrainCancellationFailTerminalPolicy)},
+  };
+}
+
 [[nodiscard]] Result<Quantity*> host_memory_bucket_independently(ResourceVectorSpec& vector,
                                                                  const MemoryDomain domain) {
   switch (domain) {
@@ -925,6 +1186,7 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
 
 [[nodiscard]] Status add_contract_resources_independently(const OperatorContract& contract,
                                                           const KeySlotTablePlanSpec& table,
+                                                          const std::optional<VerifierOutputBound>& pool_owns_output,
                                                           ResourceVectorSpec& vector) {
   const auto& resources = contract.resources();
   auto bucket = host_memory_bucket_independently(vector, resources.memory_domain);
@@ -962,7 +1224,32 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
   if (!output.ok()) {
     return output.status();
   }
-  status = add(output.value(), "independent in-flight output buffers");
+  auto ordinary_descriptors = multiply(resources.output_items, contract.execution().max_in_flight,
+                                       "independent in-flight output descriptor reservation");
+  if (!ordinary_descriptors.ok()) {
+    return ordinary_descriptors.status();
+  }
+  Quantity remaining_output_bytes = output.value();
+  Quantity remaining_output_descriptors = ordinary_descriptors.value();
+  if (pool_owns_output.has_value()) {
+    auto selected_bytes = multiply(pool_owns_output->bytes, contract.execution().max_in_flight,
+                                   "independent M3.7 selected output charge replaced by pool");
+    if (!selected_bytes.ok()) {
+      return selected_bytes.status();
+    }
+    auto selected_descriptors = multiply(pool_owns_output->items, contract.execution().max_in_flight,
+                                         "independent M3.7 selected output descriptor replaced by pool");
+    if (!selected_descriptors.ok()) {
+      return selected_descriptors.status();
+    }
+    if (selected_bytes.value() > remaining_output_bytes ||
+        selected_descriptors.value() > remaining_output_descriptors) {
+      return validation("independent M3.7 selected output exceeds aggregate Provider output reservation.");
+    }
+    remaining_output_bytes -= selected_bytes.value();
+    remaining_output_descriptors -= selected_descriptors.value();
+  }
+  status = add(remaining_output_bytes, "independent in-flight output buffers after pool replacement");
   if (!status.ok()) {
     return status;
   }
@@ -1007,13 +1294,8 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
   if (!status.ok()) {
     return status;
   }
-
-  auto ordinary_descriptors = multiply(resources.output_items, contract.execution().max_in_flight,
-                                       "independent in-flight output descriptor reservation");
-  if (!ordinary_descriptors.ok()) {
-    return ordinary_descriptors.status();
-  }
-  status = add_to(vector.descriptor_count, ordinary_descriptors.value(), "independent in-flight output descriptors");
+  status = add_to(vector.descriptor_count, remaining_output_descriptors,
+                  "independent in-flight output descriptors after pool replacement");
   if (!status.ok()) {
     return status;
   }
@@ -1077,6 +1359,8 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
   IndependentlyDerivedPlan result;
   result.key_slot_tables.reserve(definition.nodes().size());
   result.reorder_plans.reserve(definition.nodes().size());
+  result.buffer_pool_plans.reserve(definition.edges().size());
+  result.data_edge_plans.reserve(definition.edges().size());
 
   for (const auto& node : definition.nodes()) {
     const auto* binding = find_binding(request, node.id);
@@ -1115,7 +1399,15 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
     if (!metadata.ok()) {
       return metadata;
     }
-    auto resources = add_contract_resources_independently(contract, table, result.resource_vector);
+    std::optional<VerifierOutputBound> pool_owns_output;
+    if (independent_has_m37_pool_output(request, node.id, contract)) {
+      auto selected = output_bound_for_port_independently(contract, contract.reorder()->ordered_output_port);
+      if (!selected.ok()) {
+        return selected.status();
+      }
+      pool_owns_output = selected.value();
+    }
+    auto resources = add_contract_resources_independently(contract, table, pool_owns_output, result.resource_vector);
     if (!resources.ok()) {
       return resources;
     }
@@ -1154,7 +1446,63 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
   for (const auto& edge : definition.edges()) {
     const auto* source = find_binding(request, edge.from.node);
     if (source == nullptr) {
-      return validation("edge '" + edge.id + "' source has no OperatorContract binding");
+      return validation("independent edge '" + edge.id + "' source has no OperatorContract binding");
+    }
+    const auto* source_port = find_port(source->contract, edge.from.port);
+    auto completed = completed_frame_slot_context_type();
+    if (!completed.ok()) {
+      return completed.status();
+    }
+    const auto pool_backed_edge = source_port->type_descriptor.payload_kind() == PayloadKind::buffer_handle &&
+                                  !source_port->type_descriptor.exactly_matches(completed.value());
+    if (pool_backed_edge) {
+      const auto* source_node = find_node(definition, edge.from.node);
+      const auto* source_provider =
+        source_node == nullptr ? nullptr : find_provider(request.resolved_pipeline, source_node->provider_alias);
+      if (source_node == nullptr || source_provider == nullptr) {
+        return validation("independent M3.7 edge '" + edge.id + "' source has no resolved Producer identity");
+      }
+      auto derived =
+        derive_m37_data_edge_independently(edge, *source_provider, *source, *source_port, result.reorder_plans);
+      if (!derived.ok()) {
+        return derived.status();
+      }
+      auto plans = std::move(derived).value();
+      auto physical = add_to(result.resource_vector.host_normal_bytes, plans.pool.physical_charge_bytes,
+                             "independent M3.7 pool physical reservation");
+      if (!physical.ok()) {
+        return physical;
+      }
+      auto pool_descriptors = add_to(result.resource_vector.descriptor_count, plans.pool.descriptor_charged_count,
+                                     "independent M3.7 pool descriptor reservation");
+      if (!pool_descriptors.ok()) {
+        return pool_descriptors;
+      }
+      auto control = add_to(result.resource_vector.host_normal_bytes, plans.edge.host_metadata_charged_bytes,
+                            "independent M3.7 edge control reservation");
+      if (!control.ok()) {
+        return control;
+      }
+      auto edge_descriptors = add_to(result.resource_vector.descriptor_count, plans.edge.descriptor_charged_count,
+                                     "independent M3.7 edge descriptor reservation");
+      if (!edge_descriptors.ok()) {
+        return edge_descriptors;
+      }
+      auto firing_staging =
+        add_to(result.resource_vector.host_normal_bytes, plans.edge.firing_lease_staging_charged_bytes,
+               "independent M3.7 firing-lease ABI staging reservation");
+      if (!firing_staging.ok()) {
+        return firing_staging;
+      }
+      auto firing_staging_descriptors =
+        add_to(result.resource_vector.descriptor_count, plans.edge.firing_lease_staging_descriptor_count,
+               "independent M3.7 firing-lease staging descriptors");
+      if (!firing_staging_descriptors.ok()) {
+        return firing_staging_descriptors;
+      }
+      result.buffer_pool_plans.push_back(std::move(plans.pool));
+      result.data_edge_plans.push_back(std::move(plans.edge));
+      continue;
     }
     auto capacity = derive_edge_capacity_independently(edge, source->contract);
     if (!capacity.ok()) {
@@ -1166,6 +1514,26 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
       return descriptor;
     }
     result.edge_capacities.push_back(std::move(capacity).value());
+  }
+
+  if (result.data_edge_plans.empty()) {
+    for (const auto& reorder : result.reorder_plans) {
+      auto legacy_payload = add_to(result.resource_vector.host_normal_bytes, reorder.max_ahead_charged_bytes,
+                                   "independent legacy ReorderPlan ahead payload reservation");
+      if (!legacy_payload.ok()) {
+        return legacy_payload;
+      }
+    }
+  } else {
+    for (const auto& reorder : result.reorder_plans) {
+      const auto data_edge = std::ranges::find_if(result.data_edge_plans, [&](const DataEdgePlanSpec& edge) {
+        return edge.producer_node_id == reorder.node_id && edge.producer_port_name == reorder.ordered_output_port;
+      });
+      if (data_edge == result.data_edge_plans.end()) {
+        return validation("independent M3.7 rejects a mixed legacy opaque ReorderPlan; every selected reorder "
+                          "output must have a DataEdgePlan.");
+      }
+    }
   }
 
   auto decoder = add_to(result.resource_vector.transport_bytes, request.target_envelope.max_decoder_staging_bytes(),
@@ -1186,6 +1554,8 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
 
   std::ranges::sort(result.key_slot_tables, {}, &KeySlotTablePlanSpec::node_id);
   std::ranges::sort(result.reorder_plans, {}, &ReorderPlanSpec::node_id);
+  std::ranges::sort(result.buffer_pool_plans, {}, &BufferPoolPlanSpec::pool_id);
+  std::ranges::sort(result.data_edge_plans, {}, &DataEdgePlanSpec::edge_id);
   std::ranges::sort(result.edge_capacities, {}, &EdgeCapacitySpec::edge_id);
   return result;
 }
@@ -1256,6 +1626,10 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
     obligations.insert(obligations.begin() + 4, std::string{kM3CompletedFrameSlotBindingProofObligation});
     obligations.insert(obligations.begin() + 5, std::string{kM3StrictDenseAllTuplesEoiRuntimeAssumption});
   }
+  if (!expected.data_edge_plans.empty()) {
+    obligations.push_back(std::string{kM37PlanBoundDataPlaneProofObligation});
+    obligations.push_back(std::string{kM37SinglePhysicalPayloadChargeRuntimeAssumption});
+  }
   return obligations;
 }
 
@@ -1270,6 +1644,8 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
     .execution_profile = request.requested_profile,
     .key_slot_tables = expected.key_slot_tables,
     .reorder_plans = expected.reorder_plans,
+    .buffer_pool_plans = expected.buffer_pool_plans,
+    .data_edge_plans = expected.data_edge_plans,
     .edge_capacities = expected.edge_capacities,
     .resource_vector = expected.resource_vector,
     .terminal_occurrences = expected.terminal_occurrences,
@@ -1378,6 +1754,7 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
         actual.last_expected_ordinal() != wanted.last_expected_ordinal ||
         actual.max_ahead_items() != wanted.max_ahead_items ||
         actual.max_ahead_charged_bytes() != wanted.max_ahead_charged_bytes ||
+        actual.handle_storage_charged_bytes() != wanted.handle_storage_charged_bytes ||
         actual.max_gap_ordinals() != wanted.max_gap_ordinals ||
         actual.occurrence_policy() != wanted.occurrence_policy || actual.publish_policy() != wanted.publish_policy ||
         actual.certified_skipped_ordinals() != wanted.certified_skipped_ordinals ||
@@ -1402,6 +1779,64 @@ derive_cartesian_ordinal_domain_independently(const ReorderSpec& reorder, const 
                           "derivation for node '" +
                           wanted.node_id + "'");
       }
+    }
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Status compare_buffer_pool_plans(const ExecutionPlan& plan, const IndependentlyDerivedPlan& expected) {
+  if (plan.buffer_pool_plans().size() != expected.buffer_pool_plans.size()) {
+    return validation("ExecutionPlan BufferPoolPlan count does not match the independent M3.7 derivation");
+  }
+  for (std::size_t index = 0U; index < expected.buffer_pool_plans.size(); ++index) {
+    const auto& actual = plan.buffer_pool_plans()[index];
+    const auto& wanted = expected.buffer_pool_plans[index];
+    if (actual.pool_id() != wanted.pool_id || actual.producer_node_id() != wanted.producer_node_id ||
+        actual.producer_port_name() != wanted.producer_port_name ||
+        actual.producer_provider_id() != wanted.producer_provider_id ||
+        actual.producer_bundle_digest().value() != wanted.producer_bundle_digest ||
+        actual.producer_operator_id() != wanted.producer_operator_id ||
+        actual.producer_contract_digest().value() != wanted.producer_contract_digest ||
+        !actual.type_descriptor().exactly_matches(wanted.type_descriptor) ||
+        actual.memory_domain() != wanted.memory_domain || actual.slot_count() != wanted.slot_count ||
+        actual.payload_capacity_bytes() != wanted.payload_capacity_bytes ||
+        actual.metadata_capacity_bytes() != wanted.metadata_capacity_bytes ||
+        actual.payload_alignment_bytes() != wanted.payload_alignment_bytes ||
+        actual.storage_accounting_id() != wanted.storage_accounting_id ||
+        actual.host_metadata_charged_bytes() != wanted.host_metadata_charged_bytes ||
+        actual.descriptor_charged_count() != wanted.descriptor_charged_count ||
+        actual.physical_charge_bytes() != wanted.physical_charge_bytes) {
+      return validation(
+        "ExecutionPlan BufferPoolPlan does not exactly match the independent M3.7 pool derivation for '" +
+        wanted.pool_id + "'.");
+    }
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Status compare_data_edge_plans(const ExecutionPlan& plan, const IndependentlyDerivedPlan& expected) {
+  if (plan.data_edge_plans().size() != expected.data_edge_plans.size()) {
+    return validation("ExecutionPlan DataEdgePlan count does not match the independent M3.7 derivation");
+  }
+  for (std::size_t index = 0U; index < expected.data_edge_plans.size(); ++index) {
+    const auto& actual = plan.data_edge_plans()[index];
+    const auto& wanted = expected.data_edge_plans[index];
+    if (actual.edge_id() != wanted.edge_id || actual.source_pool_id() != wanted.source_pool_id ||
+        actual.producer_node_id() != wanted.producer_node_id ||
+        actual.producer_port_name() != wanted.producer_port_name ||
+        actual.producer_abi_port() != wanted.producer_abi_port ||
+        actual.consumer_node_id() != wanted.consumer_node_id ||
+        actual.consumer_port_name() != wanted.consumer_port_name ||
+        !actual.type_descriptor().exactly_matches(wanted.type_descriptor) || actual.max_items() != wanted.max_items ||
+        actual.max_logical_bytes() != wanted.max_logical_bytes ||
+        actual.storage_accounting_id() != wanted.storage_accounting_id ||
+        actual.host_metadata_charged_bytes() != wanted.host_metadata_charged_bytes ||
+        actual.descriptor_charged_count() != wanted.descriptor_charged_count ||
+        actual.firing_lease_staging_charged_bytes() != wanted.firing_lease_staging_charged_bytes ||
+        actual.firing_lease_staging_descriptor_count() != wanted.firing_lease_staging_descriptor_count ||
+        actual.terminal_policy() != wanted.terminal_policy) {
+      return validation("ExecutionPlan DataEdgePlan does not exactly match the independent M3.7 edge derivation for '" +
+                        wanted.edge_id + "'.");
     }
   }
   return Status::Ok();
@@ -1493,6 +1928,14 @@ Result<VerificationRecord> ExecutionPlanVerifier::verify(const ExecutionPlan& pl
   if (!reorder_plans.ok()) {
     return reorder_plans;
   }
+  const auto buffer_pools = compare_buffer_pool_plans(plan, expected.value());
+  if (!buffer_pools.ok()) {
+    return buffer_pools;
+  }
+  const auto data_edges = compare_data_edge_plans(plan, expected.value());
+  if (!data_edges.ok()) {
+    return data_edges;
+  }
   const auto edge_capacities = compare_edge_capacities(plan, expected.value());
   if (!edge_capacities.ok()) {
     return edge_capacities;
@@ -1526,6 +1969,10 @@ Result<VerificationRecord> ExecutionPlanVerifier::verify(const ExecutionPlan& pl
   if (!plan.reorder_plans().empty()) {
     obligations.insert(obligations.begin() + 4, std::string{kM3CompletedFrameSlotBindingVerificationObligation});
     obligations.insert(obligations.begin() + 5, std::string{kM3StrictDenseAllTuplesEoiVerificationObligation});
+  }
+  if (!plan.data_edge_plans().empty()) {
+    obligations.push_back(std::string{kM37PlanBoundDataPlaneVerificationObligation});
+    obligations.push_back(std::string{kM37SinglePhysicalPayloadChargeVerificationObligation});
   }
   const VerificationRecordSpec specification{
     .execution_plan_digest = plan.digest().value(),

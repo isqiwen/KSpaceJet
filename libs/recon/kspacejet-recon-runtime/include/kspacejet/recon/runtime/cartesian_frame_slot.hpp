@@ -5,10 +5,59 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string_view>
+#include <new>
 #include <vector>
 
 namespace ksj::recon::runtime {
+
+// Completed FrameSlot bytes become the exact host-pageable Provider ABI input
+// of the narrow M3.7 Cartesian bridge.  Do not rely on an allocator's
+// incidental malloc alignment: the frozen completed-frame descriptor requires
+// 64-byte alignment.
+inline constexpr std::size_t kCartesianFrameSlotStorageAlignment = 64U;
+
+namespace detail {
+
+template <typename T, std::size_t Alignment> class CartesianAlignedAllocator {
+public:
+  using value_type = T;
+
+  CartesianAlignedAllocator() noexcept = default;
+
+  template <typename U> constexpr CartesianAlignedAllocator(const CartesianAlignedAllocator<U, Alignment>&) noexcept {}
+
+  [[nodiscard]] T* allocate(const std::size_t count) {
+    if (count > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
+      throw std::bad_array_new_length();
+    }
+    return static_cast<T*>(::operator new(count * sizeof(T), std::align_val_t{Alignment}));
+  }
+
+  void deallocate(T* const pointer, std::size_t) noexcept { ::operator delete(pointer, std::align_val_t{Alignment}); }
+
+  template <typename U> struct rebind {
+    using other = CartesianAlignedAllocator<U, Alignment>;
+  };
+};
+
+template <typename T, typename U, std::size_t Alignment>
+[[nodiscard]] constexpr bool operator==(const CartesianAlignedAllocator<T, Alignment>&,
+                                        const CartesianAlignedAllocator<U, Alignment>&) noexcept {
+  return true;
+}
+
+template <typename T, typename U, std::size_t Alignment>
+[[nodiscard]] constexpr bool operator!=(const CartesianAlignedAllocator<T, Alignment>& lhs,
+                                        const CartesianAlignedAllocator<U, Alignment>& rhs) noexcept {
+  return !(lhs == rhs);
+}
+
+using CartesianFrameByteStorage =
+  std::vector<ksj::base::byte, CartesianAlignedAllocator<ksj::base::byte, kCartesianFrameSlotStorageAlignment>>;
+
+} // namespace detail
 
 // A Cartesian FrameSlot is deliberately a serial M1 primitive.  A future
 // KeyShard owns its serialization; this class itself neither schedules work
@@ -174,7 +223,7 @@ public:
 
 private:
   CartesianFrameSlot(CartesianFrameSlotConfig config, std::size_t line_bytes, std::size_t physical_line_count,
-                     std::vector<ksj::base::byte> storage, std::vector<std::uint64_t> expected_bitmap,
+                     detail::CartesianFrameByteStorage storage, std::vector<std::uint64_t> expected_bitmap,
                      std::vector<std::uint64_t> coverage_bitmap) noexcept;
 
   [[nodiscard]] ksj::base::Status validate_active_token(FrameSlotToken token, std::string_view operation) const;
@@ -189,7 +238,7 @@ private:
   CartesianFrameSlotConfig config_;
   std::size_t line_bytes_{0};
   std::size_t physical_line_count_{0};
-  std::vector<ksj::base::byte> storage_;
+  detail::CartesianFrameByteStorage storage_;
   std::vector<std::uint64_t> expected_bitmap_;
   std::vector<std::uint64_t> coverage_bitmap_;
   FrameSlotState state_{FrameSlotState::free};

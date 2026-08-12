@@ -15,6 +15,7 @@ constexpr auto kMetadataDigest = "sha256:cb8379ac2098aa165029e3938a51da0bcecfc00
   return {
     .type_id = "ksj.kspace-frame",
     .revision = 1,
+    .abi_descriptor_digest = kPayloadDigest,
     .payload_schema_digest = kPayloadDigest,
     .payload_kind = ksj::recon::PayloadKind::buffer_handle,
     .element_type = ksj::recon::ElementType::complex_int16,
@@ -76,9 +77,19 @@ TEST(KSpaceJetReconContractsTypeDescriptor, CanonicalizesMemoryDomainSetAndRequi
   const auto incompatible = ksj::recon::TypeDescriptor::create(incompatible_specification);
   ASSERT_TRUE(incompatible.ok()) << incompatible.status();
   EXPECT_FALSE(descriptor.exactly_matches(incompatible.value()));
+
+  auto different_abi = valid_frame_type();
+  different_abi.abi_descriptor_digest = kMetadataDigest;
+  const auto abi_incompatible = ksj::recon::TypeDescriptor::create(different_abi);
+  ASSERT_TRUE(abi_incompatible.ok()) << abi_incompatible.status();
+  EXPECT_FALSE(descriptor.exactly_matches(abi_incompatible.value()));
 }
 
 TEST(KSpaceJetReconContractsTypeDescriptor, RejectsIncompleteOrAmbiguousDescriptors) {
+  auto missing_abi_digest = valid_frame_type();
+  missing_abi_digest.abi_descriptor_digest.clear();
+  EXPECT_FALSE(ksj::recon::TypeDescriptor::create(missing_abi_digest).ok());
+
   auto bad_alignment = valid_frame_type();
   bad_alignment.min_alignment_bytes = 48;
   EXPECT_FALSE(ksj::recon::TypeDescriptor::create(bad_alignment).ok());

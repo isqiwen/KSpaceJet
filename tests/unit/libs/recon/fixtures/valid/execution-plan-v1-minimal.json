@@ -32,6 +32,8 @@
     }
   ],
   "reorder_plans": [],
+  "buffer_pool_plans": [],
+  "data_edge_plans": [],
   "edge_capacities": [],
   "resource_vector": {
     "host_normal_bytes": 33554432,

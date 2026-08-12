@@ -1,6 +1,8 @@
 #include "kspacejet/recon/runtime/fixed_buffer_edge.hpp"
 #include "kspacejet/recon/runtime/detail/slab_range_claim.hpp"
 
+#include "kspacejet/recon/execution_plan.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -18,19 +20,31 @@ namespace {
 
 enum class RingSlotPhase : std::uint8_t {
   free,
-  reserved,
+  pending,
   queued,
   leased,
 };
+
+constexpr Quantity kNoSlot = std::numeric_limits<Quantity>::max();
 
 struct RingSlot {
   RingSlotPhase phase{RingSlotPhase::free};
   std::uint64_t token{0U};
   Quantity logical_bytes{0U};
   std::optional<ImmutableBufferHandle> handle{};
+  // `next` is one field with phase-dependent ownership: it links free credit
+  // records while phase==free and links the committed FIFO while queued. A
+  // pending credit deliberately has no FIFO position, so out-of-order
+  // Provider callbacks cannot create a head-of-line gap downstream.
+  Quantity next{kNoSlot};
 };
 
 static_assert(alignof(RingSlot) <= kFixedBufferEdgeStorageAlignment);
+// The artifact records a stable 96-byte sidecar accounting unit for every
+// M3.7 FIFO item.  Keep the concrete caller-slab record within that frozen
+// unit; a larger implementation must not silently instantiate an
+// undercharged DataEdgePlan.
+static_assert(sizeof(RingSlot) <= ksj::recon::kM37DataEdgeControlChargedBytesPerItem);
 
 [[nodiscard]] bool checked_add(const Quantity lhs, const Quantity rhs, Quantity& result) noexcept {
   if (rhs > std::numeric_limits<Quantity>::max() - lhs) {
@@ -53,10 +67,6 @@ static_assert(alignof(RingSlot) <= kFixedBufferEdgeStorageAlignment);
 [[nodiscard]] bool is_aligned(const ksj::base::ByteSpan storage) noexcept {
   return storage.data() != nullptr &&
          reinterpret_cast<std::uintptr_t>(storage.data()) % kFixedBufferEdgeStorageAlignment == 0U;
-}
-
-[[nodiscard]] Quantity next_ring_index(const Quantity index, const Quantity max_items) noexcept {
-  return index + 1U == max_items ? 0U : index + 1U;
 }
 
 } // namespace
@@ -92,7 +102,15 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     auto* const slots = slots_begin();
     for (Quantity index = 0U; index < max_items; ++index) {
       std::construct_at(slots + static_cast<std::size_t>(index));
+      auto& slot = slots[static_cast<std::size_t>(index)];
+      slot.phase = RingSlotPhase::free;
+      slot.token = 0U;
+      slot.logical_bytes = 0U;
+      slot.next = index + 1U == max_items ? kNoSlot : index + 1U;
     }
+    free_head = 0U;
+    queue_head = kNoSlot;
+    queue_tail = kNoSlot;
     slots_constructed = true;
   }
 
@@ -109,14 +127,18 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     if (!accepting_status.ok()) {
       return accepting_status;
     }
-    if (producer_reservations != 0U) {
-      return ksj::base::Status::Unavailable("FixedBufferEdge permits only one outstanding producer reservation");
+    if (occupied_items > max_items || producer_reservations + queued_items + consumer_leases != occupied_items) {
+      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge credit accounting is inconsistent"));
     }
-    if (occupied_items == max_items || tail_index >= max_items) {
-      if (occupied_items != max_items || tail_index >= max_items) {
-        return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge ring occupancy is inconsistent"));
+    if (occupied_items == max_items || free_head == kNoSlot) {
+      if (occupied_items != max_items || free_head != kNoSlot) {
+        return fail_closed_locked(
+          ksj::base::Status::InternalError("FixedBufferEdge free-credit accounting is inconsistent"));
       }
       return ksj::base::Status::Unavailable("FixedBufferEdge item capacity is exhausted");
+    }
+    if (free_head >= max_items) {
+      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge free-credit head is out of range"));
     }
     if (occupied_logical_bytes > max_logical_bytes) {
       return fail_closed_locked(
@@ -129,16 +151,17 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
       return fail_closed_locked(ksj::base::Status::Unavailable("FixedBufferEdge token space is exhausted"));
     }
 
-    auto& slot = slot_at(tail_index);
+    const auto slot_index = free_head;
+    auto& slot = slot_at(slot_index);
     if (slot.phase != RingSlotPhase::free || slot.handle.has_value()) {
-      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge tail slot is not free"));
+      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge free-credit record is not free"));
     }
-    const auto slot_index = tail_index;
     const auto token = next_token++;
-    slot.phase = RingSlotPhase::reserved;
+    free_head = slot.next;
+    slot.phase = RingSlotPhase::pending;
     slot.token = token;
     slot.logical_bytes = logical_bytes;
-    tail_index = next_ring_index(tail_index, max_items);
+    slot.next = kNoSlot;
     ++producer_reservations;
     ++occupied_items;
     occupied_logical_bytes += logical_bytes;
@@ -149,11 +172,15 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
                                               const Quantity declared_logical_bytes, ImmutableBufferHandle& source) {
     const auto source_status = validate_source_handle(source, declared_logical_bytes);
     if (!source_status.ok()) {
-      return fail_and_discard(source_status);
+      // The caller still owns `source` on validation failure. Preserve this
+      // one pending credit so its explicit rollback (or RAII destructor) can
+      // settle cleanly; all other edge-owned work is discarded as the edge
+      // enters FailedDraining.
+      return fail_and_discard_preserving_pending(source_status, slot_index, token);
     }
 
     std::lock_guard lock(mutex);
-    if (!matches_slot_locked(slot_index, token, RingSlotPhase::reserved)) {
+    if (!matches_slot_locked(slot_index, token, RingSlotPhase::pending)) {
       if (lifecycle == FixedBufferEdgeLifecycle::failed_draining || lifecycle == FixedBufferEdgeLifecycle::failed) {
         return ksj::base::Status::StateError("FixedBufferEdge producer reservation cannot commit after failure");
       }
@@ -170,8 +197,28 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
       return fail_closed_locked(
         ksj::base::Status::InternalError("FixedBufferEdge producer accounting is inconsistent"));
     }
+    if ((queue_head == kNoSlot) != (queue_tail == kNoSlot)) {
+      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge FIFO endpoints disagree"));
+    }
+    if (queue_tail != kNoSlot) {
+      if (queue_tail >= max_items) {
+        return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge FIFO tail is out of range"));
+      }
+      auto& previous_tail = slot_at(queue_tail);
+      if (previous_tail.phase != RingSlotPhase::queued || !previous_tail.handle.has_value() ||
+          previous_tail.next != kNoSlot) {
+        return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge FIFO tail record is invalid"));
+      }
+      previous_tail.next = slot_index;
+    } else if (queued_items != 0U) {
+      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge FIFO is missing a tail record"));
+    } else {
+      queue_head = slot_index;
+    }
     slot.handle.emplace(std::move(source));
     slot.phase = RingSlotPhase::queued;
+    slot.next = kNoSlot;
+    queue_tail = slot_index;
     --producer_reservations;
     ++queued_items;
     return ksj::base::Status::Ok();
@@ -179,22 +226,21 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
 
   [[nodiscard]] ksj::base::Status rollback(const Quantity slot_index, const std::uint64_t token) {
     std::lock_guard lock(mutex);
-    if (!matches_slot_locked(slot_index, token, RingSlotPhase::reserved)) {
+    if (!matches_slot_locked(slot_index, token, RingSlotPhase::pending)) {
       if (lifecycle == FixedBufferEdgeLifecycle::failed_draining || lifecycle == FixedBufferEdgeLifecycle::failed) {
         return ksj::base::Status::StateError("FixedBufferEdge producer reservation is not pending");
       }
       return fail_closed_locked(
         ksj::base::Status::StateError("FixedBufferEdge producer reservation is stale or already settled"));
     }
-    if (producer_reservations != 1U || occupied_items == 0U || tail_index != next_ring_index(slot_index, max_items)) {
+    if (producer_reservations == 0U || occupied_items == 0U) {
       return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge reservation ring is inconsistent"));
     }
     const auto logical_bytes = slot_at(slot_index).logical_bytes;
     if (occupied_logical_bytes < logical_bytes) {
       return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge logical-byte accounting underflow"));
     }
-    reset_slot_locked(slot_index);
-    tail_index = slot_index;
+    recycle_slot_locked(slot_index);
     --producer_reservations;
     --occupied_items;
     occupied_logical_bytes -= logical_bytes;
@@ -209,33 +255,43 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     if (consumer_leases != 0U) {
       return {.kind = FixedBufferEdgePollKind::empty};
     }
-    if (occupied_items == 0U) {
+    if (queued_items == 0U) {
       const auto finalized = finalize_terminal_locked();
       if (!finalized.ok() || lifecycle == FixedBufferEdgeLifecycle::failed_draining ||
           lifecycle == FixedBufferEdgeLifecycle::failed) {
         return {.kind = FixedBufferEdgePollKind::failed};
       }
+      // Detached pending credits have pre-admitted capacity but no ordered
+      // handle yet; they are intentionally invisible to the FIFO sink.
       return {.kind = lifecycle == FixedBufferEdgeLifecycle::completed ? FixedBufferEdgePollKind::completed
                                                                        : FixedBufferEdgePollKind::empty};
     }
-    if (head_index >= max_items) {
+    if (queue_head == kNoSlot || queue_head >= max_items) {
       static_cast<void>(fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge head is out of range")));
       return {.kind = FixedBufferEdgePollKind::failed};
     }
-    auto& slot = slot_at(head_index);
-    if (slot.phase == RingSlotPhase::reserved) {
-      return {.kind = FixedBufferEdgePollKind::empty};
-    }
+    const auto slot_index = queue_head;
+    auto& slot = slot_at(slot_index);
     if (slot.phase != RingSlotPhase::queued || !slot.handle.has_value() || queued_items == 0U) {
       static_cast<void>(
         fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge FIFO head is not a queued item")));
       return {.kind = FixedBufferEdgePollKind::failed};
     }
-    const auto slot_index = head_index;
     const auto token = slot.token;
+    const auto next = slot.next;
+    if (next != kNoSlot && next >= max_items) {
+      static_cast<void>(
+        fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge FIFO next record is out of range")));
+      return {.kind = FixedBufferEdgePollKind::failed};
+    }
     auto handle = std::move(*slot.handle);
     slot.handle.reset();
     slot.phase = RingSlotPhase::leased;
+    slot.next = kNoSlot;
+    queue_head = next;
+    if (queue_head == kNoSlot) {
+      queue_tail = kNoSlot;
+    }
     --queued_items;
     ++consumer_leases;
     return {
@@ -248,7 +304,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
       return fail_closed_locked(
         ksj::base::Status::StateError("FixedBufferEdge consumer lease is stale or already settled"));
     }
-    if (consumer_leases != 1U || occupied_items == 0U || head_index != slot_index) {
+    if (consumer_leases != 1U || occupied_items == 0U) {
       return fail_closed_locked(
         ksj::base::Status::InternalError("FixedBufferEdge consumer accounting is inconsistent"));
     }
@@ -256,8 +312,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     if (occupied_logical_bytes < logical_bytes) {
       return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge logical-byte accounting underflow"));
     }
-    reset_slot_locked(slot_index);
-    head_index = next_ring_index(head_index, max_items);
+    recycle_slot_locked(slot_index);
     --consumer_leases;
     --occupied_items;
     occupied_logical_bytes -= logical_bytes;
@@ -273,7 +328,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
       }
       static_cast<void>(
         fail_closed_locked(ksj::base::Status::StateError("FixedBufferEdge consumer lease was dropped")));
-      if (consumer_leases != 1U || occupied_items == 0U || head_index != slot_index) {
+      if (consumer_leases != 1U || occupied_items == 0U) {
         emergency_fail_locked();
         return;
       }
@@ -282,8 +337,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
         emergency_fail_locked();
         return;
       }
-      reset_slot_locked(slot_index);
-      head_index = next_ring_index(head_index, max_items);
+      recycle_slot_locked(slot_index);
       --consumer_leases;
       --occupied_items;
       occupied_logical_bytes -= logical_bytes;
@@ -324,6 +378,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     lifecycle = FixedBufferEdgeLifecycle::failed_draining;
     last_error = ksj::base::Status::StateError("FixedBufferEdge was aborted");
     discard_queued_locked();
+    discard_pending_locked();
     return finalize_terminal_locked();
   }
 
@@ -356,9 +411,13 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
             .last_error = last_error};
   }
 
-  [[nodiscard]] ksj::base::Status fail_and_discard(ksj::base::Status cause) {
+  [[nodiscard]] ksj::base::Status fail_and_discard_preserving_pending(ksj::base::Status cause,
+                                                                      const Quantity pending_slot,
+                                                                      const std::uint64_t pending_token) {
     std::lock_guard lock(mutex);
-    return fail_closed_locked(std::move(cause));
+    const auto preserve =
+      matches_slot_locked(pending_slot, pending_token, RingSlotPhase::pending) ? pending_slot : kNoSlot;
+    return fail_closed_locked(std::move(cause), preserve);
   }
 
 private:
@@ -410,7 +469,8 @@ private:
     return ksj::base::Status::Ok();
   }
 
-  [[nodiscard]] ksj::base::Status fail_closed_locked(ksj::base::Status cause) {
+  [[nodiscard]] ksj::base::Status fail_closed_locked(ksj::base::Status cause,
+                                                     const Quantity preserved_pending_slot = kNoSlot) {
     if (lifecycle != FixedBufferEdgeLifecycle::failed && lifecycle != FixedBufferEdgeLifecycle::failed_draining) {
       lifecycle = FixedBufferEdgeLifecycle::failed_draining;
       last_error = std::move(cause);
@@ -418,6 +478,7 @@ private:
       last_error = std::move(cause);
     }
     discard_queued_locked();
+    discard_pending_locked(preserved_pending_slot);
     const auto finalized = finalize_terminal_locked();
     return finalized.ok() ? failure_status_locked() : finalized;
   }
@@ -425,6 +486,7 @@ private:
   void emergency_fail_locked() noexcept {
     lifecycle = FixedBufferEdgeLifecycle::failed_draining;
     discard_queued_locked();
+    discard_pending_locked();
   }
 
   void discard_queued_locked() noexcept {
@@ -435,7 +497,8 @@ private:
         continue;
       }
       const auto logical_bytes = slot.logical_bytes;
-      reset_slot_locked(index);
+      unlink_queued_slot_locked(index);
+      recycle_slot_locked(index);
       if (queued_items == 0U || occupied_items == 0U || occupied_logical_bytes < logical_bytes) {
         accounting_failure = true;
         continue;
@@ -459,6 +522,34 @@ private:
     }
   }
 
+  void discard_pending_locked(const Quantity preserved_pending_slot = kNoSlot) noexcept {
+    bool accounting_failure = false;
+    for (Quantity index = 0U; index < max_items; ++index) {
+      auto& slot = slot_at(index);
+      if (slot.phase != RingSlotPhase::pending || index == preserved_pending_slot) {
+        continue;
+      }
+      const auto logical_bytes = slot.logical_bytes;
+      recycle_slot_locked(index);
+      if (producer_reservations == 0U || occupied_items == 0U || occupied_logical_bytes < logical_bytes) {
+        accounting_failure = true;
+        continue;
+      }
+      --producer_reservations;
+      --occupied_items;
+      occupied_logical_bytes -= logical_bytes;
+    }
+    if (accounting_failure) {
+      lifecycle = FixedBufferEdgeLifecycle::failed_draining;
+      if (last_error.ok()) {
+        try {
+          last_error =
+            ksj::base::Status::InternalError("FixedBufferEdge pending-credit accounting underflow during failure");
+        } catch (...) {}
+      }
+    }
+  }
+
   [[nodiscard]] ksj::base::Status finalize_terminal_locked() {
     if (lifecycle == FixedBufferEdgeLifecycle::close_pending && occupied_items == 0U) {
       lifecycle = FixedBufferEdgeLifecycle::completed;
@@ -477,12 +568,39 @@ private:
     return ksj::base::Status::StateError("FixedBufferEdge is failed closed");
   }
 
-  void reset_slot_locked(const Quantity slot_index) noexcept {
+  void recycle_slot_locked(const Quantity slot_index) noexcept {
     auto& slot = slot_at(slot_index);
     slot.handle.reset();
     slot.phase = RingSlotPhase::free;
     slot.token = 0U;
     slot.logical_bytes = 0U;
+    slot.next = free_head;
+    free_head = slot_index;
+  }
+
+  void unlink_queued_slot_locked(const Quantity slot_index) noexcept {
+    if (queue_head == kNoSlot) {
+      return;
+    }
+    if (queue_head == slot_index) {
+      queue_head = slot_at(slot_index).next;
+      if (queue_tail == slot_index) {
+        queue_tail = queue_head;
+      }
+      return;
+    }
+    Quantity previous = queue_head;
+    while (previous != kNoSlot && previous < max_items) {
+      const auto next = slot_at(previous).next;
+      if (next == slot_index) {
+        slot_at(previous).next = slot_at(slot_index).next;
+        if (queue_tail == slot_index) {
+          queue_tail = previous;
+        }
+        return;
+      }
+      previous = next;
+    }
   }
 
   void destroy_slots_noexcept() noexcept {
@@ -512,8 +630,9 @@ private:
   const Quantity max_logical_bytes;
   const ksj::base::ByteSpan control_storage;
   mutable std::mutex mutex;
-  Quantity head_index{0U};
-  Quantity tail_index{0U};
+  Quantity free_head{kNoSlot};
+  Quantity queue_head{kNoSlot};
+  Quantity queue_tail{kNoSlot};
   Quantity producer_reservations{0U};
   Quantity queued_items{0U};
   Quantity consumer_leases{0U};
@@ -543,7 +662,8 @@ FixedBufferEdgeProducerReservation::~FixedBufferEdgeProducerReservation() {
 FixedBufferEdgeProducerReservation::FixedBufferEdgeProducerReservation(
   FixedBufferEdgeProducerReservation&& other) noexcept
     : state_(std::move(other.state_)), slot_index_(std::exchange(other.slot_index_, 0U)),
-      token_(std::exchange(other.token_, 0U)), logical_bytes_(std::exchange(other.logical_bytes_, 0U)) {}
+      token_(std::exchange(other.token_, 0U)), logical_bytes_(std::exchange(other.logical_bytes_, 0U)),
+      committed_(std::exchange(other.committed_, false)) {}
 
 FixedBufferEdgeProducerReservation&
 FixedBufferEdgeProducerReservation::operator=(FixedBufferEdgeProducerReservation&& other) noexcept {
@@ -553,6 +673,7 @@ FixedBufferEdgeProducerReservation::operator=(FixedBufferEdgeProducerReservation
     slot_index_ = std::exchange(other.slot_index_, 0U);
     token_ = std::exchange(other.token_, 0U);
     logical_bytes_ = std::exchange(other.logical_bytes_, 0U);
+    committed_ = std::exchange(other.committed_, false);
   }
   return *this;
 }
@@ -567,7 +688,14 @@ ksj::base::Status FixedBufferEdgeProducerReservation::commit_from(ImmutableBuffe
   }
   const auto committed = state_->commit_from(slot_index_, token_, logical_bytes_, source);
   if (committed.ok()) {
-    disarm();
+    // Keep a private shared-state reference until destruction so the coupled
+    // M3.7 reorder handoff can compensate by aborting this exact edge if the
+    // subsequent upstream publish acknowledgement fails. `valid()` is still
+    // false because the producer token is consumed; no ordinary caller can
+    // commit or roll back this reservation again.
+    token_ = 0U;
+    logical_bytes_ = 0U;
+    committed_ = true;
   }
   return committed;
 }
@@ -583,6 +711,16 @@ ksj::base::Status FixedBufferEdgeProducerReservation::rollback() {
   return rolled_back;
 }
 
+ksj::base::Status FixedBufferEdgeProducerReservation::abort_committed_edge_for_coupled_handoff() {
+  if (state_ == nullptr || !committed_ || token_ != 0U) {
+    return ksj::base::Status::StateError(
+      "FixedBufferEdge producer reservation has no committed edge handoff to compensate");
+  }
+  const auto aborted = state_->abort();
+  disarm();
+  return aborted;
+}
+
 void FixedBufferEdgeProducerReservation::release_noexcept() noexcept {
   if (state_ != nullptr && token_ != 0U) {
     state_->rollback_noexcept(slot_index_, token_);
@@ -595,6 +733,7 @@ void FixedBufferEdgeProducerReservation::disarm() noexcept {
   slot_index_ = 0U;
   token_ = 0U;
   logical_bytes_ = 0U;
+  committed_ = false;
 }
 
 FixedBufferEdgeConsumerLease::FixedBufferEdgeConsumerLease(std::shared_ptr<detail::FixedBufferEdgeState> state,
@@ -674,6 +813,15 @@ ksj::base::Result<std::unique_ptr<FixedBufferEdge>> FixedBufferEdge::create(Fixe
   if (storage.control.size() > std::numeric_limits<Quantity>::max()) {
     return ksj::base::Status::InvalidArgument("FixedBufferEdge control slab exceeds Quantity accounting");
   }
+  const auto concrete_control_bytes = static_cast<Quantity>(storage.control.size());
+  const auto charged_control_bytes =
+    config.charged_control_storage_bytes == 0U ? concrete_control_bytes : config.charged_control_storage_bytes;
+  const auto charged_descriptor_count =
+    config.charged_descriptor_count == 0U ? config.max_items : config.charged_descriptor_count;
+  if (charged_control_bytes < concrete_control_bytes || charged_descriptor_count < config.max_items) {
+    return ksj::base::Status::ValidationError(
+      "FixedBufferEdge frozen control accounting is smaller than its concrete fixed representation");
+  }
   try {
     const std::array<ksj::base::ByteSpan, 1U> slabs{storage.control};
     auto slab_claim = detail::claim_exclusive_slab_ranges(std::span<const ksj::base::ByteSpan>{slabs});
@@ -683,21 +831,20 @@ ksj::base::Result<std::unique_ptr<FixedBufferEdge>> FixedBufferEdge::create(Fixe
 
     std::optional<ResourceVectorLedgerReservation> occupancy_credit;
     if (config.occupancy_ledger != nullptr) {
-      const auto occupancy_vector =
-        ResourceVector::create({.host_normal_bytes = static_cast<Quantity>(storage.control.size()),
-                                .host_pinned_bytes = 0U,
-                                .host_hugepage_bytes = 0U,
-                                .shared_host_bytes = 0U,
-                                .spool_bytes = 0U,
-                                .transport_bytes = 0U,
-                                .descriptor_count = config.max_items,
-                                .async_token_count = 0U,
-                                .cpu_leaf_permits = 0U,
-                                .backend_gang_permits = 0U,
-                                .provider_private_permits = 0U,
-                                .io_slots = 0U,
-                                .devices = {}},
-                               "FixedBufferEdge external control-slab occupancy credit");
+      const auto occupancy_vector = ResourceVector::create({.host_normal_bytes = charged_control_bytes,
+                                                            .host_pinned_bytes = 0U,
+                                                            .host_hugepage_bytes = 0U,
+                                                            .shared_host_bytes = 0U,
+                                                            .spool_bytes = 0U,
+                                                            .transport_bytes = 0U,
+                                                            .descriptor_count = charged_descriptor_count,
+                                                            .async_token_count = 0U,
+                                                            .cpu_leaf_permits = 0U,
+                                                            .backend_gang_permits = 0U,
+                                                            .provider_private_permits = 0U,
+                                                            .io_slots = 0U,
+                                                            .devices = {}},
+                                                           "FixedBufferEdge external control-slab occupancy credit");
       if (!occupancy_vector.ok()) {
         return occupancy_vector.status();
       }

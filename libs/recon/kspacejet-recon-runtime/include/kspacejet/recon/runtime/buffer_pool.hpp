@@ -145,6 +145,13 @@ public:
   // handle.
   [[nodiscard]] ksj::base::Result<ksj::base::ByteSpan> writable_payload();
 
+  // Returns the complete preallocated metadata sidecar for this slot.  It is
+  // a non-retainable borrow with the same lifetime rules as writable_payload().
+  // This lets a plan-bound host use the pool's already-admitted metadata
+  // capacity as the Provider seal staging area rather than allocating or
+  // charging a second per-firing buffer.
+  [[nodiscard]] ksj::base::Result<ksj::base::ByteSpan> writable_metadata();
+
   // Copies bounded metadata into the caller-provided metadata slab, verifies
   // exact TypeDescriptor equality, and consumes this lease on success.
   [[nodiscard]] ksj::base::Result<ImmutableBufferHandle>

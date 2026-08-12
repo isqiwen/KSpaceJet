@@ -1,32 +1,32 @@
 {
   "schema_version": "kspacejet.operator-contract/v1",
   "kind": "OperatorContract",
-  "operator_id": "reference_reconstruct",
+  "operator_id": "cartesian_ifft2_single_coil",
   "operator_revision": "1.0.0",
   "provider_abi_major": 1,
   "supported_profiles": ["offline", "bounded-online"],
   "ports": [
     {
-      "name": "acquisition",
+      "name": "frame",
       "type_descriptor": {
-        "type_id": "ismrmrd.acquisition",
+        "type_id": "ksj.kspace-frame",
         "revision": 1,
-        "abi_descriptor_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "payload_schema_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "payload_kind": "message_handle",
-        "element_type": "none",
-        "rank": 0,
-        "dimensions": [],
-        "layout": "opaque",
+        "abi_descriptor_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "payload_schema_digest": "sha256:7318daba9d4e9992d33ded54fcf8bd2db1ad9c501ca1bb4f30f351fcace94e9b",
+        "payload_kind": "buffer_handle",
+        "element_type": "complex_int16",
+        "rank": 3,
+        "dimensions": ["channel", "ky", "kx"],
+        "layout": "channel_major_contiguous",
         "strides": "canonical",
         "explicit_byte_strides": [],
         "allowed_memory_domains": ["host_normal"],
-        "min_alignment_bytes": 8,
+        "min_alignment_bytes": 64,
         "mutability": "immutable_after_publish",
-        "metadata_schema_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        "metadata_schema_digest": "sha256:2eb80e75da97288c839ca2c1d2c81e480f93c71739dd182a071e7b3145c72994"
       },
       "direction": "input",
-      "cardinality": "many",
+      "cardinality": "single",
       "required": true,
       "layout_capabilities": [],
       "metadata_capabilities": []
@@ -34,38 +34,38 @@
     {
       "name": "image",
       "type_descriptor": {
-        "type_id": "ismrmrd.image",
+        "type_id": "ksj.image-frame",
         "revision": 1,
-        "abi_descriptor_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-        "payload_schema_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-        "payload_kind": "message_handle",
-        "element_type": "none",
-        "rank": 0,
-        "dimensions": [],
-        "layout": "opaque",
+        "abi_descriptor_digest": "sha256:bc161b76c25315236dd5d01fc766635200c1033b7b795bb629d625746f843cbe",
+        "payload_schema_digest": "sha256:42fb021252293d7b2d5ba913d75a89d4c868e72c6a6c559dde6243d6b0c780fb",
+        "payload_kind": "buffer_handle",
+        "element_type": "float32",
+        "rank": 2,
+        "dimensions": ["ky", "kx"],
+        "layout": "row_major_contiguous",
         "strides": "canonical",
         "explicit_byte_strides": [],
         "allowed_memory_domains": ["host_normal"],
-        "min_alignment_bytes": 8,
+        "min_alignment_bytes": 64,
         "mutability": "immutable_after_publish",
-        "metadata_schema_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        "metadata_schema_digest": "sha256:3f9bbd8144c338693445519780fb102144091b34c1bdf0d76ca529e7f453516b"
       },
       "direction": "output",
-      "cardinality": "many",
-      "required": false,
+      "cardinality": "single",
+      "required": true,
       "layout_capabilities": [],
       "metadata_capabilities": []
     }
   ],
   "execution": {
-    "input_granularity": "acquisition",
-    "partition_key": [],
-    "order_domain": "strict_global",
+    "input_granularity": "frame",
+    "partition_key": ["encoding", "average", "slice", "contrast", "phase", "repetition", "set"],
+    "order_domain": "per_key",
     "max_active_keys": 1,
     "max_in_flight": 1,
     "call_model": "serial",
     "max_items_per_activation": 1,
-    "cooperative_quantum_us": 500
+    "cooperative_quantum_us": 500000
   },
   "batch": {
     "min_items": 1,
@@ -84,7 +84,7 @@
     "static_phases": [
       {
         "inputs": [
-          { "port_name": "acquisition", "items": 1, "charged_bytes": 1048576 }
+          { "port_name": "frame", "items": 1, "charged_bytes": 1048576 }
         ],
         "outputs": [
           { "port_name": "image", "items": 1, "charged_bytes": 1048576 }
@@ -96,7 +96,7 @@
     "cancel_cleanup": { "max_firings": 0, "outputs": [] }
   },
   "resources": {
-    "scratch_charged_bytes_per_firing": 0,
+    "scratch_charged_bytes_per_firing": 2097152,
     "per_key_state_charged_bytes": 0,
     "per_scan_workspace_charged_bytes": 0,
     "retention_items": 0,
@@ -121,8 +121,17 @@
     "max_decoder_staging_bytes": 0,
     "on_end_of_input": "fail"
   },
+  "reorder": {
+    "completed_frame_input_port": "frame",
+    "ordered_output_port": "image",
+    "outputs_per_ordinal": 1,
+    "order_projection": ["encoding", "average", "slice", "contrast", "phase", "repetition", "set"],
+    "max_ahead_items": 1,
+    "max_ahead_charged_bytes": 1048576,
+    "missing_at_end_of_input": "fail"
+  },
   "terminal": {
-    "normal": "flush_declared",
+    "normal": "none",
     "cancel": "cleanup_declared",
     "normal_max_output_items": 0,
     "normal_max_output_charged_bytes": 0,

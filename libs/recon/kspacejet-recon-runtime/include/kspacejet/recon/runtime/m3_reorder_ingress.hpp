@@ -4,6 +4,7 @@
 #include "kspacejet/base/span.hpp"
 #include "kspacejet/recon/execution_plan.hpp"
 #include "kspacejet/recon/runtime/fixed_reorder_buffer.hpp"
+#include "kspacejet/recon/runtime/fixed_buffer_edge.hpp"
 #include "kspacejet/recon/runtime/host_frame_assembler.hpp"
 
 #include <cstdint>
@@ -12,11 +13,16 @@
 
 namespace ksj::recon::runtime {
 
+class AdmittedPlanBoundDataPlane;
+
 // The M3.5 ordered-output capability. It retains the completed frame's
 // private host terminal authority after the source slot was recycled by
-// FrameDispatch::complete(). There is still no BufferHandle, fan-out, async
-// ownership, GPU operation, or generic scheduler: one synchronous sink must
-// acknowledge this one output. Dropping it fails both coupled components.
+// FrameDispatch::complete(). M3.7 may additionally retain one move-only
+// ImmutableBufferHandle in the reorder buffer's fixed typed sidecar; it can
+// be moved once into the next internal edge before acknowledge_published().
+// There is still no fan-out, async ownership, GPU operation, or generic
+// scheduler: one synchronous sink must acknowledge this one output. Dropping
+// it fails both coupled components.
 class M3PublishLease final {
 public:
   M3PublishLease() = default;
@@ -29,15 +35,26 @@ public:
 
   [[nodiscard]] bool valid() const noexcept;
   [[nodiscard]] const FixedReorderOutput& output() const noexcept;
+  [[nodiscard]] bool has_buffer_handle() const;
 
-  // Success settles the raw reorder credit and releases the retained host
-  // terminal authority without failing the scan, but only while the coupled
-  // HostFrameAssembler has not failed through another source lease. An error
-  // or dropped lease fails both sides closed.
+  // The sole safe M3.7 egress handoff: move the retained ordered handle into
+  // an already-reserved internal edge slot, then settle the publish credit.
+  // A failed edge commit (or failed publish acknowledgement) closes this
+  // coupled source/reorder path and releases any handle that did not transfer.
+  [[nodiscard]] ksj::base::Status commit_to_edge(FixedBufferEdgeProducerReservation& edge_reservation);
+
+  // Legacy opaque output only: success settles the raw reorder credit and
+  // releases the retained host terminal authority without failing the scan,
+  // but only while the coupled HostFrameAssembler has not failed through
+  // another source lease. A typed M3.7 sidecar handle cannot be acknowledged
+  // here: it must first flow through commit_to_edge() so the frozen
+  // DataEdgePlan credit and payload ownership settle together. An error or
+  // dropped lease fails both sides closed.
   [[nodiscard]] ksj::base::Status acknowledge_published();
 
 private:
   friend class FrameDispatch;
+  friend class AdmittedPlanBoundDataPlane;
 
   M3PublishLease(PublishLease publish, CompletedFrameLease completed_frame) noexcept;
 
@@ -50,10 +67,11 @@ private:
 
 // A move-only capability for exactly one synchronous reconstruction firing.
 // It couples the HostFrameAssembler input lease to the corresponding private
-// FixedReorderBuffer dispatch permit.  There is deliberately no BufferHandle,
-// fan-out, async retention, GPU operation, or generic scheduler in this M3.5
-// seam.  The FrameSlot bytes are valid only between try_prepare() success and
-// complete()/abort()/destruction.
+// FixedReorderBuffer dispatch permit.  The M3.7 overload can hand one
+// ImmutableBufferHandle into a fixed preallocated reorder sidecar. There is
+// deliberately no fan-out, async retention, GPU operation, or generic
+// scheduler in this seam. The FrameSlot bytes are valid only between
+// try_prepare() success and complete()/abort()/destruction.
 class FrameDispatch final {
 public:
   FrameDispatch() = default;
@@ -83,6 +101,13 @@ public:
   // permit remains owned by this dispatch until ordered publish acquisition.
   [[nodiscard]] ksj::base::Status complete(OpaqueReorderPayloadHandle payload);
 
+  // Transfers a valid pooled immutable output that fits the frozen logical
+  // envelope into the bound M3.7 reorder sidecar. On success `payload` is
+  // invalid; on failure it remains owned by the caller. A raw-byte/opaque
+  // compatibility reorder buffer rejects this route rather than losing the
+  // handle.
+  [[nodiscard]] ksj::base::Status complete(ImmutableBufferHandle& payload);
+
   // Acquires the next ordered output when this dispatch owns next_expected.
   // Unavailable preserves this dispatch. Success moves the reorder permit and
   // its retained post-ack host terminal authority to M3PublishLease, leaving
@@ -95,6 +120,7 @@ public:
 
 private:
   friend class M3ReorderIngress;
+  friend class AdmittedPlanBoundDataPlane;
 
   enum class Phase : std::uint8_t {
     invalid,
@@ -150,6 +176,8 @@ public:
   [[nodiscard]] FixedReorderBufferSnapshot snapshot() const;
 
 private:
+  friend class AdmittedPlanBoundDataPlane;
+
   M3ReorderIngress(ksj::recon::ExecutionPlan execution_plan, ksj::recon::VerificationRecord verification_record,
                    std::string node_id, std::string completed_frame_input_port, HostFrameAssembler* assembler,
                    FixedReorderBuffer* reorder_buffer, std::uint64_t ingress_identity) noexcept;
