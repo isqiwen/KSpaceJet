@@ -1,0 +1,11 @@
+project_kit_add_test(
+  NAME
+  apps.kspacejet-cli.provider_init
+  COMMAND
+  "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_LIST_DIR}/provider_init_tests.py"
+  "$<TARGET_FILE:ksj_cli>"
+  LABELS
+  app
+  cli
+  provider)

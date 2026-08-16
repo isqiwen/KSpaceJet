@@ -1,8 +1,6 @@
 #include "kspacejet/recon/runtime/fixed_buffer_edge.hpp"
 #include "kspacejet/recon/runtime/detail/slab_range_claim.hpp"
 
-#include "kspacejet/recon/execution_plan.hpp"
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +20,7 @@ enum class RingSlotPhase : std::uint8_t {
   free,
   pending,
   queued,
+  claimed,
   leased,
 };
 
@@ -31,6 +30,8 @@ struct RingSlot {
   RingSlotPhase phase{RingSlotPhase::free};
   std::uint64_t token{0U};
   Quantity logical_bytes{0U};
+  DataItemIdentity item_identity{};
+  bool has_item_identity{false};
   std::optional<ImmutableBufferHandle> handle{};
   // `next` is one field with phase-dependent ownership: it links free credit
   // records while phase==free and links the committed FIFO while queued. A
@@ -40,11 +41,10 @@ struct RingSlot {
 };
 
 static_assert(alignof(RingSlot) <= kFixedBufferEdgeStorageAlignment);
-// The artifact records a stable 96-byte sidecar accounting unit for every
-// M3.7 FIFO item.  Keep the concrete caller-slab record within that frozen
-// unit; a larger implementation must not silently instantiate an
-// undercharged DataEdgePlan.
-static_assert(sizeof(RingSlot) <= ksj::recon::kM37DataEdgeControlChargedBytesPerItem);
+// Execution-plan admission proves the caller-provided fixed control slab and
+// frozen metadata charge against this concrete record size. Keep that proof
+// dynamic here: this runtime primitive must not silently bind itself to an
+// older artifact accounting unit after its sidecar layout evolves.
 
 [[nodiscard]] bool checked_add(const Quantity lhs, const Quantity rhs, Quantity& result) noexcept {
   if (rhs > std::numeric_limits<Quantity>::max() - lhs) {
@@ -84,6 +84,16 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     Quantity slot_index{0U};
     std::uint64_t token{0U};
     ImmutableBufferHandle handle{};
+    DataItemIdentity item_identity{};
+    bool has_item_identity{false};
+  };
+
+  struct ClaimedItem {
+    FixedBufferEdgePollKind kind{FixedBufferEdgePollKind::empty};
+    Quantity slot_index{0U};
+    std::uint64_t token{0U};
+    DataItemIdentity item_identity{};
+    bool has_item_identity{false};
   };
 
   FixedBufferEdgeState(std::shared_ptr<ResourceVectorLedger> occupancy_ledger_value,
@@ -106,6 +116,8 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
       slot.phase = RingSlotPhase::free;
       slot.token = 0U;
       slot.logical_bytes = 0U;
+      slot.item_identity = {};
+      slot.has_item_identity = false;
       slot.next = index + 1U == max_items ? kNoSlot : index + 1U;
     }
     free_head = 0U;
@@ -153,7 +165,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
 
     const auto slot_index = free_head;
     auto& slot = slot_at(slot_index);
-    if (slot.phase != RingSlotPhase::free || slot.handle.has_value()) {
+    if (slot.phase != RingSlotPhase::free || slot.handle.has_value() || slot.has_item_identity) {
       return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge free-credit record is not free"));
     }
     const auto token = next_token++;
@@ -161,6 +173,8 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     slot.phase = RingSlotPhase::pending;
     slot.token = token;
     slot.logical_bytes = logical_bytes;
+    slot.item_identity = {};
+    slot.has_item_identity = false;
     slot.next = kNoSlot;
     ++producer_reservations;
     ++occupied_items;
@@ -169,7 +183,8 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
   }
 
   [[nodiscard]] ksj::base::Status commit_from(const Quantity slot_index, const std::uint64_t token,
-                                              const Quantity declared_logical_bytes, ImmutableBufferHandle& source) {
+                                              const Quantity declared_logical_bytes, ImmutableBufferHandle& source,
+                                              const DataItemIdentity item_identity, const bool has_item_identity) {
     const auto source_status = validate_source_handle(source, declared_logical_bytes);
     if (!source_status.ok()) {
       // The caller still owns `source` on validation failure. Preserve this
@@ -193,7 +208,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     }
     auto& slot = slot_at(slot_index);
     if (producer_reservations == 0U || occupied_items == 0U || slot.logical_bytes != declared_logical_bytes ||
-        slot.handle.has_value()) {
+        slot.handle.has_value() || slot.has_item_identity) {
       return fail_closed_locked(
         ksj::base::Status::InternalError("FixedBufferEdge producer accounting is inconsistent"));
     }
@@ -216,6 +231,8 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
       queue_head = slot_index;
     }
     slot.handle.emplace(std::move(source));
+    slot.item_identity = item_identity;
+    slot.has_item_identity = has_item_identity;
     slot.phase = RingSlotPhase::queued;
     slot.next = kNoSlot;
     queue_tail = slot_index;
@@ -252,7 +269,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     if (lifecycle == FixedBufferEdgeLifecycle::failed_draining || lifecycle == FixedBufferEdgeLifecycle::failed) {
       return {.kind = FixedBufferEdgePollKind::failed};
     }
-    if (consumer_leases != 0U) {
+    if (consumer_leases != 0U || consumer_claims != 0U) {
       return {.kind = FixedBufferEdgePollKind::empty};
     }
     if (queued_items == 0U) {
@@ -294,8 +311,113 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
     }
     --queued_items;
     ++consumer_leases;
-    return {
-      .kind = FixedBufferEdgePollKind::item, .slot_index = slot_index, .token = token, .handle = std::move(handle)};
+    return {.kind = FixedBufferEdgePollKind::item,
+            .slot_index = slot_index,
+            .token = token,
+            .handle = std::move(handle),
+            .item_identity = slot.item_identity,
+            .has_item_identity = slot.has_item_identity};
+  }
+
+  [[nodiscard]] ClaimedItem try_reserve_consumer() {
+    std::lock_guard lock(mutex);
+    if (lifecycle == FixedBufferEdgeLifecycle::failed_draining || lifecycle == FixedBufferEdgeLifecycle::failed) {
+      return {.kind = FixedBufferEdgePollKind::failed};
+    }
+    // One producer/one consumer is frozen for this edge. A claim deliberately
+    // keeps the head in place, so only one active claim may exist too.
+    if (consumer_leases != 0U || consumer_claims != 0U) {
+      return {.kind = FixedBufferEdgePollKind::empty};
+    }
+    if (queued_items == 0U) {
+      const auto finalized = finalize_terminal_locked();
+      if (!finalized.ok() || lifecycle == FixedBufferEdgeLifecycle::failed_draining ||
+          lifecycle == FixedBufferEdgeLifecycle::failed) {
+        return {.kind = FixedBufferEdgePollKind::failed};
+      }
+      return {.kind = lifecycle == FixedBufferEdgeLifecycle::completed ? FixedBufferEdgePollKind::completed
+                                                                       : FixedBufferEdgePollKind::empty};
+    }
+    if (queue_head == kNoSlot || queue_head >= max_items) {
+      static_cast<void>(
+        fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge claim head is out of range")));
+      return {.kind = FixedBufferEdgePollKind::failed};
+    }
+    auto& slot = slot_at(queue_head);
+    if (slot.phase != RingSlotPhase::queued || !slot.handle.has_value()) {
+      static_cast<void>(
+        fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge claim head is not a queued item")));
+      return {.kind = FixedBufferEdgePollKind::failed};
+    }
+    slot.phase = RingSlotPhase::claimed;
+    ++consumer_claims;
+    return {.kind = FixedBufferEdgePollKind::item,
+            .slot_index = queue_head,
+            .token = slot.token,
+            .item_identity = slot.item_identity,
+            .has_item_identity = slot.has_item_identity};
+  }
+
+  [[nodiscard]] ksj::base::Result<AcquiredItem> materialize_consumer_claim(const Quantity slot_index,
+                                                                           const std::uint64_t token) {
+    std::lock_guard lock(mutex);
+    if (lifecycle == FixedBufferEdgeLifecycle::failed_draining || lifecycle == FixedBufferEdgeLifecycle::failed) {
+      return failure_status_locked();
+    }
+    if (!matches_slot_locked(slot_index, token, RingSlotPhase::claimed) || queue_head != slot_index) {
+      return fail_closed_locked(
+        ksj::base::Status::StateError("FixedBufferEdge consumer claim is stale or no longer the FIFO head"));
+    }
+    if (consumer_claims != 1U || consumer_leases != 0U || queued_items == 0U || occupied_items == 0U) {
+      return fail_closed_locked(
+        ksj::base::Status::InternalError("FixedBufferEdge consumer claim accounting is inconsistent"));
+    }
+    auto& slot = slot_at(slot_index);
+    if (!slot.handle.has_value()) {
+      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge claimed item lost its handle"));
+    }
+    const auto next = slot.next;
+    if (next != kNoSlot && next >= max_items) {
+      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge claim next record is out of range"));
+    }
+    auto handle = std::move(*slot.handle);
+    slot.handle.reset();
+    slot.phase = RingSlotPhase::leased;
+    slot.next = kNoSlot;
+    queue_head = next;
+    if (queue_head == kNoSlot) {
+      queue_tail = kNoSlot;
+    }
+    --queued_items;
+    --consumer_claims;
+    ++consumer_leases;
+    return AcquiredItem{.kind = FixedBufferEdgePollKind::item,
+                        .slot_index = slot_index,
+                        .token = token,
+                        .handle = std::move(handle),
+                        .item_identity = slot.item_identity,
+                        .has_item_identity = slot.has_item_identity};
+  }
+
+  [[nodiscard]] ksj::base::Status rollback_consumer_claim(const Quantity slot_index, const std::uint64_t token) {
+    std::lock_guard lock(mutex);
+    if (!matches_slot_locked(slot_index, token, RingSlotPhase::claimed)) {
+      if (lifecycle == FixedBufferEdgeLifecycle::failed_draining || lifecycle == FixedBufferEdgeLifecycle::failed) {
+        return ksj::base::Status::StateError("FixedBufferEdge consumer claim is no longer live after failure");
+      }
+      return fail_closed_locked(ksj::base::Status::StateError("FixedBufferEdge consumer claim is stale or settled"));
+    }
+    if (consumer_claims != 1U || queue_head != slot_index || queued_items == 0U) {
+      return fail_closed_locked(
+        ksj::base::Status::InternalError("FixedBufferEdge consumer claim rollback is inconsistent"));
+    }
+    auto& slot = slot_at(slot_index);
+    if (!slot.handle.has_value()) {
+      return fail_closed_locked(ksj::base::Status::InternalError("FixedBufferEdge claimed item lost its handle"));
+    }
+    slot.phase = RingSlotPhase::queued;
+    --consumer_claims;
+    return ksj::base::Status::Ok();
   }
 
   [[nodiscard]] ksj::base::Status acknowledge(const Quantity slot_index, const std::uint64_t token) {
@@ -401,6 +523,7 @@ struct FixedBufferEdgeState final : std::enable_shared_from_this<FixedBufferEdge
             .max_logical_bytes = max_logical_bytes,
             .reserved_items = producer_reservations,
             .queued_items = queued_items,
+            .claimed_items = consumer_claims,
             .leased_items = consumer_leases,
             .occupied_items = occupied_items,
             .occupied_logical_bytes = occupied_logical_bytes,
@@ -493,17 +616,22 @@ private:
     bool accounting_failure = false;
     for (Quantity index = 0U; index < max_items; ++index) {
       auto& slot = slot_at(index);
-      if (slot.phase != RingSlotPhase::queued) {
+      if (slot.phase != RingSlotPhase::queued && slot.phase != RingSlotPhase::claimed) {
         continue;
       }
+      const bool was_claimed = slot.phase == RingSlotPhase::claimed;
       const auto logical_bytes = slot.logical_bytes;
       unlink_queued_slot_locked(index);
       recycle_slot_locked(index);
-      if (queued_items == 0U || occupied_items == 0U || occupied_logical_bytes < logical_bytes) {
+      if (queued_items == 0U || occupied_items == 0U || occupied_logical_bytes < logical_bytes ||
+          (was_claimed && consumer_claims == 0U)) {
         accounting_failure = true;
         continue;
       }
       --queued_items;
+      if (was_claimed) {
+        --consumer_claims;
+      }
       --occupied_items;
       occupied_logical_bytes -= logical_bytes;
     }
@@ -574,6 +702,8 @@ private:
     slot.phase = RingSlotPhase::free;
     slot.token = 0U;
     slot.logical_bytes = 0U;
+    slot.item_identity = {};
+    slot.has_item_identity = false;
     slot.next = free_head;
     free_head = slot_index;
   }
@@ -635,6 +765,7 @@ private:
   Quantity queue_tail{kNoSlot};
   Quantity producer_reservations{0U};
   Quantity queued_items{0U};
+  Quantity consumer_claims{0U};
   Quantity consumer_leases{0U};
   Quantity occupied_items{0U};
   Quantity occupied_logical_bytes{0U};
@@ -662,8 +793,7 @@ FixedBufferEdgeProducerReservation::~FixedBufferEdgeProducerReservation() {
 FixedBufferEdgeProducerReservation::FixedBufferEdgeProducerReservation(
   FixedBufferEdgeProducerReservation&& other) noexcept
     : state_(std::move(other.state_)), slot_index_(std::exchange(other.slot_index_, 0U)),
-      token_(std::exchange(other.token_, 0U)), logical_bytes_(std::exchange(other.logical_bytes_, 0U)),
-      committed_(std::exchange(other.committed_, false)) {}
+      token_(std::exchange(other.token_, 0U)), logical_bytes_(std::exchange(other.logical_bytes_, 0U)) {}
 
 FixedBufferEdgeProducerReservation&
 FixedBufferEdgeProducerReservation::operator=(FixedBufferEdgeProducerReservation&& other) noexcept {
@@ -673,7 +803,6 @@ FixedBufferEdgeProducerReservation::operator=(FixedBufferEdgeProducerReservation
     slot_index_ = std::exchange(other.slot_index_, 0U);
     token_ = std::exchange(other.token_, 0U);
     logical_bytes_ = std::exchange(other.logical_bytes_, 0U);
-    committed_ = std::exchange(other.committed_, false);
   }
   return *this;
 }
@@ -686,16 +815,21 @@ ksj::base::Status FixedBufferEdgeProducerReservation::commit_from(ImmutableBuffe
   if (!valid()) {
     return ksj::base::Status::StateError("FixedBufferEdge producer reservation is invalid or moved from");
   }
-  const auto committed = state_->commit_from(slot_index_, token_, logical_bytes_, source);
+  const auto committed = state_->commit_from(slot_index_, token_, logical_bytes_, source, {}, false);
   if (committed.ok()) {
-    // Keep a private shared-state reference until destruction so the coupled
-    // M3.7 reorder handoff can compensate by aborting this exact edge if the
-    // subsequent upstream publish acknowledgement fails. `valid()` is still
-    // false because the producer token is consumed; no ordinary caller can
-    // commit or roll back this reservation again.
-    token_ = 0U;
-    logical_bytes_ = 0U;
-    committed_ = true;
+    disarm();
+  }
+  return committed;
+}
+
+ksj::base::Status FixedBufferEdgeProducerReservation::commit_from_with_identity(ImmutableBufferHandle& source,
+                                                                                const DataItemIdentity item_identity) {
+  if (!valid()) {
+    return ksj::base::Status::StateError("FixedBufferEdge producer reservation is invalid or moved from");
+  }
+  const auto committed = state_->commit_from(slot_index_, token_, logical_bytes_, source, item_identity, true);
+  if (committed.ok()) {
+    disarm();
   }
   return committed;
 }
@@ -711,16 +845,6 @@ ksj::base::Status FixedBufferEdgeProducerReservation::rollback() {
   return rolled_back;
 }
 
-ksj::base::Status FixedBufferEdgeProducerReservation::abort_committed_edge_for_coupled_handoff() {
-  if (state_ == nullptr || !committed_ || token_ != 0U) {
-    return ksj::base::Status::StateError(
-      "FixedBufferEdge producer reservation has no committed edge handoff to compensate");
-  }
-  const auto aborted = state_->abort();
-  disarm();
-  return aborted;
-}
-
 void FixedBufferEdgeProducerReservation::release_noexcept() noexcept {
   if (state_ != nullptr && token_ != 0U) {
     state_->rollback_noexcept(slot_index_, token_);
@@ -733,13 +857,15 @@ void FixedBufferEdgeProducerReservation::disarm() noexcept {
   slot_index_ = 0U;
   token_ = 0U;
   logical_bytes_ = 0U;
-  committed_ = false;
 }
 
 FixedBufferEdgeConsumerLease::FixedBufferEdgeConsumerLease(std::shared_ptr<detail::FixedBufferEdgeState> state,
                                                            const Quantity slot_index, const std::uint64_t token,
-                                                           ImmutableBufferHandle buffer) noexcept
-    : state_(std::move(state)), slot_index_(slot_index), token_(token), buffer_(std::move(buffer)) {}
+                                                           ImmutableBufferHandle buffer,
+                                                           const DataItemIdentity item_identity,
+                                                           const bool has_item_identity) noexcept
+    : state_(std::move(state)), slot_index_(slot_index), token_(token), buffer_(std::move(buffer)),
+      item_identity_(item_identity), has_item_identity_(has_item_identity) {}
 
 FixedBufferEdgeConsumerLease::~FixedBufferEdgeConsumerLease() {
   release_noexcept();
@@ -747,7 +873,9 @@ FixedBufferEdgeConsumerLease::~FixedBufferEdgeConsumerLease() {
 
 FixedBufferEdgeConsumerLease::FixedBufferEdgeConsumerLease(FixedBufferEdgeConsumerLease&& other) noexcept
     : state_(std::move(other.state_)), slot_index_(std::exchange(other.slot_index_, 0U)),
-      token_(std::exchange(other.token_, 0U)), buffer_(std::move(other.buffer_)) {}
+      token_(std::exchange(other.token_, 0U)), buffer_(std::move(other.buffer_)),
+      item_identity_(std::exchange(other.item_identity_, {})),
+      has_item_identity_(std::exchange(other.has_item_identity_, false)) {}
 
 FixedBufferEdgeConsumerLease& FixedBufferEdgeConsumerLease::operator=(FixedBufferEdgeConsumerLease&& other) noexcept {
   if (this != &other) {
@@ -756,6 +884,8 @@ FixedBufferEdgeConsumerLease& FixedBufferEdgeConsumerLease::operator=(FixedBuffe
     slot_index_ = std::exchange(other.slot_index_, 0U);
     token_ = std::exchange(other.token_, 0U);
     buffer_ = std::move(other.buffer_);
+    item_identity_ = std::exchange(other.item_identity_, {});
+    has_item_identity_ = std::exchange(other.has_item_identity_, false);
   }
   return *this;
 }
@@ -787,6 +917,82 @@ void FixedBufferEdgeConsumerLease::disarm() noexcept {
   state_.reset();
   slot_index_ = 0U;
   token_ = 0U;
+  item_identity_ = {};
+  has_item_identity_ = false;
+}
+
+FixedBufferEdgeConsumerReservation::FixedBufferEdgeConsumerReservation(
+  std::shared_ptr<detail::FixedBufferEdgeState> state, const Quantity slot_index, const std::uint64_t token,
+  const DataItemIdentity item_identity, const bool has_item_identity) noexcept
+    : state_(std::move(state)), slot_index_(slot_index), token_(token), item_identity_(item_identity),
+      has_item_identity_(has_item_identity) {}
+
+FixedBufferEdgeConsumerReservation::~FixedBufferEdgeConsumerReservation() {
+  release_noexcept();
+}
+
+FixedBufferEdgeConsumerReservation::FixedBufferEdgeConsumerReservation(
+  FixedBufferEdgeConsumerReservation&& other) noexcept
+    : state_(std::move(other.state_)), slot_index_(std::exchange(other.slot_index_, 0U)),
+      token_(std::exchange(other.token_, 0U)), item_identity_(std::exchange(other.item_identity_, {})),
+      has_item_identity_(std::exchange(other.has_item_identity_, false)) {}
+
+FixedBufferEdgeConsumerReservation&
+FixedBufferEdgeConsumerReservation::operator=(FixedBufferEdgeConsumerReservation&& other) noexcept {
+  if (this != &other) {
+    release_noexcept();
+    state_ = std::move(other.state_);
+    slot_index_ = std::exchange(other.slot_index_, 0U);
+    token_ = std::exchange(other.token_, 0U);
+    item_identity_ = std::exchange(other.item_identity_, {});
+    has_item_identity_ = std::exchange(other.has_item_identity_, false);
+  }
+  return *this;
+}
+
+bool FixedBufferEdgeConsumerReservation::valid() const noexcept {
+  return state_ != nullptr && token_ != 0U;
+}
+
+ksj::base::Result<FixedBufferEdgeConsumerLease> FixedBufferEdgeConsumerReservation::materialize() {
+  if (!valid()) {
+    return ksj::base::Status::StateError("FixedBufferEdge consumer reservation is invalid or moved from");
+  }
+  auto acquired = state_->materialize_consumer_claim(slot_index_, token_);
+  if (!acquired.ok()) {
+    return acquired.status();
+  }
+  auto item = std::move(acquired).value();
+  auto lease = FixedBufferEdgeConsumerLease{
+    state_, item.slot_index, item.token, std::move(item.handle), item.item_identity, item.has_item_identity};
+  disarm();
+  return lease;
+}
+
+ksj::base::Status FixedBufferEdgeConsumerReservation::rollback() {
+  if (!valid()) {
+    return ksj::base::Status::StateError("FixedBufferEdge consumer reservation is invalid or moved from");
+  }
+  const auto rolled_back = state_->rollback_consumer_claim(slot_index_, token_);
+  if (rolled_back.ok()) {
+    disarm();
+  }
+  return rolled_back;
+}
+
+void FixedBufferEdgeConsumerReservation::release_noexcept() noexcept {
+  if (state_ != nullptr && token_ != 0U) {
+    static_cast<void>(state_->rollback_consumer_claim(slot_index_, token_));
+  }
+  disarm();
+}
+
+void FixedBufferEdgeConsumerReservation::disarm() noexcept {
+  state_.reset();
+  slot_index_ = 0U;
+  token_ = 0U;
+  item_identity_ = {};
+  has_item_identity_ = false;
 }
 
 ksj::base::Result<std::unique_ptr<FixedBufferEdge>> FixedBufferEdge::create(FixedBufferEdgeConfig config,
@@ -889,6 +1095,19 @@ ksj::base::Result<FixedBufferEdgeProducerReservation> FixedBufferEdge::try_reser
   return FixedBufferEdgeProducerReservation{state_, reserved.value().slot_index, reserved.value().token, logical_bytes};
 }
 
+FixedBufferEdgeConsumerReservationPoll FixedBufferEdge::try_reserve_consumer() {
+  if (state_ == nullptr) {
+    return {.kind = FixedBufferEdgePollKind::failed};
+  }
+  auto claimed = state_->try_reserve_consumer();
+  if (claimed.kind != FixedBufferEdgePollKind::item) {
+    return {.kind = claimed.kind};
+  }
+  return {.kind = FixedBufferEdgePollKind::item,
+          .reservation = FixedBufferEdgeConsumerReservation{state_, claimed.slot_index, claimed.token,
+                                                            claimed.item_identity, claimed.has_item_identity}};
+}
+
 FixedBufferEdgePoll FixedBufferEdge::try_acquire() {
   if (state_ == nullptr) {
     return {.kind = FixedBufferEdgePollKind::failed};
@@ -898,8 +1117,8 @@ FixedBufferEdgePoll FixedBufferEdge::try_acquire() {
     return {.kind = acquired.kind};
   }
   return {.kind = FixedBufferEdgePollKind::item,
-          .lease =
-            FixedBufferEdgeConsumerLease{state_, acquired.slot_index, acquired.token, std::move(acquired.handle)}};
+          .lease = FixedBufferEdgeConsumerLease{state_, acquired.slot_index, acquired.token, std::move(acquired.handle),
+                                                acquired.item_identity, acquired.has_item_identity}};
 }
 
 ksj::base::Status FixedBufferEdge::end_of_input() {

@@ -44,20 +44,20 @@ public:
   bool number_integer(const number_integer_t value) override {
     if (value < -static_cast<number_integer_t>(kMaxCanonicalJsonInteger) ||
         value > static_cast<number_integer_t>(kMaxCanonicalJsonInteger)) {
-      return fail_validation("JSON integer exceeds the exact v1 range");
+      return fail_validation("JSON integer exceeds the exact current range");
     }
     return append_value(Json(value));
   }
 
   bool number_unsigned(const number_unsigned_t value) override {
     if (value > static_cast<number_unsigned_t>(kMaxCanonicalJsonInteger)) {
-      return fail_validation("JSON integer exceeds the exact v1 range");
+      return fail_validation("JSON integer exceeds the exact current range");
     }
     return append_value(Json(value));
   }
 
   bool number_float(number_float_t /*value*/, const string_t& /*raw*/) override {
-    return fail_validation("floating-point JSON values are not permitted in v1 artifacts");
+    return fail_validation("floating-point JSON values are not permitted in current artifacts");
   }
 
   bool string(string_t& value) override {
@@ -68,7 +68,7 @@ public:
   }
 
   bool binary(binary_t& /*value*/) override {
-    return fail_validation("binary JSON values are not permitted in textual v1 artifacts");
+    return fail_validation("binary JSON values are not permitted in textual current artifacts");
   }
 
   bool start_object(const std::size_t elements) override {
@@ -234,7 +234,7 @@ private:
   if (value.is_number_unsigned()) {
     const auto number = value.get<Quantity>();
     if (number > kMaxCanonicalJsonInteger) {
-      return ksj::base::Status::ValidationError(std::string(path) + " exceeds the v1 canonical integer range");
+      return ksj::base::Status::ValidationError(std::string(path) + " exceeds the current canonical integer range");
     }
     return Json(number);
   }
@@ -242,13 +242,13 @@ private:
     const auto number = value.get<std::int64_t>();
     if (number < -static_cast<std::int64_t>(kMaxCanonicalJsonInteger) ||
         number > static_cast<std::int64_t>(kMaxCanonicalJsonInteger)) {
-      return ksj::base::Status::ValidationError(std::string(path) + " exceeds the v1 canonical integer range");
+      return ksj::base::Status::ValidationError(std::string(path) + " exceeds the current canonical integer range");
     }
     return Json(number);
   }
   if (value.is_number_float()) {
-    return ksj::base::Status::ValidationError(std::string(path) +
-                                              " is a floating-point JSON value; v1 artifacts require exact values");
+    return ksj::base::Status::ValidationError(
+      std::string(path) + " is a floating-point JSON value; current artifacts require exact values");
   }
   if (value.is_array()) {
     Json result = Json::array();

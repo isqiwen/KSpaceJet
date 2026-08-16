@@ -207,7 +207,23 @@ ksj::base::Status CartesianFrameSlot::scatter(const FrameSlotToken token, const 
   }
   ++total_arrivals_;
 
-  auto* const destination = storage_.data() + physical_index * line_bytes_;
+  // ISMRMRD owns the acquisition-line layout: channel planes are contiguous
+  // within one line.  The frozen frame TypeRef is channel-major over the
+  // whole frame, so the logical destination of channel c, ky2, ky1 is:
+  //
+  //   [c][ky2][ky1][readout]
+  //
+  // rather than [ky2][ky1][c][readout].  Copying the entire raw line into a
+  // physical-line-sized range would silently create the latter layout when
+  // channels > 1 and make whitening/compression operate on corrupt data.
+  const auto& dimensions = config_.dimensions;
+  const auto channel_plane_bytes =
+    static_cast<std::size_t>(dimensions.phase_encode_1) * static_cast<std::size_t>(dimensions.phase_encode_2) *
+    static_cast<std::size_t>(dimensions.readout_samples) * static_cast<std::size_t>(dimensions.bytes_per_sample);
+  const auto channel_line_bytes =
+    static_cast<std::size_t>(dimensions.readout_samples) * static_cast<std::size_t>(dimensions.bytes_per_sample);
+  const auto within_channel_offset = physical_index * channel_line_bytes;
+  auto* const first_destination = storage_.data() + within_channel_offset;
   if (is_covered(physical_index)) {
     if (config_.duplicate_policy == DuplicateAcquisitionPolicy::reject) {
       return ksj::base::Status::AlreadyExists("duplicate Cartesian acquisition is forbidden by contract");
@@ -220,18 +236,30 @@ ksj::base::Status CartesianFrameSlot::scatter(const FrameSlotToken token, const 
       case DuplicateAcquisitionPolicy::reject:
         return ksj::base::Status::InternalError("reject duplicate policy was not handled before dispatch");
       case DuplicateAcquisitionPolicy::ignore_identical:
-        if (std::memcmp(destination, payload.data(), line_bytes_) != 0) {
-          return ksj::base::Status::ValidationError(
-            "duplicate Cartesian acquisition differs under ignore-identical policy");
+        for (std::size_t channel = 0U; channel < dimensions.channels; ++channel) {
+          const auto* const destination = first_destination + channel * channel_plane_bytes;
+          const auto* const source = payload.data() + channel * channel_line_bytes;
+          if (std::memcmp(destination, source, channel_line_bytes) != 0) {
+            return ksj::base::Status::ValidationError(
+              "duplicate Cartesian acquisition differs under ignore-identical policy");
+          }
         }
         return ksj::base::Status::Ok();
       case DuplicateAcquisitionPolicy::replace_before_seal:
-        std::memcpy(destination, payload.data(), line_bytes_);
+        for (std::size_t channel = 0U; channel < dimensions.channels; ++channel) {
+          auto* const destination = first_destination + channel * channel_plane_bytes;
+          const auto* const source = payload.data() + channel * channel_line_bytes;
+          std::memcpy(destination, source, channel_line_bytes);
+        }
         return ksj::base::Status::Ok();
     }
   }
 
-  std::memcpy(destination, payload.data(), line_bytes_);
+  for (std::size_t channel = 0U; channel < dimensions.channels; ++channel) {
+    auto* const destination = first_destination + channel * channel_plane_bytes;
+    const auto* const source = payload.data() + channel * channel_line_bytes;
+    std::memcpy(destination, source, channel_line_bytes);
+  }
   mark_covered(physical_index);
   ++covered_indices_;
   if (covered_indices_ == config_.completion.required_indices.size()) {

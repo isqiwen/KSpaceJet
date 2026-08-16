@@ -130,8 +130,6 @@ def load_manifest(root: Path, dataset_id: str) -> tuple[dict[str, Any], Path, Pu
         raise DatasetError(f"manifest root must be an object: {manifest_path}")
     if manifest.get("dataset_id") != dataset_id:
         raise DatasetError(f"dataset_id does not match manifest filename: {manifest_path}")
-    if manifest.get("schema_version") != 1:
-        raise DatasetError(f"unsupported schema_version in {manifest_path}")
     if not isinstance(manifest.get("files"), list) or not manifest["files"]:
         raise DatasetError(f"manifest has no files: {manifest_path}")
 

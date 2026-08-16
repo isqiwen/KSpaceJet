@@ -40,7 +40,7 @@ inline constexpr JsonParseLimits kPipelineDefinitionJsonParseLimits{
   .max_string_bytes = 64U * 1024U,
 };
 
-// Canonicalization is deliberately constrained to the v1 JSON value domain:
+// Canonicalization is deliberately constrained to the current JSON value domain:
 // object, array, string, boolean, null and signed/unsigned integers exactly
 // representable by IEEE-754 binary64.  Floating point JSON is rejected before
 // hashing so no platform-specific formatting can alter a pipeline digest.

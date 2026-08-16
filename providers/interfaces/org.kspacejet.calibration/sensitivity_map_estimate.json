@@ -1,0 +1,30 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.calibration",
+  "operator_id": "sensitivity_map_estimate",
+  "summary": "Estimate scan-bound sensitivity maps from complex coil images.",
+  "ports": [
+    {
+      "name": "coil_images",
+      "direction": "input",
+      "semantic_type": "ksj.coil-image-frame"
+    },
+    {
+      "name": "sensitivity_maps",
+      "direction": "output",
+      "semantic_type": "ksj.sensitivity-map"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [
+      "method"
+    ],
+    "optional": [
+      "calibration_region",
+      "regularization"
+    ]
+  },
+  "notes": "This shared estimator accepts complex coil images so the future exact contract can define Cartesian or non-Cartesian acquisition/calibration provenance without duplicating map estimation in each consumer Provider. It must also define map semantics, key/epoch projection, completion, finite retention, resource bounds, and terminal behavior. Its immutable sensitivity-map output reaches Cartesian SENSE, non-Cartesian SENSE, and adaptive coil combination only through future explicit calibration bindings; it is never implicit shared Provider state."
+}

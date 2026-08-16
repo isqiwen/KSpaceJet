@@ -1,0 +1,30 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.cartesian-recon",
+  "operator_id": "cartesian_sense_reconstruct",
+  "summary": "Reconstruct one Cartesian image from undersampled multi-coil k-space and sensitivity maps.",
+  "ports": [
+    {
+      "name": "undersampled_kspace",
+      "direction": "input",
+      "semantic_type": "ksj.kspace-frame"
+    },
+    {
+      "name": "sensitivity_maps",
+      "direction": "input",
+      "semantic_type": "ksj.sensitivity-map"
+    },
+    {
+      "name": "image",
+      "direction": "output",
+      "semantic_type": "ksj.complex-image-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [],
+    "optional": ["iterations", "regularization"]
+  },
+  "notes": "Sensitivity-map estimation belongs to the planned org.kspacejet.calibration/sensitivity_map_estimate Operator. This consumer must receive its immutable sensitivity maps through a future explicit calibration binding, never by inferring or retaining hidden shared Provider state. Solver choice, convergence, cancellation, device placement, resource bounds, and terminal behavior remain unimplemented."
+}

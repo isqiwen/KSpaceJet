@@ -133,7 +133,6 @@ def write_gate_json(
 ) -> pathlib.Path:
     path = out_dir / "benchmark_gate.json"
     payload = {
-        "schema_version": 1,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "config": asdict(config),
         "measurement_config": measurement_config,
@@ -167,7 +166,6 @@ def save_baseline(
         if source.exists():
             shutil.copy2(source, destination / name)
     manifest = {
-        "schema_version": 1,
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "host": platform.node(),
         "platform": platform.platform(),

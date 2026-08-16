@@ -1,0 +1,525 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/run-record.schema.json",
+  "title": "KSpaceJet RunRecord",
+  "description": "Immutable terminal audit record for one run. records fail-stop or source-replay lineage only; it does not claim durable checkpoints, cross-run deduplication, or exactly-once delivery.",
+  "type": "object",
+  "required": [
+    "kind",
+    "run_id",
+    "execution_profile",
+    "outcome",
+    "recovery_class",
+    "egress_visibility",
+    "secondary_causes"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "RunRecord"
+    },
+    "run_id": {
+      "$ref": "#/$defs/runIdentity"
+    },
+    "execution_profile": {
+      "$ref": "#/$defs/executionProfile"
+    },
+    "execution_plan_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "verification_record_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "admission_record_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "outcome": {
+      "enum": [
+        "rejected",
+        "cancelled_before_admission",
+        "failed_pre_admission",
+        "cancelled",
+        "failed",
+        "completed"
+      ]
+    },
+    "recovery_class": {
+      "enum": [
+        "fail_stop_no_resume",
+        "source_replay_new_run"
+      ]
+    },
+    "egress_visibility": {
+      "enum": [
+        "none",
+        "partial",
+        "flushed"
+      ]
+    },
+    "last_committed_ordinal": {
+      "$ref": "#/$defs/safeInteger"
+    },
+    "primary_cause": {
+      "$ref": "#/$defs/cause"
+    },
+    "secondary_causes": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/cause"
+      }
+    },
+    "replay_of_run_id": {
+      "$ref": "#/$defs/runIdentity"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "verification_record_digest"
+        ]
+      },
+      "then": {
+        "required": [
+          "execution_plan_digest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "admission_record_digest"
+        ]
+      },
+      "then": {
+        "required": [
+          "execution_plan_digest",
+          "verification_record_digest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "cancelled_before_admission",
+              "failed_pre_admission"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "egress_visibility": {
+            "const": "none"
+          }
+        },
+        "not": {
+          "required": [
+            "admission_record_digest"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "rejected"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "egress_visibility": {
+            "const": "none"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "cancelled",
+              "failed",
+              "completed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "execution_plan_digest",
+          "verification_record_digest",
+          "admission_record_digest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "egress_visibility": {
+            "const": "none"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "last_committed_ordinal"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "egress_visibility": {
+            "const": "partial"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "last_committed_ordinal"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "egress_visibility": {
+            "const": "flushed"
+          },
+          "secondary_causes": {
+            "maxItems": 0
+          }
+        },
+        "not": {
+          "required": [
+            "primary_cause"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "recovery_class": {
+            "const": "source_replay_new_run"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "replay_of_run_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "recovery_class": {
+            "const": "fail_stop_no_resume"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "replay_of_run_id"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "cancelled_before_admission",
+              "cancelled"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "primary_cause"
+        ],
+        "properties": {
+          "primary_cause": {
+            "$ref": "#/$defs/cancellationCause"
+          },
+          "secondary_causes": {
+            "items": {
+              "$ref": "#/$defs/cancellationCause"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "rejected"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "primary_cause"
+        ],
+        "properties": {
+          "primary_cause": {
+            "$ref": "#/$defs/rejectionCause"
+          },
+          "secondary_causes": {
+            "items": {
+              "$ref": "#/$defs/rejectionCause"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "failed_pre_admission",
+              "failed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "primary_cause"
+        ],
+        "properties": {
+          "primary_cause": {
+            "$ref": "#/$defs/failureOrInvariantCause"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "primary_cause"
+        ],
+        "properties": {
+          "primary_cause": {
+            "$ref": "#/$defs/failureCause"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "secondary_causes": {
+            "items": {
+              "$ref": "#/$defs/failureSecondaryCause"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "primary_cause"
+        ],
+        "properties": {
+          "primary_cause": {
+            "$ref": "#/$defs/invariantCause"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "secondary_causes": {
+            "items": {
+              "$ref": "#/$defs/invariantSecondaryCause"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "runIdentity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$"
+    },
+    "executionProfile": {
+      "type": "string",
+      "enum": [
+        "offline",
+        "bounded-online",
+        "isolated-strict-online",
+        "deadline-qualified-online",
+        "research-unbounded"
+      ]
+    },
+    "cause": {
+      "type": "object",
+      "required": [
+        "kind",
+        "code"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "cancellation",
+            "rejection",
+            "failure",
+            "invariant"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cancellationCause": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/cause"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "cancellation"
+            }
+          }
+        }
+      ]
+    },
+    "rejectionCause": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/cause"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "rejection"
+            }
+          }
+        }
+      ]
+    },
+    "failureOrInvariantCause": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/cause"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "failure",
+                "invariant"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "failureCause": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/cause"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "failure"
+            }
+          }
+        }
+      ]
+    },
+    "invariantCause": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/cause"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "invariant"
+            }
+          }
+        }
+      ]
+    },
+    "failureSecondaryCause": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/cause"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "cancellation",
+                "failure"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "invariantSecondaryCause": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/cause"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "cancellation",
+                "failure",
+                "invariant"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

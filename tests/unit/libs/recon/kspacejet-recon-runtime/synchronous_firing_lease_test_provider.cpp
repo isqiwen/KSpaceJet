@@ -1,4 +1,4 @@
-#include "kspacejet/provider/v1/provider.h"
+#include "kspacejet/provider/provider.h"
 
 #include <array>
 #include <cstddef>
@@ -7,6 +7,11 @@
 
 enum class TestProviderMode : std::uint32_t {
   done_output,
+  done_two_output,
+  done_output_zero_terminal,
+  done_no_output,
+  done_zero_output,
+  mirror_input,
   unsettled_output,
   yield_consumed,
   yield_sealed,
@@ -17,6 +22,8 @@ enum class TestProviderMode : std::uint32_t {
   undersized_info,
   throws_across_abi,
   direct_contract_violation,
+  failed_with_error,
+  uses_scratch,
 };
 
 struct ksj_provider_operator {
@@ -29,9 +36,15 @@ namespace {
 
 constexpr char kProviderId[] = "org.kspacejet.tests.synchronous-firing-lease";
 constexpr char kOperatorId[] = "synchronous_firing_lease_test_operator";
+constexpr char kNoOutputOperatorId[] = "synchronous_firing_lease_no_output_test_operator";
 constexpr char kError[] = "test Provider rejected ABI input";
 
 ksj_provider_operator kDoneOutput{TestProviderMode::done_output};
+ksj_provider_operator kDoneTwoOutput{TestProviderMode::done_two_output};
+ksj_provider_operator kDoneOutputZeroTerminal{TestProviderMode::done_output_zero_terminal};
+ksj_provider_operator kDoneNoOutput{TestProviderMode::done_no_output};
+ksj_provider_operator kDoneZeroOutput{TestProviderMode::done_zero_output};
+ksj_provider_operator kMirrorInput{TestProviderMode::mirror_input};
 ksj_provider_operator kUnsettledOutput{TestProviderMode::unsettled_output};
 ksj_provider_operator kYieldConsumed{TestProviderMode::yield_consumed};
 ksj_provider_operator kYieldSealed{TestProviderMode::yield_sealed};
@@ -42,6 +55,8 @@ ksj_provider_operator kMetadataOutput{TestProviderMode::metadata_output};
 ksj_provider_operator kUndersizedInfo{TestProviderMode::undersized_info};
 ksj_provider_operator kThrowsAcrossAbi{TestProviderMode::throws_across_abi};
 ksj_provider_operator kDirectContractViolation{TestProviderMode::direct_contract_violation};
+ksj_provider_operator kFailedWithError{TestProviderMode::failed_with_error};
+ksj_provider_operator kUsesScratch{TestProviderMode::uses_scratch};
 ksj_execution_context kContext;
 ksj_key_state kKeyState;
 
@@ -50,8 +65,8 @@ ksj_key_state kKeyState;
 }
 
 [[nodiscard]] bool full_header(const ksj_provider_abi_header* value, const std::size_t size) {
-  return value != nullptr && value->struct_size >= size && value->abi_major == KSJ_PROVIDER_ABI_MAJOR &&
-         value->abi_minor <= KSJ_PROVIDER_ABI_MINOR;
+  return value != nullptr && value->struct_size >= size && value->reserved0 == 0U && value->reserved[0] == 0U &&
+         value->reserved[1] == 0U;
 }
 
 template <typename T> [[nodiscard]] bool full_header(const T* value) {
@@ -99,6 +114,19 @@ void fail(ksj_error_view* out_error, const ksj_status status) {
   if (config_is(config, "{\"mode\":\"done-output\"}", sizeof("{\"mode\":\"done-output\"}") - 1U)) {
     return &kDoneOutput;
   }
+  if (config_is(config, "{\"mode\":\"done-two-output\"}", sizeof("{\"mode\":\"done-two-output\"}") - 1U)) {
+    return &kDoneTwoOutput;
+  }
+  if (config_is(config, "{\"mode\":\"done-output-zero-terminal\"}",
+                sizeof("{\"mode\":\"done-output-zero-terminal\"}") - 1U)) {
+    return &kDoneOutputZeroTerminal;
+  }
+  if (config_is(config, "{\"mode\":\"done-zero-output\"}", sizeof("{\"mode\":\"done-zero-output\"}") - 1U)) {
+    return &kDoneZeroOutput;
+  }
+  if (config_is(config, "{\"mode\":\"mirror-input\"}", sizeof("{\"mode\":\"mirror-input\"}") - 1U)) {
+    return &kMirrorInput;
+  }
   if (config_is(config, "{\"mode\":\"unsettled-output\"}", sizeof("{\"mode\":\"unsettled-output\"}") - 1U)) {
     return &kUnsettledOutput;
   }
@@ -130,6 +158,12 @@ void fail(ksj_error_view* out_error, const ksj_status status) {
                 sizeof("{\"mode\":\"direct-contract-violation\"}") - 1U)) {
     return &kDirectContractViolation;
   }
+  if (config_is(config, "{\"mode\":\"failed-with-error\"}", sizeof("{\"mode\":\"failed-with-error\"}") - 1U)) {
+    return &kFailedWithError;
+  }
+  if (config_is(config, "{\"mode\":\"uses-scratch\"}", sizeof("{\"mode\":\"uses-scratch\"}") - 1U)) {
+    return &kUsesScratch;
+  }
   return nullptr;
 }
 
@@ -144,7 +178,7 @@ void write_result(ksj_process_result* out_result, const ksj_provider_process_out
   out_result->terminal_epoch = terminal_epoch;
 }
 
-[[nodiscard]] ksj_status get_lease_info(const ksj_firing_lease_callbacks_v1* callbacks, ksj_firing_lease* lease,
+[[nodiscard]] ksj_status get_lease_info(const ksj_firing_lease_callbacks* callbacks, ksj_firing_lease* lease,
                                         ksj_firing_lease_info* out_info, ksj_error_view* out_error) {
   if (!full_header(callbacks) || callbacks->get_info == nullptr) {
     return KSJ_STATUS_BAD_ABI;
@@ -153,9 +187,9 @@ void write_result(ksj_process_result* out_result, const ksj_provider_process_out
   return callbacks->get_info(callbacks->host_context, lease, out_info, out_error);
 }
 
-[[nodiscard]] ksj_status copy_first_input_identity(const ksj_firing_lease_callbacks_v1* callbacks,
-                                                   ksj_firing_lease* lease, std::uint64_t& semantic_key_hash,
-                                                   std::uint64_t& order_key, ksj_error_view* out_error) {
+[[nodiscard]] ksj_status copy_first_input_identity(const ksj_firing_lease_callbacks* callbacks, ksj_firing_lease* lease,
+                                                   std::uint64_t& semantic_key_hash, std::uint64_t& order_key,
+                                                   ksj_error_view* out_error) {
   if (!full_header(callbacks) || callbacks->get_input_batch == nullptr) {
     return KSJ_STATUS_BAD_ABI;
   }
@@ -173,16 +207,17 @@ void write_result(ksj_process_result* out_result, const ksj_provider_process_out
   return KSJ_STATUS_OK;
 }
 
-[[nodiscard]] ksj_status produce_one(const ksj_firing_lease_callbacks_v1* callbacks, ksj_firing_lease* lease,
+[[nodiscard]] ksj_status produce_one(const ksj_firing_lease_callbacks* callbacks, ksj_firing_lease* lease,
                                      const bool settle, const bool include_metadata, const bool copy_input_identity,
-                                     std::uint32_t& sealed_count, ksj_error_view* out_error) {
+                                     std::uint32_t& sealed_count, ksj_error_view* out_error,
+                                     const std::uint32_t output_slot = 0U) {
   if (!full_header(callbacks) || callbacks->acquire_output_grant == nullptr || callbacks->output_grants == nullptr ||
       !full_header(callbacks->output_grants) || callbacks->output_grants->map_mutable_payload == nullptr ||
       callbacks->output_grants->seal == nullptr) {
     return KSJ_STATUS_BAD_ABI;
   }
   ksj_output_grant* grant = nullptr;
-  const auto acquire = callbacks->acquire_output_grant(callbacks->host_context, lease, 0U, &grant, out_error);
+  const auto acquire = callbacks->acquire_output_grant(callbacks->host_context, lease, output_slot, &grant, out_error);
   if (acquire != KSJ_STATUS_OK) {
     return acquire;
   }
@@ -207,7 +242,7 @@ void write_result(ksj_process_result* out_result, const ksj_provider_process_out
   }
   ksj_output_seal_descriptor seal{};
   seal.abi = header(sizeof(seal));
-  seal.output_port = 0U;
+  seal.output_port = output_slot;
   seal.produced_item_count = 1U;
   seal.produced_byte_count = 4U;
   seal.semantic_key_hash = semantic_key_hash;
@@ -226,10 +261,73 @@ void write_result(ksj_process_result* out_result, const ksj_provider_process_out
   return sealed;
 }
 
+[[nodiscard]] ksj_status mirror_first_input(const ksj_firing_lease_callbacks* callbacks, ksj_firing_lease* lease,
+                                            std::uint32_t& sealed_count, ksj_error_view* out_error) {
+  if (!full_header(callbacks) || callbacks->get_input_batch == nullptr || callbacks->acquire_output_grant == nullptr ||
+      callbacks->output_grants == nullptr || !full_header(callbacks->output_grants) ||
+      callbacks->output_grants->map_mutable_payload == nullptr || callbacks->output_grants->seal == nullptr) {
+    return KSJ_STATUS_BAD_ABI;
+  }
+  ksj_input_batch_view batch{};
+  batch.abi = header(sizeof(batch));
+  const auto input_status = callbacks->get_input_batch(callbacks->host_context, lease, 0U, &batch, out_error);
+  if (input_status != KSJ_STATUS_OK) {
+    return input_status;
+  }
+  if (!full_header(&batch) || batch.items == nullptr || batch.item_count != 1U || !full_header(&batch.items[0]) ||
+      !full_header(&batch.items[0].payload) || batch.items[0].payload.data == nullptr) {
+    return KSJ_STATUS_CONTRACT_VIOLATION;
+  }
+
+  const auto& input = batch.items[0];
+  ksj_output_grant* grant = nullptr;
+  const auto acquire = callbacks->acquire_output_grant(callbacks->host_context, lease, 0U, &grant, out_error);
+  if (acquire != KSJ_STATUS_OK) {
+    return acquire;
+  }
+  ksj_mutable_payload_view payload{};
+  payload.abi = header(sizeof(payload));
+  const auto map =
+    callbacks->output_grants->map_mutable_payload(callbacks->output_grants->host_context, grant, &payload, out_error);
+  if (map != KSJ_STATUS_OK || !full_header(&payload) || payload.data == nullptr ||
+      payload.capacity_bytes < input.payload.byte_count) {
+    return map == KSJ_STATUS_OK ? KSJ_STATUS_CONTRACT_VIOLATION : map;
+  }
+  if (input.payload.byte_count != 0U) {
+    std::memcpy(payload.data, input.payload.data, static_cast<std::size_t>(input.payload.byte_count));
+  }
+  ksj_output_seal_descriptor seal{};
+  seal.abi = header(sizeof(seal));
+  seal.output_port = 0U;
+  seal.produced_item_count = 1U;
+  seal.produced_byte_count = input.payload.byte_count;
+  seal.semantic_key_hash = input.semantic_key_hash;
+  seal.order_key = input.order_key;
+  seal.type = payload.type;
+  seal.metadata.abi = header(sizeof(seal.metadata));
+  const auto sealed = callbacks->output_grants->seal(callbacks->output_grants->host_context, grant, &seal, out_error);
+  if (sealed == KSJ_STATUS_OK) {
+    ++sealed_count;
+  }
+  return sealed;
+}
+
 ksj_status KSJ_PROVIDER_CALL operator_create(const ksj_operator_create_request* request,
                                              ksj_provider_operator** out_operator, ksj_error_view* out_error) {
-  if (!full_header(request) || out_operator == nullptr ||
-      !same(request->operator_id, kOperatorId, sizeof(kOperatorId) - 1U)) {
+  if (!full_header(request) || out_operator == nullptr) {
+    fail(out_error, KSJ_STATUS_INVALID_ARGUMENT);
+    return KSJ_STATUS_INVALID_ARGUMENT;
+  }
+  if (same(request->operator_id, kNoOutputOperatorId, sizeof(kNoOutputOperatorId) - 1U)) {
+    if (!config_is(request->canonical_config, "{\"mode\":\"done-no-output\"}",
+                   sizeof("{\"mode\":\"done-no-output\"}") - 1U)) {
+      fail(out_error, KSJ_STATUS_INVALID_ARGUMENT);
+      return KSJ_STATUS_INVALID_ARGUMENT;
+    }
+    *out_operator = &kDoneNoOutput;
+    return KSJ_STATUS_OK;
+  }
+  if (!same(request->operator_id, kOperatorId, sizeof(kOperatorId) - 1U)) {
     fail(out_error, KSJ_STATUS_INVALID_ARGUMENT);
     return KSJ_STATUS_INVALID_ARGUMENT;
   }
@@ -272,7 +370,7 @@ ksj_status KSJ_PROVIDER_CALL operator_on_start(ksj_provider_operator*, ksj_execu
 ksj_status KSJ_PROVIDER_CALL operator_process_batch(ksj_provider_operator* operator_handle,
                                                     ksj_execution_context* context, ksj_key_state* key_state,
                                                     ksj_firing_lease* lease,
-                                                    const ksj_firing_lease_callbacks_v1* callbacks,
+                                                    const ksj_firing_lease_callbacks* callbacks,
                                                     ksj_process_result* out_result, ksj_error_view* out_error) {
   if (operator_handle == nullptr || context != &kContext || key_state != &kKeyState || lease == nullptr ||
       !full_header(out_result)) {
@@ -293,6 +391,27 @@ ksj_status KSJ_PROVIDER_CALL operator_process_batch(ksj_provider_operator* opera
   const auto info_status = get_lease_info(callbacks, lease, &info, out_error);
   if (info_status != KSJ_STATUS_OK) {
     return info_status;
+  }
+
+  if (operator_handle->mode == TestProviderMode::failed_with_error) {
+    fail(out_error, KSJ_STATUS_FAILED_PRECONDITION);
+    return KSJ_STATUS_FAILED_PRECONDITION;
+  }
+  if (operator_handle->mode == TestProviderMode::uses_scratch) {
+    if (!full_header(callbacks) || callbacks->get_scratch == nullptr) {
+      return KSJ_STATUS_BAD_ABI;
+    }
+    ksj_scratch_view scratch{};
+    scratch.abi = header(sizeof(scratch));
+    const auto scratch_status = callbacks->get_scratch(callbacks->host_context, lease, &scratch, out_error);
+    if (scratch_status != KSJ_STATUS_OK) {
+      return scratch_status;
+    }
+    if (!full_header(&scratch) || scratch.data == nullptr || scratch.byte_count != 16U ||
+        scratch.memory_domain != KSJ_PROVIDER_MEMORY_HOST_PAGEABLE || scratch.alignment < 64U) {
+      return KSJ_STATUS_CONTRACT_VIOLATION;
+    }
+    static_cast<std::uint8_t*>(scratch.data)[0] = 0xA5U;
   }
 
   if (operator_handle->mode == TestProviderMode::retain_input) {
@@ -317,6 +436,21 @@ ksj_status KSJ_PROVIDER_CALL operator_process_batch(ksj_provider_operator* opera
     write_result(out_result, KSJ_PROVIDER_PROCESS_YIELD, 0U, 0U, info.terminal_epoch);
     return KSJ_STATUS_OK;
   }
+  if (operator_handle->mode == TestProviderMode::done_no_output ||
+      operator_handle->mode == TestProviderMode::done_zero_output) {
+    write_result(out_result, KSJ_PROVIDER_PROCESS_DONE, 0U, info.input_batch_count, info.terminal_epoch);
+    return KSJ_STATUS_OK;
+  }
+
+  if (operator_handle->mode == TestProviderMode::mirror_input) {
+    std::uint32_t sealed_count = 0U;
+    const auto output_status = mirror_first_input(callbacks, lease, sealed_count, out_error);
+    if (output_status != KSJ_STATUS_OK) {
+      return output_status;
+    }
+    write_result(out_result, KSJ_PROVIDER_PROCESS_DONE, sealed_count, info.input_batch_count, info.terminal_epoch);
+    return KSJ_STATUS_OK;
+  }
 
   std::uint32_t sealed_count = 0U;
   if (operator_handle->mode == TestProviderMode::unsettled_output) {
@@ -325,6 +459,20 @@ ksj_status KSJ_PROVIDER_CALL operator_process_batch(ksj_provider_operator* opera
       return status;
     }
     write_result(out_result, KSJ_PROVIDER_PROCESS_DONE, 0U, info.input_batch_count, info.terminal_epoch);
+    return KSJ_STATUS_OK;
+  }
+  if (operator_handle->mode == TestProviderMode::done_two_output) {
+    auto output_status =
+      produce_one(callbacks, lease, true, false, info.input_batch_count != 0U, sealed_count, out_error, 0U);
+    if (output_status != KSJ_STATUS_OK) {
+      return output_status;
+    }
+    output_status =
+      produce_one(callbacks, lease, true, false, info.input_batch_count != 0U, sealed_count, out_error, 1U);
+    if (output_status != KSJ_STATUS_OK) {
+      return output_status;
+    }
+    write_result(out_result, KSJ_PROVIDER_PROCESS_DONE, sealed_count, info.input_batch_count, info.terminal_epoch);
     return KSJ_STATUS_OK;
   }
   const auto output_status =
@@ -345,7 +493,7 @@ ksj_status KSJ_PROVIDER_CALL operator_on_scan_end(ksj_provider_operator* operato
                                                   ksj_execution_context* context, ksj_key_state* key_state,
                                                   const ksj_scan_end_descriptor* descriptor,
                                                   ksj_firing_lease* terminal_lease,
-                                                  const ksj_firing_lease_callbacks_v1* callbacks,
+                                                  const ksj_firing_lease_callbacks* callbacks,
                                                   ksj_process_result* out_result, ksj_error_view* out_error) {
   if (operator_handle == nullptr || context != &kContext || key_state != &kKeyState || !full_header(descriptor) ||
       descriptor->kind != KSJ_PROVIDER_SCAN_END_NORMAL || terminal_lease == nullptr || !full_header(out_result)) {
@@ -357,10 +505,21 @@ ksj_status KSJ_PROVIDER_CALL operator_on_scan_end(ksj_provider_operator* operato
   if (info_status != KSJ_STATUS_OK) {
     return info_status;
   }
+  if (operator_handle->mode == TestProviderMode::done_output_zero_terminal ||
+      operator_handle->mode == TestProviderMode::done_no_output) {
+    write_result(out_result, KSJ_PROVIDER_PROCESS_DONE, 0U, 0U, descriptor->terminal_epoch);
+    return KSJ_STATUS_OK;
+  }
   std::uint32_t sealed_count = 0U;
-  const auto output_status = produce_one(callbacks, terminal_lease, true, false, false, sealed_count, out_error);
+  auto output_status = produce_one(callbacks, terminal_lease, true, false, false, sealed_count, out_error);
   if (output_status != KSJ_STATUS_OK) {
     return output_status;
+  }
+  if (operator_handle->mode == TestProviderMode::done_two_output) {
+    output_status = produce_one(callbacks, terminal_lease, true, false, false, sealed_count, out_error, 1U);
+    if (output_status != KSJ_STATUS_OK) {
+      return output_status;
+    }
   }
   write_result(out_result, KSJ_PROVIDER_PROCESS_DONE, sealed_count, 0U, descriptor->terminal_epoch);
   return KSJ_STATUS_OK;
@@ -379,10 +538,7 @@ void KSJ_PROVIDER_CALL operator_destroy(ksj_provider_operator*) {}
   ksj_operator_descriptor value{};
   value.abi = header(sizeof(value), KSJ_OPERATOR_CAP_MAY_EMIT_TERMINAL_OUTPUT);
   value.operator_id = text(kOperatorId, sizeof(kOperatorId) - 1U);
-  value.interface_revision = 1U;
   value.max_in_flight = 1U;
-  value.interface_digest = digest(0x10U);
-  value.contract_digest = digest(0x40U);
   value.thread_safety = KSJ_PROVIDER_SERIAL_INSTANCE;
   value.max_input_items_per_firing = 4U;
   value.max_output_items_per_firing = 2U;
@@ -391,8 +547,18 @@ void KSJ_PROVIDER_CALL operator_destroy(ksj_provider_operator*) {}
   return value;
 }
 
-[[nodiscard]] ksj_provider_api_v1 api() {
-  ksj_provider_api_v1 value{};
+[[nodiscard]] ksj_operator_descriptor no_output_operator_descriptor() {
+  auto value = operator_descriptor();
+  value.abi = header(sizeof(value));
+  value.operator_id = text(kNoOutputOperatorId, sizeof(kNoOutputOperatorId) - 1U);
+  value.max_output_items_per_firing = 0U;
+  value.max_output_bytes_per_firing = 0U;
+  value.max_scratch_bytes_per_firing = 0U;
+  return value;
+}
+
+[[nodiscard]] ksj_provider_api api() {
+  ksj_provider_api value{};
   value.abi = header(sizeof(value));
   value.operator_create = &operator_create;
   value.execution_context_create = &execution_context_create;
@@ -411,23 +577,22 @@ void KSJ_PROVIDER_CALL operator_destroy(ksj_provider_operator*) {}
 
 KSJ_PROVIDER_ENTRY ksj_status KSJ_PROVIDER_CALL ksj_provider_query(const ksj_provider_query_request*,
                                                                    ksj_provider_descriptor* out_descriptor,
-                                                                   ksj_provider_api_v1* out_api,
+                                                                   ksj_provider_api* out_api,
                                                                    ksj_error_view* out_error) {
   if (!full_header(out_descriptor) || !full_header(out_api)) {
     fail(out_error, KSJ_STATUS_BAD_ABI);
     return KSJ_STATUS_BAD_ABI;
   }
-  static const ksj_operator_descriptor kDescriptor = operator_descriptor();
+  static const std::array<ksj_operator_descriptor, 2U> kDescriptors{
+    operator_descriptor(),
+    no_output_operator_descriptor(),
+  };
   *out_descriptor = {};
   out_descriptor->abi = header(sizeof(*out_descriptor), KSJ_PROVIDER_CAP_SYNC_PROCESS);
   out_descriptor->provider_id = text(kProviderId, sizeof(kProviderId) - 1U);
-  out_descriptor->version.abi = header(sizeof(out_descriptor->version));
-  out_descriptor->version.major = 1U;
-  out_descriptor->provider_abi_major = KSJ_PROVIDER_ABI_MAJOR;
-  out_descriptor->provider_abi_minor = KSJ_PROVIDER_ABI_MINOR;
   out_descriptor->bundle_digest = digest(0x80U);
-  out_descriptor->operator_count = 1U;
-  out_descriptor->operators = &kDescriptor;
+  out_descriptor->operator_count = static_cast<std::uint32_t>(kDescriptors.size());
+  out_descriptor->operators = kDescriptors.data();
   *out_api = api();
   return KSJ_STATUS_OK;
 }

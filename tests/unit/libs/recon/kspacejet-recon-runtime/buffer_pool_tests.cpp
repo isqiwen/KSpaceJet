@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -21,7 +22,6 @@ using ksj::recon::ResourceVectorCapacity;
 using ksj::recon::ResourceVectorCapacitySpec;
 using ksj::recon::ResourceVectorSpec;
 using ksj::recon::TypeDescriptor;
-using ksj::recon::TypeDescriptorSpec;
 using ksj::recon::TypeMemoryDomain;
 using ksj::recon::runtime::FixedBufferPool;
 using ksj::recon::runtime::FixedBufferPoolConfig;
@@ -30,21 +30,14 @@ using ksj::recon::runtime::ImmutableBufferHandle;
 using ksj::recon::runtime::MutableBufferLease;
 using ksj::recon::runtime::ResourceVectorLedger;
 
-constexpr auto kPayloadDigest = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-constexpr auto kAbiDescriptorDigest = "sha256:3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea";
-constexpr auto kMetadataDigest = "sha256:cb8379ac2098aa165029e3938a51da0bcecfc008fd6795f401178647f96c5b34";
-
 static_assert(!std::is_copy_constructible_v<MutableBufferLease>);
 static_assert(!std::is_copy_assignable_v<MutableBufferLease>);
 static_assert(!std::is_copy_constructible_v<ImmutableBufferHandle>);
 static_assert(!std::is_copy_assignable_v<ImmutableBufferHandle>);
 
-[[nodiscard]] TypeDescriptor make_type(const Quantity revision = 1U) {
+[[nodiscard]] TypeDescriptor make_type(const Quantity variant = 1U) {
   const auto created = TypeDescriptor::create({
-    .type_id = "ksj.fixed-buffer-pool-test",
-    .revision = revision,
-    .abi_descriptor_digest = kAbiDescriptorDigest,
-    .payload_schema_digest = kPayloadDigest,
+    .type_ref = variant == 1U ? "ksj.fixed-buffer-pool-test" : "ksj.fixed-buffer-pool-test-alternate",
     .payload_kind = PayloadKind::buffer_handle,
     .element_type = ksj::recon::ElementType::uint8,
     .rank = 1U,
@@ -55,7 +48,6 @@ static_assert(!std::is_copy_assignable_v<ImmutableBufferHandle>);
     .allowed_memory_domains = {TypeMemoryDomain::host_normal},
     .min_alignment_bytes = 1U,
     .mutability = PayloadMutability::immutable_after_publish,
-    .metadata_schema_digest = kMetadataDigest,
   });
   EXPECT_TRUE(created.ok()) << created.status();
   return std::move(created).value();

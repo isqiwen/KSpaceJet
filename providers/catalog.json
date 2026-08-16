@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "kind": "ProviderOperatorCatalog",
+  "runtime_resolution_policy": "catalog-is-not-runtime-resolvable",
+  "scope": "The in-tree MRI reconstruction Provider taxonomy. Host/runtime services, ingress/egress adapters, and test-only fixtures are intentionally outside this catalog. An implemented-development entry has a checked-in module and OperatorContract; every planned entry reserves only its identity and OperatorInterface until an executable Provider is deliberately implemented.",
+  "providers": [
+    {
+      "provider_id": "org.kspacejet.kspace-conditioning",
+      "provider_slug": "kspace-conditioning",
+      "availability": "implemented-development",
+      "responsibility": "Condition assembled k-space before reconstruction without owning source transport, frame assembly, buffer accounting, or public MRI ingress.",
+      "lifecycle_boundary": "Serial synchronous frame-local conditioning with explicit calibration input batches where required. The Provider retains no input, runs no asynchronous work, and produces no terminal output; executor-owned calibration bindings source immutable artifacts from CalibrationArtifactStore.",
+      "implementation": {
+        "source_directory": "providers/kspacejet-kspace-conditioning",
+        "artifact_basename": "ksj-kspace-conditioning"
+      },
+      "operators": [
+        {
+          "operator_id": "noise_prewhiten",
+          "availability": "implemented-development",
+          "summary": "Whiten k-space samples with an explicit scan-bound noise model.",
+          "contract_path": "providers/kspacejet-kspace-conditioning/contracts/noise_prewhiten.json"
+        },
+        {
+          "operator_id": "phase_correct",
+          "availability": "implemented-development",
+          "summary": "Correct k-space with an explicit scan-bound phase model.",
+          "contract_path": "providers/kspacejet-kspace-conditioning/contracts/phase_correct.json"
+        },
+        {
+          "operator_id": "coil_compress",
+          "availability": "implemented-development",
+          "summary": "Project k-space onto an explicit virtual-coil basis.",
+          "contract_path": "providers/kspacejet-kspace-conditioning/contracts/coil_compress.json"
+        },
+        {
+          "operator_id": "readout_oversampling_remove",
+          "availability": "implemented-development",
+          "summary": "Remove readout oversampling while preserving the remaining k-space axes.",
+          "contract_path": "providers/kspacejet-kspace-conditioning/contracts/readout_oversampling_remove.json"
+        },
+        {
+          "operator_id": "noncartesian_noise_prewhiten",
+          "availability": "implemented-development",
+          "summary": "Whiten channel-major non-Cartesian k-space samples with an explicit scan-bound noise model.",
+          "contract_path": "providers/kspacejet-kspace-conditioning/contracts/noncartesian_noise_prewhiten.json"
+        },
+        {
+          "operator_id": "noncartesian_coil_compress",
+          "availability": "implemented-development",
+          "summary": "Project channel-major non-Cartesian k-space samples onto an explicit virtual-coil basis.",
+          "contract_path": "providers/kspacejet-kspace-conditioning/contracts/noncartesian_coil_compress.json"
+        },
+        {
+          "operator_id": "noncartesian_phase_correct",
+          "availability": "planned",
+          "summary": "Apply a sequence-specific non-Cartesian phase model without reusing the Cartesian [channel,kx] model.",
+          "interface_path": "providers/interfaces/org.kspacejet.kspace-conditioning/noncartesian_phase_correct.json"
+        }
+      ]
+    },
+    {
+      "provider_id": "org.kspacejet.calibration",
+      "provider_slug": "calibration",
+      "availability": "implemented-development",
+      "responsibility": "Estimate explicit scan-bound calibration artifacts for conditioning, accelerated reconstruction, and adaptive coil combination. It does not apply those artifacts to imaging frames, perform reconstruction or coil combination, or create runtime readiness tokens.",
+      "lifecycle_boundary": "Synchronous one-frame estimation of explicit immutable calibration artifacts. The implemented estimators retain no input or shared calibration state; each artifact reaches a consumer only through an explicit calibration binding.",
+      "implementation": {
+        "source_directory": "providers/kspacejet-calibration",
+        "artifact_basename": "ksj-calibration"
+      },
+      "operators": [
+        {
+          "operator_id": "noise_model_estimate",
+          "availability": "implemented-development",
+          "summary": "Estimate one scan-bound noise model from a noise-calibration frame.",
+          "contract_path": "providers/kspacejet-calibration/contracts/noise_model_estimate.json"
+        },
+        {
+          "operator_id": "phase_correction_estimate",
+          "availability": "implemented-development",
+          "summary": "Estimate one scan-bound phase-correction model from a phase-reference frame.",
+          "contract_path": "providers/kspacejet-calibration/contracts/phase_correction_estimate.json"
+        },
+        {
+          "operator_id": "noncartesian_phase_correction_estimate",
+          "availability": "planned",
+          "summary": "Estimate a sequence-specific non-Cartesian phase model from non-Cartesian phase references.",
+          "interface_path": "providers/interfaces/org.kspacejet.calibration/noncartesian_phase_correction_estimate.json"
+        },
+        {
+          "operator_id": "coil_compression_basis_estimate",
+          "availability": "implemented-development",
+          "summary": "Estimate one scan-bound virtual-coil compression basis from k-space.",
+          "contract_path": "providers/kspacejet-calibration/contracts/coil_compression_basis_estimate.json"
+        },
+        {
+          "operator_id": "cartesian_grappa_kernel_calibrate",
+          "availability": "planned",
+          "summary": "Calibrate one scan-bound Cartesian GRAPPA kernel from calibration k-space.",
+          "interface_path": "providers/interfaces/org.kspacejet.calibration/cartesian_grappa_kernel_calibrate.json"
+        },
+        {
+          "operator_id": "sensitivity_map_estimate",
+          "availability": "planned",
+          "summary": "Estimate scan-bound sensitivity maps from complex coil images.",
+          "interface_path": "providers/interfaces/org.kspacejet.calibration/sensitivity_map_estimate.json"
+        }
+      ]
+    },
+    {
+      "provider_id": "org.kspacejet.cartesian-recon",
+      "provider_slug": "cartesian-recon",
+      "availability": "implemented-development",
+      "responsibility": "Perform Cartesian k-space-to-image reconstruction stages. Coil combination remains a separate Provider and host/runtime services remain outside this boundary.",
+      "lifecycle_boundary": "Cartesian frame reconstruction with explicit calibration artifacts for accelerated methods. Each future executable contract must separately declare its finite workspace, calibration and terminal behavior.",
+      "implementation": {
+        "source_directory": "providers/kspacejet-cartesian-recon",
+        "artifact_basename": "ksj-cartesian-recon"
+      },
+      "operators": [
+        {
+          "operator_id": "cartesian_ifft2_coil_images",
+          "availability": "implemented-development",
+          "summary": "Perform the two-dimensional inverse Cartesian transform independently for every receive channel and retain complex coil images.",
+          "contract_path": "providers/kspacejet-cartesian-recon/contracts/cartesian_ifft2_coil_images.json"
+        },
+        {
+          "operator_id": "cartesian_partial_fourier",
+          "availability": "planned",
+          "summary": "Complete a partial-Fourier Cartesian k-space frame before image reconstruction.",
+          "interface_path": "providers/interfaces/org.kspacejet.cartesian-recon/cartesian_partial_fourier.json"
+        },
+        {
+          "operator_id": "cartesian_grappa_reconstruct",
+          "availability": "planned",
+          "summary": "Recover missing Cartesian k-space samples with an explicit scan-bound GRAPPA kernel.",
+          "interface_path": "providers/interfaces/org.kspacejet.cartesian-recon/cartesian_grappa_reconstruct.json"
+        },
+        {
+          "operator_id": "cartesian_sense_reconstruct",
+          "availability": "planned",
+          "summary": "Reconstruct a Cartesian image from undersampled multi-coil k-space and explicit sensitivity maps.",
+          "interface_path": "providers/interfaces/org.kspacejet.cartesian-recon/cartesian_sense_reconstruct.json"
+        }
+      ]
+    },
+    {
+      "provider_id": "org.kspacejet.noncartesian-recon",
+      "provider_slug": "noncartesian-recon",
+      "availability": "implemented-development",
+      "responsibility": "Perform bounded non-Cartesian k-space-to-complex-coil-image reconstruction without defining a scanner protocol, coil combination, or hidden calibration state.",
+      "lifecycle_boundary": "Trajectory-bearing frame reconstruction. The implemented direct adjoint is synchronous, frame-local, unweighted, and bounded; trajectory correction and sensitivity-encoded reconstruction remain separate planned boundaries.",
+      "implementation": {
+        "source_directory": "providers/kspacejet-noncartesian-recon",
+        "artifact_basename": "ksj-noncartesian-recon"
+      },
+      "operators": [
+        {
+          "operator_id": "trajectory_correction",
+          "availability": "planned",
+          "summary": "Correct the trajectory carried with a non-Cartesian k-space frame.",
+          "interface_path": "providers/interfaces/org.kspacejet.noncartesian-recon/trajectory_correction.json"
+        },
+        {
+          "operator_id": "noncartesian_adjoint_reconstruct",
+          "availability": "implemented-development",
+          "summary": "Apply an unweighted bounded direct non-Cartesian adjoint and produce complex coil images.",
+          "contract_path": "providers/kspacejet-noncartesian-recon/contracts/noncartesian_adjoint_reconstruct.json"
+        },
+        {
+          "operator_id": "noncartesian_sense_reconstruct",
+          "availability": "planned",
+          "summary": "Reconstruct one non-Cartesian image from multi-coil k-space and explicit sensitivity maps.",
+          "interface_path": "providers/interfaces/org.kspacejet.noncartesian-recon/noncartesian_sense_reconstruct.json"
+        }
+      ]
+    },
+    {
+      "provider_id": "org.kspacejet.coil-combine",
+      "provider_slug": "coil-combine",
+      "availability": "implemented-development",
+      "responsibility": "Combine complex coil images after reconstruction. It does not perform Cartesian or non-Cartesian reconstruction and does not estimate hidden calibration state.",
+      "lifecycle_boundary": "Frame-local complex coil-image combination. Adaptive combination remains a separate future Operator with an explicit sensitivity-map input; this Provider never estimates or hides calibration state.",
+      "implementation": {
+        "source_directory": "providers/kspacejet-coil-combine",
+        "artifact_basename": "ksj-coil-combine"
+      },
+      "operators": [
+        {
+          "operator_id": "coil_combine_rss",
+          "availability": "implemented-development",
+          "summary": "Combine complex coil images into a real image by root-sum-of-squares magnitude.",
+          "contract_path": "providers/kspacejet-coil-combine/contracts/coil_combine_rss.json"
+        },
+        {
+          "operator_id": "coil_combine_adaptive",
+          "availability": "planned",
+          "summary": "Combine complex coil images with explicit scan-bound sensitivity maps.",
+          "interface_path": "providers/interfaces/org.kspacejet.coil-combine/coil_combine_adaptive.json"
+        }
+      ]
+    },
+    {
+      "provider_id": "org.kspacejet.image-ops",
+      "provider_slug": "image-ops",
+      "availability": "implemented-development",
+      "responsibility": "Apply local image-domain transforms with one coherent image ABI and synchronous per-item lifecycle. Scan-wide normalization and image-quality policy are separate Provider boundaries.",
+      "lifecycle_boundary": "Stateless or frame-local image transforms. A future OperatorContract must declare exact typed ports; the Provider ABI must declare executable capability bounds and each node use must bind finite planning requirements and terminal behavior.",
+      "implementation": {
+        "source_directory": "providers/kspacejet-image-ops",
+        "artifact_basename": "ksj-image-ops"
+      },
+      "operators": [
+        {
+          "operator_id": "image_scale_float32",
+          "availability": "implemented-development",
+          "summary": "Scale every float32 image sample by an explicit finite factor.",
+          "contract_path": "providers/kspacejet-image-ops/contracts/image_scale_float32.json"
+        },
+        {
+          "operator_id": "image_offset_float32",
+          "availability": "implemented-development",
+          "summary": "Add an explicit finite offset to every float32 image sample.",
+          "contract_path": "providers/kspacejet-image-ops/contracts/image_offset_float32.json"
+        },
+        {
+          "operator_id": "image_clamp_float32",
+          "availability": "implemented-development",
+          "summary": "Clamp every float32 image sample to explicit finite lower and upper bounds.",
+          "contract_path": "providers/kspacejet-image-ops/contracts/image_clamp_float32.json"
+        },
+        {
+          "operator_id": "image_magnitude_float32",
+          "availability": "planned",
+          "summary": "Convert one complex image to a float32 magnitude image.",
+          "interface_path": "providers/interfaces/org.kspacejet.image-ops/image_magnitude_float32.json"
+        },
+        {
+          "operator_id": "image_phase_float32",
+          "availability": "planned",
+          "summary": "Convert one complex image to a float32 phase image.",
+          "interface_path": "providers/interfaces/org.kspacejet.image-ops/image_phase_float32.json"
+        },
+        {
+          "operator_id": "image_crop_float32",
+          "availability": "planned",
+          "summary": "Crop a float32 image to an explicitly configured region of interest.",
+          "interface_path": "providers/interfaces/org.kspacejet.image-ops/image_crop_float32.json"
+        },
+        {
+          "operator_id": "image_window_float32",
+          "availability": "planned",
+          "summary": "Apply an explicit display/intensity window to a float32 image.",
+          "interface_path": "providers/interfaces/org.kspacejet.image-ops/image_window_float32.json"
+        }
+      ]
+    },
+    {
+      "provider_id": "org.kspacejet.image-normalization",
+      "provider_slug": "image-normalization",
+      "availability": "planned",
+      "responsibility": "Normalize reconstructed images under an explicit normalization policy. This is separate from local image transforms because a future implementation may require scan- or series-scoped statistics and retention.",
+      "lifecycle_boundary": "Normalization policy and its possible scan/series state form one boundary. A future executable contract must declare statistic scope, retention, finite bounds, output timing, and EndOfInput behavior.",
+      "operators": [
+        {
+          "operator_id": "image_normalize",
+          "availability": "planned",
+          "summary": "Normalize one image or a declared bounded image set according to an explicit policy.",
+          "interface_path": "providers/interfaces/org.kspacejet.image-normalization/image_normalize.json"
+        }
+      ]
+    },
+    {
+      "provider_id": "org.kspacejet.image-quality",
+      "provider_slug": "image-quality",
+      "availability": "planned",
+      "responsibility": "Validate image payload quality and make policy failures explicit while preserving the host/runtime's resource and delivery responsibilities.",
+      "lifecycle_boundary": "Frame-local pass-through validation with an explicit fail policy. Future executable contracts must declare error propagation, finite resources, and terminal behavior.",
+      "operators": [
+        {
+          "operator_id": "image_nonfinite_check",
+          "availability": "planned",
+          "summary": "Reject or report images containing non-finite samples under an explicit policy.",
+          "interface_path": "providers/interfaces/org.kspacejet.image-quality/image_nonfinite_check.json"
+        },
+        {
+          "operator_id": "image_range_check",
+          "availability": "planned",
+          "summary": "Validate image samples against explicit permitted bounds under an explicit policy.",
+          "interface_path": "providers/interfaces/org.kspacejet.image-quality/image_range_check.json"
+        }
+      ]
+    }
+  ]
+}

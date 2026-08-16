@@ -147,7 +147,7 @@ public:
 
   // Returns the complete preallocated metadata sidecar for this slot.  It is
   // a non-retainable borrow with the same lifetime rules as writable_payload().
-  // This lets a plan-bound host use the pool's already-admitted metadata
+  // This lets an admitted host use the pool's already-admitted metadata
   // capacity as the Provider seal staging area rather than allocating or
   // charging a second per-firing buffer.
   [[nodiscard]] ksj::base::Result<ksj::base::ByteSpan> writable_metadata();

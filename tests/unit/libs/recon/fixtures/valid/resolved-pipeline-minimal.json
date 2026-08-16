@@ -1,0 +1,17 @@
+{
+  "kind": "ResolvedPipeline",
+  "pipeline_definition_artifact_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "pipeline_definition_semantic_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "providers": [
+    {
+      "alias": "reference",
+      "provider_id": "org.kspacejet.reference",
+      "bundle_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "operators": [
+        {
+          "id": "reference_reconstruct"
+        }
+      ]
+    }
+  ]
+}

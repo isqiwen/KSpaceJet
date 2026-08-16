@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -20,8 +21,8 @@ using ksj::recon::ResourceVectorCapacity;
 using ksj::recon::ResourceVectorCapacitySpec;
 using ksj::recon::ResourceVectorSpec;
 using ksj::recon::TypeDescriptor;
-using ksj::recon::TypeDescriptorSpec;
 using ksj::recon::TypeMemoryDomain;
+using ksj::recon::runtime::DataItemIdentity;
 using ksj::recon::runtime::FixedBufferEdge;
 using ksj::recon::runtime::FixedBufferEdgeConfig;
 using ksj::recon::runtime::FixedBufferEdgeConsumerLease;
@@ -35,21 +36,15 @@ using ksj::recon::runtime::FixedBufferPoolStorage;
 using ksj::recon::runtime::ImmutableBufferHandle;
 using ksj::recon::runtime::ResourceVectorLedger;
 
-constexpr auto kPayloadDigest = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-constexpr auto kAbiDescriptorDigest = "sha256:3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea";
-constexpr auto kMetadataDigest = "sha256:cb8379ac2098aa165029e3938a51da0bcecfc008fd6795f401178647f96c5b34";
-
 static_assert(!std::is_copy_constructible_v<FixedBufferEdgeProducerReservation>);
 static_assert(!std::is_copy_assignable_v<FixedBufferEdgeProducerReservation>);
 static_assert(!std::is_copy_constructible_v<FixedBufferEdgeConsumerLease>);
 static_assert(!std::is_copy_assignable_v<FixedBufferEdgeConsumerLease>);
+static_assert(sizeof(DataItemIdentity) == 3U * sizeof(std::uint64_t));
 
-[[nodiscard]] TypeDescriptor make_type(const Quantity revision = 1U) {
+[[nodiscard]] TypeDescriptor make_type(const Quantity variant = 1U) {
   const auto created = TypeDescriptor::create({
-    .type_id = "ksj.fixed-buffer-edge-test",
-    .revision = revision,
-    .abi_descriptor_digest = kAbiDescriptorDigest,
-    .payload_schema_digest = kPayloadDigest,
+    .type_ref = variant == 1U ? "ksj.fixed-buffer-edge-test" : "ksj.fixed-buffer-edge-test-alternate",
     .payload_kind = PayloadKind::buffer_handle,
     .element_type = ksj::recon::ElementType::uint8,
     .rank = 1U,
@@ -60,7 +55,6 @@ static_assert(!std::is_copy_assignable_v<FixedBufferEdgeConsumerLease>);
     .allowed_memory_domains = {TypeMemoryDomain::host_normal},
     .min_alignment_bytes = 1U,
     .mutability = PayloadMutability::immutable_after_publish,
-    .metadata_schema_digest = kMetadataDigest,
   });
   EXPECT_TRUE(created.ok()) << created.status();
   return std::move(created).value();
@@ -270,6 +264,48 @@ TEST(KSpaceJetFixedBufferEdge, CommitTransfersMoveOnlyHandleAndAckReturnsBothCre
   EXPECT_EQ(0U, snapshot.occupied_items);
   EXPECT_EQ(0U, snapshot.occupied_logical_bytes);
   EXPECT_EQ(kEdgeItems, snapshot.free_slots);
+  EXPECT_EQ(kPoolSlots, pool->snapshot().free_slots);
+}
+
+TEST(KSpaceJetFixedBufferEdge, StandaloneCommitExposesOnlyTheDefaultDataItemIdentity) {
+  constexpr Quantity kPoolSlots = 1U;
+  constexpr Quantity kPayloadCapacity = 16U;
+  constexpr Quantity kMetadataCapacity = 0U;
+  constexpr Quantity kEdgeItems = 1U;
+  const auto type_descriptor = make_type();
+  auto pool_slabs = make_pool_slabs(kPoolSlots, kPayloadCapacity, kMetadataCapacity);
+  auto edge_control = make_edge_control_slab(kEdgeItems);
+  const auto ledger =
+    make_ledger(pool_external_slab_bytes(kPoolSlots, kPayloadCapacity, kMetadataCapacity) + edge_control.bytes,
+                kPoolSlots + kEdgeItems);
+  auto pool_result = create_pool(type_descriptor, ledger, pool_slabs, kPoolSlots, kPayloadCapacity, kMetadataCapacity);
+  ASSERT_TRUE(pool_result.ok()) << pool_result.status();
+  auto pool = std::move(pool_result).value();
+  auto edge_result = create_edge(ledger, *pool, edge_control, kEdgeItems, 16U);
+  ASSERT_TRUE(edge_result.ok()) << edge_result.status();
+  auto edge = std::move(edge_result).value();
+
+  auto handle_result = seal_handle(*pool, type_descriptor, 4U, {});
+  ASSERT_TRUE(handle_result.ok()) << handle_result.status();
+  auto handle = std::move(handle_result).value();
+  auto reservation_result = edge->try_reserve(4U);
+  ASSERT_TRUE(reservation_result.ok()) << reservation_result.status();
+  ASSERT_TRUE(reservation_result.value().commit_from(handle).ok());
+
+  auto poll = edge->try_acquire();
+  ASSERT_EQ(FixedBufferEdgePollKind::item, poll.kind);
+  ASSERT_TRUE(poll.lease.has_value());
+  auto consumer = std::move(*poll.lease);
+  EXPECT_EQ(0U, consumer.item_identity().semantic_key_hash);
+  EXPECT_EQ(0U, consumer.item_identity().order_key);
+  EXPECT_EQ(0U, consumer.item_identity().item_ordinal);
+
+  auto moved_consumer = std::move(consumer);
+  ASSERT_TRUE(moved_consumer.valid());
+  EXPECT_EQ(0U, moved_consumer.item_identity().semantic_key_hash);
+  EXPECT_EQ(0U, moved_consumer.item_identity().order_key);
+  EXPECT_EQ(0U, moved_consumer.item_identity().item_ordinal);
+  ASSERT_TRUE(moved_consumer.acknowledge_consumed().ok());
   EXPECT_EQ(kPoolSlots, pool->snapshot().free_slots);
 }
 

@@ -3,9 +3,12 @@
 #include "kspacejet/base/result.hpp"
 #include "kspacejet/base/span.hpp"
 #include "kspacejet/provider/loader/provider_loader.hpp"
+#include "kspacejet/recon/artifact_digest.hpp"
 #include "kspacejet/recon/resource_vector.hpp"
 #include "kspacejet/recon/runtime/resource_vector_ledger.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -16,11 +19,11 @@
 
 namespace ksj::recon::runtime {
 
-class PlanBoundSynchronousOutputBridge;
-class AdmittedPlanBoundDataPlane;
+class SynchronousGraphExecutor;
+class SynchronousFiringLeaseHostTestAccess;
 
 /**
- * The intentionally small M3-A host boundary for one synchronous Provider
+ * The bounded host boundary for one synchronous Provider
  * callback.  It is not a scheduler, BufferHandle implementation, edge, or
  * worker fault boundary.  In particular, it supports only host-pageable
  * payloads and rejects retention and asynchronous registration.
@@ -30,14 +33,14 @@ class AdmittedPlanBoundDataPlane;
  * that a registry cannot unload the module while a firing is in progress.
  */
 struct SynchronousProviderInvocation {
-  // The plan-bound M3.7 bridge verifies this loaded module's frozen provider
-  // bundle/operator/contract identity before entering Provider code. The
-  // opaque lifecycle handles must have been created with the resolved
-  // canonical node configuration and remain trusted in-process preconditions
-  // established by the caller: M3.7 does not attempt to reconstruct or attest
-  // them from raw ABI pointers.
+  // A graph executor verifies this loaded module's frozen Provider,
+  // node-instance, and canonical configuration identities before entering
+  // Provider code. These are host-owned invocation facts, not new Provider
+  // ABI fields: operator_create already receives the canonical JSON itself.
   ksj::provider::loader::ProviderLease provider{};
+  std::string node_id;
   std::string operator_id;
+  std::optional<ArtifactDigest> canonical_config_digest;
   ksj_provider_operator* operator_handle{nullptr};
   ksj_execution_context* execution_context{nullptr};
   ksj_key_state* key_state{nullptr};
@@ -127,6 +130,12 @@ struct SynchronousFiringLeaseConfig {
   std::uint64_t maximum_input_payload_bytes{0U};
   std::uint64_t maximum_scratch_bytes{0U};
   std::uint64_t maximum_metadata_bytes{64U * 1024U};
+  // Used only by the private preaccounted factory. These are the exact
+  // persistent ABI-workspace limits frozen by the graph plan; the caller has
+  // already accounted for this storage in that plan and the host must prove
+  // its concrete vectors fit without reserving the bytes a second time.
+  std::uint64_t frozen_staging_charged_bytes{0U};
+  std::uint64_t frozen_staging_descriptor_count{0U};
 };
 
 enum class SynchronousFiringOutcome : std::uint8_t {
@@ -138,16 +147,31 @@ enum class SynchronousFiringOutcome : std::uint8_t {
 
 [[nodiscard]] std::string_view to_string(SynchronousFiringOutcome outcome) noexcept;
 
+// Provider ABI error text is borrowed only during the callback. Retain a
+// bounded copy in the host result so graph-level fail-close diagnostics do
+// not discard the Provider's specific reason after that callback returns.
+inline constexpr std::size_t kSynchronousProviderErrorMessageCapacity = 512U;
+
+struct SynchronousProviderFailureDetail {
+  ksj_status status{KSJ_STATUS_OK};
+  std::array<char, kSynchronousProviderErrorMessageCapacity> message_storage{};
+  std::uint32_t message_bytes{0U};
+  bool message_truncated{false};
+
+  [[nodiscard]] std::string_view message() const noexcept { return {message_storage.data(), message_bytes}; }
+};
+
 // A successful Result means that the Provider callback was entered.  The
 // outcome then tells the caller whether the claimed occurrence is terminally
 // successful, failed, or a Provider/host-contract violation. `yielded` is
-// reserved for a later transactional-key-state slice; M3-A treats a raw ABI
+// reserved for a later transactional-key-state slice; this host treats a raw ABI
 // YIELD as a contract violation. A failing Result is exclusively a
 // pre-callback error, so its input claim may safely remain available to a
 // future scheduler.
 struct SynchronousFiringResult {
   SynchronousFiringOutcome outcome{SynchronousFiringOutcome::structured_failure};
   ksj_status provider_status{KSJ_STATUS_OK};
+  SynchronousProviderFailureDetail provider_failure{};
   std::uint64_t consumed_input_item_count{0U};
   std::uint32_t sealed_output_count{0U};
   std::uint32_t committed_output_count{0U};
@@ -200,26 +224,32 @@ public:
   [[nodiscard]] SynchronousFiringLeaseSnapshot snapshot() const;
 
 private:
-  friend class PlanBoundSynchronousOutputBridge;
-  friend class AdmittedPlanBoundDataPlane;
+  friend class SynchronousGraphExecutor;
+  friend class SynchronousFiringLeaseHostTestAccess;
 
   enum class StagingAccounting : std::uint8_t {
     self_reserved,
     preaccounted_by_plan,
   };
 
-  // This is intentionally private to the plan-bound bridge.  It preserves
-  // the public raw-span process() ABI while allowing an already-admitted
-  // BufferPool slot to serve as an output grant without adding those same
-  // payload bytes to the dynamic firing ResourceVector a second time.
+  // This is intentionally private to graph runtimes. It preserves the public
+  // raw-span process() ABI while allowing already-reserved BufferPool slots
+  // to serve as output grants without adding their physical payload bytes to
+  // the dynamic firing ResourceVector a second time.
   [[nodiscard]] ksj::base::Result<SynchronousFiringResult>
   process_preaccounted_output(const SynchronousProviderInvocation& invocation, const SynchronousFiringRequest& request);
 
-  // The plan-bound data plane has already reserved and committed the full
-  // frozen firing-lease staging allowance from its local ledger. This factory
-  // constructs the same fixed ABI workspace without taking a second
-  // actual-size staging reservation. It is deliberately unavailable to the
-  // public raw-span host API.
+  // Same preaccounted output path for the normal terminal callback. Terminal
+  // output storage is reserved by the graph before inputs are closed, so it
+  // must not be recharged by the raw-span host accounting path.
+  [[nodiscard]] ksj::base::Result<SynchronousFiringResult>
+  on_scan_end_preaccounted_output(const SynchronousProviderInvocation& invocation,
+                                  const SynchronousFiringRequest& request, std::uint64_t completed_input_item_count);
+
+  // The graph plan has already reserved and committed the full frozen
+  // firing-lease staging allowance. This factory constructs the same fixed
+  // ABI workspace without taking a second actual-size staging reservation.
+  // It is deliberately unavailable to the public raw-span host API.
   [[nodiscard]] static ksj::base::Result<SynchronousFiringLeaseHost>
   create_preaccounted_staging(SynchronousFiringLeaseConfig config);
 

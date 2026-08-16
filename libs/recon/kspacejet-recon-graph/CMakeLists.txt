@@ -7,11 +7,13 @@ add_library(
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/graph/artifact_json.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/graph/canonical_json.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/graph/execution_plan_compiler.hpp"
+  "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/graph/operator_contract_json.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/graph/pipeline_definition.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/artifact_json.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/canonical_json.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/src/execution_plan_compiler.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/src/execution_plan_verifier.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/operator_contract_json.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/synchronous_graph_compiler.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/synchronous_graph_verifier.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/pipeline_definition.cpp")
 add_library(KSpaceJet::recon_graph ALIAS ${PROJ_NAME})
 
@@ -20,7 +22,7 @@ target_include_directories(${PROJ_NAME} PUBLIC "${CMAKE_CURRENT_LIST_DIR}/includ
 target_link_libraries(
   ${PROJ_NAME}
   PRIVATE KSpaceJet::compile_options KSpaceJet::shared_library_link_options nlohmann_json::nlohmann_json
-  PUBLIC KSpaceJet::core KSpaceJet::recon_contracts)
+  PUBLIC KSpaceJet::core KSpaceJet::recon_model)
 
 set_target_properties(
   ${PROJ_NAME}

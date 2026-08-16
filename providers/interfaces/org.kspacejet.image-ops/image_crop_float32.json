@@ -1,0 +1,25 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.image-ops",
+  "operator_id": "image_crop_float32",
+  "summary": "Crop one image to an explicitly selected spatial region.",
+  "ports": [
+    {
+      "name": "image",
+      "direction": "input",
+      "semantic_type": "ksj.image-frame"
+    },
+    {
+      "name": "cropped_image",
+      "direction": "output",
+      "semantic_type": "ksj.image-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": ["region"],
+    "optional": []
+  },
+  "notes": "Crop coordinates, boundary policy, metadata update, exact shape, TypeDescriptor, bounded allocation, and terminal behavior are not frozen until implementation."
+}

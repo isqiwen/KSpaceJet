@@ -114,10 +114,11 @@ Certificate=Cert(P(\theta)),
 
 即 `ExecutionPlanCertificate` 是由不可变 `ExecutionPlan` 派生、供独立验证的 artifact，不属于 \(P(\theta)\) 的组成量，也不是第二套 planner 或 graph model。
 
-版本化 PipelineDefinition、ResolvedPipeline、OperatorContract、RateSpec/CompletionSpec、
-calibration binding 与 runtime closure 的产品 schema 以
-[PipelineDefinition v1 与重建流水线设计](pipeline_definition_v1.md)为准；本文只使用其
-冻结后的语义来定义形式模型、证明义务和 performance envelope。
+无版本后缀的 PipelineDefinition、ResolvedPipeline、OperatorContract、NodePlanningRequirements
+（含 `NodeRateSpec` 与 `TerminalPlanningSpec`）、calibration binding 与 runtime closure 的产品 schema 以
+[PipelineDefinition 与重建流水线设计](pipeline_definition.md)为准；本文只使用其
+冻结后的语义来定义形式模型、证明义务和 performance envelope。本文其余出现的旧称
+`RateSpec`、`CompletionSpec` 或 `JoinSpec` 均为历史/概念模型术语，不是当前产品 API。
 
 本文保留总体规划的定义：**OperatorInstance** 是某个 pipeline node 在一次 scan 中的唯一运行实例。一个 OperatorInstance 可以拥有一个或多个内部 **KeyShard**；KeyShard 是按 key 分片的单写者状态和 mailbox，**activation** 是 KeyShard 的一次有界调度。KeyShard 是 runtime 私有实现概念，不改变 Provider ABI lifecycle；它也不与论文研究平面的 external load actor 混用。
 
@@ -217,7 +218,7 @@ completion:
   flush: end_of_key | end_of_input | explicit_event
 calibration:
   dependency: none | projected_key
-  version_policy: single_epoch_v1
+  epoch_policy: single_epoch
 production_bound: finite_expression
 retention_bound_bytes: finite_expression
 max_in_flight: finite_integer
@@ -265,8 +266,8 @@ flowchart LR
 设计规则：
 
 - calibration 分支和 imaging 分支并行；不依赖 calibration 的预处理继续推进；
-- calibration 依赖阶段只能消费不可变 `CalibrationReady(key, version)`；不得读取可变的“最新 calibration”；
-- v1 每个 `CalibKey` 只支持一个 epoch；在线 recalibration 以后通过显式 version/watermark 扩展；
+- calibration 依赖阶段只能消费不可变 `CalibrationReady(key, epoch)`；不得读取可变的“最新 calibration”；
+- 当前实现中每个 `CalibKey` 只支持一个 epoch；在线 recalibration 以后通过显式 epoch/watermark 扩展；
 - calibration gate 只唤醒匹配 key，不建立 scan-global barrier；
 - frame、slice、contrast、set、repetition、encoding 等 key 在数据允许时独立并行；
 - sink 的输出顺序由显式 order domain 和 bounded reorder buffer 保证；
@@ -337,7 +338,7 @@ worker 永远不得等待满 queue、socket、future、calibration、join、GPU 
 2. host 在预留 terminal callback 的 output/scratch/token bundle 后，恰好一次调用正常 `on_scan_end` 或异常 `on_cancel`。两者本身以及其允许产生的 bounded flush/output/cleanup/async work 都是 certificate 中的认证 occurrence；`on_cancel` 必须触发 pending async 取消与 retain 释放，host 不得在调用它之前等待这些资源归零；
 3. terminal callback 已返回或完成其异步协议后，host 才等待全部 KeyShard 进入兼容终态、node occurrence/counter 为零、所有 async token/output/handle 结算，然后销毁该 scan 的 instance。
 
-任何单 shard 都不能独立触发 instance/factory 销毁。callback 超出 cooperative bound 时记录 Provider violation、停止该 scan 并拒绝 strict-online 资格；v1 进程内 plugin 没有 worker/OS kill 隔离，不能把 native crash 或无限 callback 伪装成单 scan 终止。需要更强故障域时部署独立 reconstruction-service 进程。
+任何单 shard 都不能独立触发 instance/factory 销毁。callback 超出 cooperative bound 时记录 Provider violation、停止该 scan 并拒绝 strict-online 资格；进程内 plugin 没有 worker/OS kill 隔离，不能把 native crash 或无限 callback 伪装成单 scan 终止。需要更强故障域时部署独立 reconstruction-service 进程。
 
 每个 serial KeyShard 必须满足：
 
@@ -388,13 +389,14 @@ ledger 的原子 primitive 仍只有 `try_reserve`、`commit` 和 `release`。�
 
 ### 7.2 Join
 
-每个 `JoinSpec` 必须声明：
+当前 `NodeJoinSpec` 只声明 aggregate retention reservation 与 online progress proof；以下是本文
+广义 join 概念模型（旧称 `JoinSpec`）所需的属性，不是当前 `NodeJoinSpec` 字段：
 
 - 每个输入端的 key projection；
 - expected count 或有限 window；
 - watermark、end-of-key 或 `EndOfInput` flush；
 - 最大 retained items 与 charged bytes；
-- calibration version 一致性；
+- calibration epoch 一致性；
 - 完整 key 只 emit 一次的终态规则。
 
 未知 skew 或 retention 上界的 join 不能进入 `strict-online` profile。
@@ -470,7 +472,7 @@ max_decoder_staging_charged_bytes
 ```text
 operator
 partition key and order domain
-calibration version
+calibration epoch
 shape and layout
 deadline class
 resource class
@@ -547,7 +549,7 @@ flowchart TB
 - state 与大 buffer 在 home node first-touch；
 - KeyShard 可以由同 node 任一 worker 运行，不必绑死单核；
 - stateful 或大 retained-state KeyShard 不迁移；
-- v1 使用确定性的本地 ready queue，不启用通用 work stealing；
+- 当前实现使用确定性的本地 ready queue，不启用通用 work stealing；
 - 后续只有 `migratable=true` 的 stateless activation 可以在同 NUMA 域内参与受限 steal；跨 NUMA steal 还必须证明排队收益高于 remote-memory 代价，并单列 remote bytes、migration 和 steal 指标。
 
 shard 数可以高于 worker 数以吸收 key skew，但 shard state 仍保持单写者。
@@ -582,11 +584,11 @@ inner priority = deadline slack
 
 DRR cost 使用声明或观测的 CPU service units，完成后按 actual cost 修正，不能以任务数量代替工作量。必须报告 service lag、normalized slowdown 和 starvation bound，而不只报告 Jain index。
 
-若 Provider callback 可以无限运行且不可抢占，任何 wall-clock TTFI、p99 或公平定理都不成立。descriptor 必须声明最大 cooperative quantum；runtime 对超时 callback 产生 violation。v1 只支持进程内动态库插件，因此不能用进程终止补救不合作的 callback；此类 Provider 不得进入要求这些界的 profile。
+若 Provider callback 可以无限运行且不可抢占，任何 wall-clock TTFI、p99 或公平定理都不成立。descriptor 必须声明最大 cooperative quantum；runtime 对超时 callback 产生 violation。当前实现只支持进程内动态库插件，因此不能用进程终止补救不合作的 callback；此类 Provider 不得进入要求这些界的 profile。
 
 ### 10.4 GPU Future Boundary
 
-v1 不实现 GPU runtime，但资源与 buffer contract 应保留以下中立维度：
+当前实现不实现 GPU runtime，但资源与 buffer contract 应保留以下中立维度：
 
 ```text
 memory_domain
@@ -825,7 +827,7 @@ rate_i\ge
 
 不能同时保证持续超载下“接受全部、无丢失、有限内存、有限延迟”。
 
-若 transport close、callback cooperative cancel、continuation drain 和资源释放分别有上界，cancel bound 才能由这些串行/并行阶段组合。任意第三方 hang 无法在同一进程内证明有限取消；v1 不提供 worker 或 OS kill boundary，必须拒绝该 Provider 的 strict-online 准入并明确不声称取消上界。
+若 transport close、callback cooperative cancel、continuation drain 和资源释放分别有上界，cancel bound 才能由这些串行/并行阶段组合。任意第三方 hang 无法在同一进程内证明有限取消；当前实现不提供 worker 或 OS kill boundary，必须拒绝该 Provider 的 strict-online 准入并明确不声称取消上界。
 
 ## 12. Execution Plan Certificate
 
@@ -833,7 +835,6 @@ planning 在冻结 plan 前失败时直接产生 `pre_plan` rejected `AdmissionR
 
 ```json
 {
-  "schema_version": 1,
   "execution_profile": "strict-online",
   "execution_plan_digest": "...",
   "scan_descriptor_digest": "...",
@@ -872,7 +873,6 @@ planning 在冻结 plan 前失败时直接产生 `pre_plan` rejected `AdmissionR
 
 ```json
 {
-  "schema_version": 1,
   "decision_stage": "post_certificate",
   "execution_plan_digest": "...",
   "execution_plan_certificate_digest": "...",
@@ -997,7 +997,7 @@ termination counter never underflows and equals zero at Completed
 serial KeyShard queued + running <= 1
 every accepted event has exactly one terminal accounting state
 fan-out visibility is all-or-none
-join emits each key and calibration version at most once
+join emits each key and calibration epoch at most once
 output ordinal is monotonic within each order domain
 gate, join and reorder charged bytes stay within certificate
 executor_leaf + backend_gang + provider_private permits stay within configured CPU budget
@@ -1072,19 +1072,19 @@ p99 的独立实验单位应是独立 scan/replay process run，而不是同一 
 | 顺序 | 权威工作单 | 子任务 | 交付物 | 核心验收 |
 | --- | --- | --- | --- | --- |
 | 1 | `KSJ-CORE-001` | execution-model ADR | 术语、假设、非目标、Provider 与 runtime 边界 | 架构评审通过，不写实现 |
-| 2 | `KSJ-GRAPH-002` | OperatorContract/DependencySpec、RateSpec/CompletionSpec、KeyShard、merge/calibration binding schemas | schema、valid/invalid corpus、canonical digest | 不硬编码 slice/channel group；未知或单维上界被拒绝 |
+| 2 | `KSJ-GRAPH-002` | OperatorContract、NodePlanningRequirements（含 `NodeRateSpec`、`TerminalPlanningSpec`）、KeyShard、merge/calibration binding schemas；旧规划中的 RateSpec/CompletionSpec 仅作概念对照 | schema、valid/invalid corpus、canonical digest | 不硬编码 slice/channel group；未知或单维上界被拒绝 |
 | 3 | `KSJ-GRAPH-003` | scan scenario/resource compiler、TargetEnvelope/MachinePolicy 与 certificate verifier | repetition、`EndOfInput` balance、join progress proof、termination ranking、shared/process cap、M_plan、arrival/service、lower bound、certificate | 独立 checker 和 corrupt corpus 通过 |
 | 4 | `KSJ-CORE-004` | item/byte ledger 与 callback 前 atomic reservation | transition API、fan-out reservation、continuation | conservation、all-or-none、overflow、TSAN |
 | 5 | `KSJ-CORE-005` | scan 终态与 termination counter enforcement | occurrence/counter state、flush/cleanup、AdmissionRecord | 未认证 firing/underflow/非零 Completed 全部失败 |
 | 6 | `KSJ-CORE-008` | bounded keyed join/reorder | 串行 oracle、watermark/`EndOfInput`、retention ledger | skew、gap、cancel、missing input 测试 |
 | 7 | `KSJ-CORE-009` | calibration gate 与 progress admission | per-key/aggregate 双 horizon、progress reservoir | late/missing/interleaved calibration 不自锁 |
 | 8 | `KSJ-CORE-006` | coalesced KeyShard/continuation executor | virtual-time runtime、scheduled bit、wake protocol | worker 不阻塞；TSAN 和 missed-wakeup 测试 |
-| 9 | `KSJ-CORE-010` | NUMA planner 与后续可选受限 steal | home placement、local queues、topology abstraction | v1 默认无 steal；双平台 topology 与 remote-byte benchmark |
+| 9 | `KSJ-CORE-010` | NUMA planner 与后续可选受限 steal | home placement、local queues、topology abstraction | 默认无 steal；双平台 topology 与 remote-byte benchmark |
 | 10 | `KSJ-CORE-011` | hierarchical DRR 与 first-image policy | per-scan quota、service accounting、boost | service-lag、starvation、多 scan TTFI 测试 |
 | 11 | `KSJ-CORE-012` | unified CPU/backend/provider permits | gang reservation、backend adapters、violation detector | coordinator 不重复计数；nested-parallel conformance |
 | 12 | `KSJ-CORE-007` | bounded adaptive microbatch 与 safe fusion | first-image/steady policy、items/bytes/timer | TTFI、throughput、memory Pareto benchmark |
 | 13 | `KSJ-CORE-013` | TLA+/timed/virtual-time conformance suite | ledger、join、calibration、termination、cancel、fairness models | 固定 state space 与 counterexample fixtures |
-| 14 | `KSJ-TOOL-016` | certificate explain 与 proof-audit trace refinement | versioned report、独立 trace checker | corrupt/gap/drop、ranking underflow/nonzero-terminal certificate/trace 全部拒绝 |
+| 14 | `KSJ-TOOL-016` | certificate explain 与 proof-audit trace refinement | schema-identified report、独立 trace checker | corrupt/gap/drop、ranking underflow/nonzero-terminal certificate/trace 全部拒绝 |
 | 15 | `KSJ-PERF-002` | runtime falsification 与 exact-oracle suite | burst、slow sink、key skew、NUMA、multi-scan、permits | TH-F1–TH-F8 产生机器可读 evidence |
 
 `KSJ-PAPER-001` 只有在 `KSJ-CORE-001` 与 `KSJ-GRAPH-003` 完成后才能关闭，用于冻结符号、定理和 claim boundary；它不是顺序 1 的前置实现任务。

@@ -141,11 +141,11 @@ ksj::base::Result<SerialCartesianPipeline> SerialCartesianPipeline::create(Seria
   }
   if (config.max_terminal_frame_records == 0U) {
     return ksj::base::Status::InvalidArgument(
-      "SerialCartesianPipeline max_terminal_frame_records must be a finite non-zero plan bound");
+      "SerialCartesianPipeline max_terminal_frame_records must be a finite non-zero configured limit");
   }
   if (config.max_explicitly_ignored_records == 0U) {
     return ksj::base::Status::InvalidArgument(
-      "SerialCartesianPipeline max_explicitly_ignored_records must be a finite non-zero plan bound");
+      "SerialCartesianPipeline max_explicitly_ignored_records must be a finite non-zero configured limit");
   }
   if (config.target_envelope.has_value()) {
     for (const auto& frame_slot : config.frame_slots) {

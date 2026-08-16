@@ -1,0 +1,25 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.cartesian-recon",
+  "operator_id": "cartesian_partial_fourier",
+  "summary": "Complete a partial-Fourier Cartesian k-space frame before image-domain reconstruction.",
+  "ports": [
+    {
+      "name": "partial_kspace",
+      "direction": "input",
+      "semantic_type": "ksj.kspace-frame"
+    },
+    {
+      "name": "completed_kspace",
+      "direction": "output",
+      "semantic_type": "ksj.kspace-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": ["method"],
+    "optional": ["phase_reference", "transition_width"]
+  },
+  "notes": "The selected method, completion admissibility, exact shape, resource bounds, and EndOfInput policy are deferred to an executable OperatorContract."
+}

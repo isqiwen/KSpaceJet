@@ -11,6 +11,9 @@
 #include "kspacejet/linalg/workspace.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -445,6 +448,180 @@ void self_adjoint_eigen_decomposition(ksj::array::MatrixView<const T> matrix,
   }
 
   detail::eigen::self_adjoint_eigen_decomposition(matrix, eigenvalues, eigenvectors);
+}
+
+// A bounded, allocation-free self-adjoint eigensolver for callback-bound
+// numerical work.  Unlike the convenience overload above, this path never
+// constructs an Eigen dynamic matrix or a pooled array: all O(n^2) temporary
+// storage is the caller's `workspace` matrix.  It is deliberately limited to
+// the receive-channel domain used by the reconstruction Providers.
+//
+// `matrix`, `eigenvectors`, and `workspace` must be contiguous n-by-n views;
+// `eigenvalues` must have n entries; and none of their backing spans may
+// overlap.  On valid input the routine writes ascending eigenvalues and the
+// matching column eigenvectors.  `false` means the bounded Jacobi iteration
+// did not converge; invalid views throw std::invalid_argument, matching the
+// established decomposition API convention.
+inline constexpr std::size_t kSelfAdjointEigenWorkspaceMaximumDimension = 64U;
+
+namespace detail {
+
+template <typename T> [[nodiscard]] constexpr T self_adjoint_conjugate(const T value) noexcept {
+  if constexpr (ksj::array::is_complex_v<T>) {
+    return std::conj(value);
+  } else {
+    return value;
+  }
+}
+
+template <typename T>
+[[nodiscard]] constexpr ksj::array::real_scalar_t<T> self_adjoint_real_part(const T value) noexcept {
+  if constexpr (ksj::array::is_complex_v<T>) {
+    return value.real();
+  } else {
+    return value;
+  }
+}
+
+template <typename Left, typename Right>
+[[nodiscard]] bool self_adjoint_contiguous_spans_overlap(const Left* const left, const std::size_t left_count,
+                                                         const Right* const right,
+                                                         const std::size_t right_count) noexcept {
+  if (left == nullptr || right == nullptr || left_count == 0U || right_count == 0U) {
+    return false;
+  }
+  const auto left_first = reinterpret_cast<std::uintptr_t>(left);
+  const auto right_first = reinterpret_cast<std::uintptr_t>(right);
+  const auto left_bytes = left_count * sizeof(Left);
+  const auto right_bytes = right_count * sizeof(Right);
+  return left_first < right_first + right_bytes && right_first < left_first + left_bytes;
+}
+
+} // namespace detail
+
+template <typename T>
+[[nodiscard]] bool self_adjoint_eigen_decomposition_with_workspace(
+  const ksj::array::MatrixView<const T> matrix, const ksj::array::VectorView<ksj::array::real_scalar_t<T>> eigenvalues,
+  const ksj::array::MatrixView<T> eigenvectors, const ksj::array::MatrixView<T> workspace) {
+  detail::require_supported_linalg_scalar<T>();
+  using real_type = ksj::array::real_scalar_t<T>;
+
+  const auto dimension = matrix.rows();
+  if (matrix.rows() != matrix.cols() || matrix.empty() || dimension > kSelfAdjointEigenWorkspaceMaximumDimension ||
+      eigenvalues.size() != dimension || eigenvectors.rows() != dimension || eigenvectors.cols() != dimension ||
+      workspace.rows() != dimension || workspace.cols() != dimension || !matrix.is_contiguous() ||
+      !eigenvectors.is_contiguous() || !workspace.is_contiguous() || !eigenvalues.is_contiguous() ||
+      matrix.data() == nullptr || eigenvalues.data() == nullptr || eigenvectors.data() == nullptr ||
+      workspace.data() == nullptr) {
+    throw std::invalid_argument(
+      "self_adjoint_eigen_decomposition_with_workspace requires non-empty contiguous matching views up to 64");
+  }
+  const auto matrix_elements = dimension * dimension;
+  if (detail::self_adjoint_contiguous_spans_overlap(matrix.data(), matrix_elements, eigenvectors.data(),
+                                                    matrix_elements) ||
+      detail::self_adjoint_contiguous_spans_overlap(matrix.data(), matrix_elements, workspace.data(),
+                                                    matrix_elements) ||
+      detail::self_adjoint_contiguous_spans_overlap(eigenvectors.data(), matrix_elements, workspace.data(),
+                                                    matrix_elements) ||
+      detail::self_adjoint_contiguous_spans_overlap(eigenvalues.data(), dimension, matrix.data(), matrix_elements) ||
+      detail::self_adjoint_contiguous_spans_overlap(eigenvalues.data(), dimension, eigenvectors.data(),
+                                                    matrix_elements) ||
+      detail::self_adjoint_contiguous_spans_overlap(eigenvalues.data(), dimension, workspace.data(), matrix_elements)) {
+    throw std::invalid_argument("self_adjoint_eigen_decomposition_with_workspace views must not overlap");
+  }
+
+  real_type diagonal_scale{};
+  for (std::size_t row = 0U; row < dimension; ++row) {
+    for (std::size_t column = 0U; column < dimension; ++column) {
+      workspace(row, column) = matrix(row, column);
+      eigenvectors(row, column) = row == column ? T{1} : T{};
+    }
+    if (!std::isfinite(detail::self_adjoint_real_part(workspace(row, row)))) {
+      return false;
+    }
+    diagonal_scale += std::abs(detail::self_adjoint_real_part(workspace(row, row)));
+  }
+  const auto tolerance = std::numeric_limits<real_type>::epsilon() * std::max(real_type{1}, diagonal_scale) *
+                         static_cast<real_type>(dimension) * real_type{8};
+  const auto maximum_rotations = dimension * dimension * 64U;
+
+  for (std::size_t rotation = 0U; rotation < maximum_rotations; ++rotation) {
+    std::size_t pivot_row = 0U;
+    std::size_t pivot_column = 0U;
+    real_type pivot_magnitude{};
+    for (std::size_t row = 0U; row < dimension; ++row) {
+      for (std::size_t column = row + 1U; column < dimension; ++column) {
+        const auto magnitude = static_cast<real_type>(std::abs(workspace(row, column)));
+        if (!std::isfinite(magnitude)) {
+          return false;
+        }
+        if (magnitude > pivot_magnitude) {
+          pivot_magnitude = magnitude;
+          pivot_row = row;
+          pivot_column = column;
+        }
+      }
+    }
+    if (pivot_magnitude <= tolerance) {
+      for (std::size_t index = 0U; index < dimension; ++index) {
+        eigenvalues(index) = detail::self_adjoint_real_part(workspace(index, index));
+      }
+      for (std::size_t first = 0U; first < dimension; ++first) {
+        std::size_t minimum = first;
+        for (std::size_t candidate = first + 1U; candidate < dimension; ++candidate) {
+          if (eigenvalues(candidate) < eigenvalues(minimum)) {
+            minimum = candidate;
+          }
+        }
+        if (minimum == first) {
+          continue;
+        }
+        std::swap(eigenvalues(first), eigenvalues(minimum));
+        for (std::size_t row = 0U; row < dimension; ++row) {
+          std::swap(eigenvectors(row, first), eigenvectors(row, minimum));
+        }
+      }
+      return true;
+    }
+
+    const auto diagonal_row = detail::self_adjoint_real_part(workspace(pivot_row, pivot_row));
+    const auto diagonal_column = detail::self_adjoint_real_part(workspace(pivot_column, pivot_column));
+    const auto tau = (diagonal_column - diagonal_row) / (real_type{2} * pivot_magnitude);
+    const auto tangent = tau >= real_type{} ? real_type{1} / (tau + std::sqrt(real_type{1} + tau * tau))
+                                            : -real_type{1} / (-tau + std::sqrt(real_type{1} + tau * tau));
+    const auto cosine = real_type{1} / std::sqrt(real_type{1} + tangent * tangent);
+    const auto sine = tangent * cosine;
+    const auto phase = workspace(pivot_row, pivot_column) / pivot_magnitude;
+    const auto conjugate_phase = detail::self_adjoint_conjugate(phase);
+
+    for (std::size_t index = 0U; index < dimension; ++index) {
+      if (index == pivot_row || index == pivot_column) {
+        continue;
+      }
+      const auto row_value = workspace(index, pivot_row);
+      const auto column_value = workspace(index, pivot_column) * conjugate_phase;
+      const auto updated_row = cosine * row_value - sine * column_value;
+      const auto updated_column = sine * row_value + cosine * column_value;
+      workspace(index, pivot_row) = updated_row;
+      workspace(pivot_row, index) = detail::self_adjoint_conjugate(updated_row);
+      workspace(index, pivot_column) = updated_column;
+      workspace(pivot_column, index) = detail::self_adjoint_conjugate(updated_column);
+    }
+    workspace(pivot_row, pivot_row) = T{cosine * cosine * diagonal_row -
+                                        real_type{2} * cosine * sine * pivot_magnitude + sine * sine * diagonal_column};
+    workspace(pivot_column, pivot_column) = T{
+      sine * sine * diagonal_row + real_type{2} * cosine * sine * pivot_magnitude + cosine * cosine * diagonal_column};
+    workspace(pivot_row, pivot_column) = T{};
+    workspace(pivot_column, pivot_row) = T{};
+
+    for (std::size_t row = 0U; row < dimension; ++row) {
+      const auto row_vector = eigenvectors(row, pivot_row);
+      const auto column_vector = eigenvectors(row, pivot_column) * conjugate_phase;
+      eigenvectors(row, pivot_row) = cosine * row_vector - sine * column_vector;
+      eigenvectors(row, pivot_column) = sine * row_vector + cosine * column_vector;
+    }
+  }
+  return false;
 }
 
 template <typename T>

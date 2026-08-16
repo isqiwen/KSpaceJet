@@ -1,0 +1,55 @@
+{
+  "kind": "PipelineDefinition",
+  "pipeline": {
+    "id": "org.example.reference-cartesian",
+    "display_name": "Reference Cartesian reconstruction"
+  },
+  "allowed_profiles": [
+    "bounded-online"
+  ],
+  "parameters": {},
+  "provider_requirements": [
+    {
+      "alias": "reference",
+      "provider_id": "org.kspacejet.reference"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "reconstruct",
+      "operator": {
+        "provider": "reference",
+        "id": "reference_reconstruct"
+      },
+      "config": {
+        "worker_count": 4
+      }
+    }
+  ],
+  "edges": [],
+  "bindings": {
+    "ingress": [
+      {
+        "id": "acquisitions",
+        "type": "ismrmrd.acquisition",
+        "to": {
+          "node": "reconstruct",
+          "port": "acquisition"
+        }
+      }
+    ],
+    "egress": [
+      {
+        "id": "images",
+        "type": "ismrmrd.image",
+        "from": {
+          "node": "reconstruct",
+          "port": "image"
+        }
+      }
+    ],
+    "calibration": [],
+    "merge": []
+  },
+  "annotations": {}
+}

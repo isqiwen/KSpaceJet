@@ -1,0 +1,32 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.kspace-conditioning",
+  "operator_id": "noncartesian_phase_correct",
+  "summary": "Apply one explicit sequence-specific non-Cartesian phase model to a non-Cartesian k-space frame.",
+  "ports": [
+    {
+      "name": "kspace",
+      "direction": "input",
+      "semantic_type": "ksj.noncartesian-kspace-frame"
+    },
+    {
+      "name": "phase_model",
+      "direction": "input",
+      "semantic_type": "ksj.noncartesian-phase-model"
+    },
+    {
+      "name": "phase_corrected_kspace",
+      "direction": "output",
+      "semantic_type": "ksj.noncartesian-kspace-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [
+      "phase_convention"
+    ],
+    "optional": []
+  },
+  "notes": "This is intentionally not an alias of phase_correct and does not accept the Cartesian ksj.phase-model, whose [channel,kx] layout cannot express arbitrary non-Cartesian sample association. A future exact contract must define the non-Cartesian phase-model layout, trajectory/sample and sequence semantics, calibration key compatibility, finite resource bounds, completion, and terminal behavior. Its model arrives only through an explicit calibration binding."
+}

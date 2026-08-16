@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -49,6 +50,12 @@ struct LoggerState {
   std::chrono::steady_clock::time_point last_file_check{};
   std::atomic<Level> effective_level{Level::Off};
   bool configured = false;
+  bool is_default_console_fallback = false;
+};
+
+enum class ConfigurationKind {
+  explicit_configuration,
+  default_console_fallback,
 };
 
 class UppercaseLevelFormatter final : public spdlog::custom_flag_formatter {
@@ -311,7 +318,7 @@ LoggerState& State() {
   return true;
 }
 
-void reset_state_unlocked(LoggerState& state) noexcept {
+void reset_state_unlocked(LoggerState& state) {
   try {
     if (state.logger != nullptr) {
       state.logger->flush();
@@ -323,10 +330,14 @@ void reset_state_unlocked(LoggerState& state) noexcept {
     }
   } catch (...) {}
 
-  const std::string logger_name = state.logger_name;
   state.logger.reset();
   state.sinks.clear();
   state.thread_pool.reset();
+  try {
+    if (!state.logger_name.empty()) {
+      spdlog::drop(state.logger_name);
+    }
+  } catch (...) {}
   state.config = ksj::config::LoggingConfig{};
   state.logger_name.clear();
   state.base_dir.clear();
@@ -339,9 +350,7 @@ void reset_state_unlocked(LoggerState& state) noexcept {
   state.last_file_check = std::chrono::steady_clock::time_point{};
   state.effective_level.store(Level::Off, std::memory_order_release);
   state.configured = false;
-  if (!logger_name.empty()) {
-    spdlog::drop(logger_name);
-  }
+  state.is_default_console_fallback = false;
 }
 
 void close_logger_unlocked(LoggerState& state) noexcept {
@@ -356,13 +365,14 @@ void close_logger_unlocked(LoggerState& state) noexcept {
     }
   } catch (...) {}
 
-  const std::string logger_name = state.logger_name;
   state.logger.reset();
   state.sinks.clear();
   state.thread_pool.reset();
-  if (!logger_name.empty()) {
-    spdlog::drop(logger_name);
-  }
+  try {
+    if (!state.logger_name.empty()) {
+      spdlog::drop(state.logger_name);
+    }
+  } catch (...) {}
 }
 
 [[nodiscard]] bool create_logger_unlocked(LoggerState& state, const ksj::config::LoggingConfig& config,
@@ -381,11 +391,13 @@ void close_logger_unlocked(LoggerState& state) noexcept {
   }
 
   if (config.console.enabled) {
+    // stdout is reserved for a process's data/protocol output, notably CLI JSON.
+    // All diagnostic console records therefore use stderr.
     spdlog::sink_ptr console_sink;
     if (config.console.console_color) {
-      console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+      console_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
     } else {
-      console_sink = std::make_shared<spdlog::sinks::stdout_sink_mt>();
+      console_sink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
     }
     console_sink->set_level(to_spdlog_level(console_level));
     console_sink->set_formatter(make_formatter(config.console.pattern));
@@ -491,45 +503,56 @@ void restore_file_sink_if_needed() {
   return state.logger;
 }
 
-} // namespace
-
-bool Configure(const ksj::config::LoggingConfig& config, const char* base_dir, const char* default_logger_name,
-               const char* default_file_path, std::string* error_message) {
-  auto& state = State();
-  std::lock_guard lock(state.mutex);
+[[nodiscard]] bool configure_unlocked(LoggerState& state, const ksj::config::LoggingConfig& config,
+                                      const char* base_dir, const char* default_logger_name,
+                                      const char* default_file_path, ConfigurationKind configuration_kind,
+                                      std::string* error_message) {
   if (state.configured) {
-    if (error_message != nullptr) {
-      *error_message = "Logging is already configured. Call Shutdown() before reconfiguring.";
+    if (configuration_kind == ConfigurationKind::default_console_fallback) {
+      if (error_message != nullptr) {
+        error_message->clear();
+      }
+      return true;
     }
-    return false;
-  }
-
-  const fs::path resolved_base_dir(base_dir != nullptr && base_dir[0] != '\0' ? base_dir : ".");
-  const std::string logger_name = choose_text(config.logger_name, default_logger_name, "KSpaceJet");
-  const fs::path resolved_file_path = [&] {
-    if (!config.file.path.empty()) {
-      return resolve_path_from_base(fs::path(config.file.path), resolved_base_dir);
+    if (!state.is_default_console_fallback) {
+      if (error_message != nullptr) {
+        *error_message = "Logging is already configured. Call Shutdown() before reconfiguring.";
+      }
+      return false;
     }
-    if (default_file_path != nullptr && default_file_path[0] != '\0') {
-      return fs::path(default_file_path);
-    }
-    return resolved_base_dir / (logger_name + ".log");
-  }();
 
-  if (!validate_config(config, logger_name, resolved_file_path.string(), error_message)) {
-    return false;
-  }
-
-  Level flush_level = Level::Warn;
-  Level console_level = Level::Info;
-  Level file_level = Level::Info;
-  if (!parse_level_or_error("logging.flush_level", config.flush_level, &flush_level, error_message) ||
-      !parse_level_or_error("logging.console.level", config.console.level, &console_level, error_message) ||
-      !parse_level_or_error("logging.file.level", config.file.level, &file_level, error_message)) {
-    return false;
+    // A real process configuration supersedes the minimal process-entry
+    // fallback. It is the only configuration transition allowed without an
+    // explicit Shutdown(). Keep the fallback alive until the new settings
+    // have passed validation below.
   }
 
   try {
+    const fs::path resolved_base_dir(base_dir != nullptr && base_dir[0] != '\0' ? base_dir : ".");
+    const std::string logger_name = choose_text(config.logger_name, default_logger_name, "KSpaceJet");
+    const fs::path resolved_file_path = [&] {
+      if (!config.file.path.empty()) {
+        return resolve_path_from_base(fs::path(config.file.path), resolved_base_dir);
+      }
+      if (default_file_path != nullptr && default_file_path[0] != '\0') {
+        return fs::path(default_file_path);
+      }
+      return resolved_base_dir / (logger_name + ".log");
+    }();
+
+    if (!validate_config(config, logger_name, resolved_file_path.string(), error_message)) {
+      return false;
+    }
+
+    Level flush_level = Level::Warn;
+    Level console_level = Level::Info;
+    Level file_level = Level::Info;
+    if (!parse_level_or_error("logging.flush_level", config.flush_level, &flush_level, error_message) ||
+        !parse_level_or_error("logging.console.level", config.console.level, &console_level, error_message) ||
+        !parse_level_or_error("logging.file.level", config.file.level, &file_level, error_message)) {
+      return false;
+    }
+
     reset_state_unlocked(state);
     (void)create_logger_unlocked(state, config, logger_name, resolved_file_path, flush_level, console_level,
                                  file_level);
@@ -541,10 +564,21 @@ bool Configure(const ksj::config::LoggingConfig& config, const char* base_dir, c
     state.resolved_file_path = resolved_file_path;
     state.last_file_check = std::chrono::steady_clock::now();
     state.configured = true;
+    state.is_default_console_fallback = configuration_kind == ConfigurationKind::default_console_fallback;
   } catch (const std::exception& error) {
-    reset_state_unlocked(state);
+    try {
+      reset_state_unlocked(state);
+    } catch (...) {}
     if (error_message != nullptr) {
       *error_message = std::string("Failed to configure KSpaceJet logging: ") + error.what();
+    }
+    return false;
+  } catch (...) {
+    try {
+      reset_state_unlocked(state);
+    } catch (...) {}
+    if (error_message != nullptr) {
+      *error_message = "Failed to configure KSpaceJet logging: unknown exception.";
     }
     return false;
   }
@@ -553,6 +587,16 @@ bool Configure(const ksj::config::LoggingConfig& config, const char* base_dir, c
     error_message->clear();
   }
   return true;
+}
+
+} // namespace
+
+bool Configure(const ksj::config::LoggingConfig& config, const char* base_dir, const char* default_logger_name,
+               const char* default_file_path, std::string* error_message) {
+  auto& state = State();
+  std::lock_guard lock(state.mutex);
+  return configure_unlocked(state, config, base_dir, default_logger_name, default_file_path,
+                            ConfigurationKind::explicit_configuration, error_message);
 }
 
 bool Configure(const char* config_path, const char* base_dir, std::string* error_message) {
@@ -573,8 +617,18 @@ bool Configure(const char* config_path, const char* base_dir, std::string* error
   return Configure(loaded.value().logging, base_dir, nullptr, nullptr, error_message);
 }
 
-bool EnsureConfigured() {
-  return IsConfigured();
+bool ConfigureDefaultConsole(std::string_view logger_name, std::string* error_message) {
+  ksj::config::LoggingConfig config;
+  config.logger_name = logger_name.empty() ? "KSpaceJet" : std::string(logger_name);
+  config.async = false;
+  config.console.enabled = true;
+  config.console.console_color = false;
+  config.file.enabled = false;
+
+  auto& state = State();
+  std::lock_guard lock(state.mutex);
+  return configure_unlocked(state, config, ".", nullptr, nullptr, ConfigurationKind::default_console_fallback,
+                            error_message);
 }
 
 bool IsConfigured() {
@@ -588,45 +642,51 @@ bool ShouldLog(Level level) {
   return is_level_enabled(level, state.effective_level.load(std::memory_order_acquire));
 }
 
-void Log(Level level, const char* message, const char* file_name, int line, const char* function_name) {
-  restore_file_sink_if_needed();
-  const auto logger = current_logger();
-  if (logger == nullptr) {
-    return;
-  }
-  logger->log(
-    spdlog::source_loc{file_name == nullptr ? "" : file_name, line, function_name == nullptr ? "" : function_name},
-    to_spdlog_level(level), "{}", message == nullptr ? "" : message);
-  flush_periodically_if_needed(logger);
+void Log(Level level, const char* message, const char* file_name, int line, const char* function_name) noexcept {
+  try {
+    restore_file_sink_if_needed();
+    const auto logger = current_logger();
+    if (logger == nullptr) {
+      return;
+    }
+    logger->log(
+      spdlog::source_loc{file_name == nullptr ? "" : file_name, line, function_name == nullptr ? "" : function_name},
+      to_spdlog_level(level), "{}", message == nullptr ? "" : message);
+    flush_periodically_if_needed(logger);
+  } catch (...) {}
 }
 
-void Log(Level level, const std::string& message, const char* file_name, int line, const char* function_name) {
+void Log(Level level, const std::string& message, const char* file_name, int line, const char* function_name) noexcept {
   Log(level, message.c_str(), file_name, line, function_name);
 }
 
-void Flush() {
-  const auto logger = current_logger();
-  if (logger != nullptr) {
-    logger->flush();
-  }
-
-  auto& state = State();
-  std::shared_ptr<spdlog::details::thread_pool> thread_pool;
-  {
-    std::lock_guard lock(state.mutex);
-    thread_pool = state.thread_pool;
-  }
-  if (thread_pool != nullptr) {
-    while (thread_pool->queue_size() != 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+void Flush() noexcept {
+  try {
+    const auto logger = current_logger();
+    if (logger != nullptr) {
+      logger->flush();
     }
-  }
+
+    auto& state = State();
+    std::shared_ptr<spdlog::details::thread_pool> thread_pool;
+    {
+      std::lock_guard lock(state.mutex);
+      thread_pool = state.thread_pool;
+    }
+    if (thread_pool != nullptr) {
+      while (thread_pool->queue_size() != 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+    }
+  } catch (...) {}
 }
 
-void Shutdown() {
-  auto& state = State();
-  std::lock_guard lock(state.mutex);
-  reset_state_unlocked(state);
+void Shutdown() noexcept {
+  try {
+    auto& state = State();
+    std::lock_guard lock(state.mutex);
+    reset_state_unlocked(state);
+  } catch (...) {}
 }
 
 } // namespace ksj::logging

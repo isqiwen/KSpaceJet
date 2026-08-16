@@ -1,0 +1,512 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/plan-build-request.schema.json",
+  "title": "KSpaceJet PlanBuildRequest",
+  "description": "The scan-specific request that chooses one execution profile for a profile-neutral ResolvedPipeline and binds node-owned planning requirements. It is an immutable compiler input, not a replacement for ExecutionPlan. Node canonical-config identities are derived from the resolved pipeline during compilation, not supplied by this request.",
+  "type": "object",
+  "required": [
+    "kind",
+    "resolved_pipeline_digest",
+    "requested_profile",
+    "scan_descriptor_digest",
+    "target_envelope_digest",
+    "machine_policy_digest",
+    "node_planning_requirements"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "PlanBuildRequest"
+    },
+    "resolved_pipeline_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "requested_profile": {
+      "$ref": "#/$defs/executionProfile"
+    },
+    "scan_descriptor_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "target_envelope_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "machine_policy_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "node_planning_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/nodePlanningRequirementsBinding"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "executionProfile": {
+      "type": "string",
+      "enum": [
+        "offline",
+        "bounded-online",
+        "isolated-strict-online",
+        "deadline-qualified-online",
+        "research-unbounded"
+      ]
+    },
+    "nodePlanningRequirementsBinding": {
+      "description": "One node-owned scheduling/resource/topology payload. It is not an OperatorContract or Provider capability declaration.",
+      "type": "object",
+      "required": [
+        "node_id",
+        "requirements"
+      ],
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "requirements": {
+          "$ref": "#/$defs/nodePlanningRequirements"
+        }
+      },
+      "additionalProperties": false
+    },
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nodePlanningRequirements": {
+      "description": "Node-owned scan/pipeline-plan requirements. They are not a Provider capability declaration; the Provider ABI is the executable capability upper bound.",
+      "type": "object",
+      "required": [
+        "execution",
+        "batch",
+        "rates",
+        "resources",
+        "calibration",
+        "terminal"
+      ],
+      "properties": {
+        "execution": {
+          "type": "object",
+          "required": [
+            "input_granularity",
+            "partition_key",
+            "max_active_keys",
+            "max_in_flight",
+            "max_items_per_activation"
+          ],
+          "properties": {
+            "input_granularity": {
+              "enum": [
+                "acquisition",
+                "microbatch",
+                "window",
+                "frame",
+                "volume",
+                "scan_finalizer"
+              ]
+            },
+            "partition_key": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "channel_group": {
+              "$ref": "#/$defs/nodeChannelGroup"
+            },
+            "max_active_keys": {
+              "$ref": "#/$defs/positiveSafeInteger"
+            },
+            "max_in_flight": {
+              "$ref": "#/$defs/positiveSafeInteger"
+            },
+            "max_items_per_activation": {
+              "$ref": "#/$defs/positiveSafeInteger"
+            }
+          },
+          "additionalProperties": false
+        },
+        "batch": {
+          "type": "object",
+          "required": [
+            "min_items",
+            "preferred_items",
+            "max_items",
+            "max_charged_bytes"
+          ],
+          "properties": {
+            "min_items": {
+              "$ref": "#/$defs/positiveSafeInteger"
+            },
+            "preferred_items": {
+              "$ref": "#/$defs/positiveSafeInteger"
+            },
+            "max_items": {
+              "$ref": "#/$defs/positiveSafeInteger"
+            },
+            "max_charged_bytes": {
+              "$ref": "#/$defs/positiveSafeInteger"
+            }
+          },
+          "additionalProperties": false
+        },
+        "rates": {
+          "$ref": "#/$defs/nodeRates"
+        },
+        "resources": {
+          "$ref": "#/$defs/nodeResources"
+        },
+        "calibration": {
+          "$ref": "#/$defs/nodeCalibration"
+        },
+        "join": {
+          "$ref": "#/$defs/nodeJoin"
+        },
+        "terminal": {
+          "$ref": "#/$defs/terminalPlanning"
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeChannelGroup": {
+      "type": "object",
+      "required": [
+        "channels_per_group",
+        "max_active_channels",
+        "max_groups"
+      ],
+      "properties": {
+        "channels_per_group": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "max_active_channels": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "max_groups": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      },
+      "additionalProperties": false
+    },
+    "portRate": {
+      "type": "object",
+      "required": [
+        "port_name",
+        "items",
+        "charged_bytes"
+      ],
+      "properties": {
+        "port_name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "items": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeRatePhase": {
+      "type": "object",
+      "required": [
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/portRate"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/portRate"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeOutputPhase": {
+      "type": "object",
+      "required": [
+        "outputs"
+      ],
+      "properties": {
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/portRate"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeDynamicPhase": {
+      "type": "object",
+      "required": [
+        "max_firings",
+        "outputs"
+      ],
+      "properties": {
+        "max_firings": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/portRate"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeRates": {
+      "type": "object",
+      "required": [
+        "kind",
+        "static_phases",
+        "ordinary",
+        "normal_flush"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "sdf",
+            "csdf",
+            "keyed_dynamic"
+          ]
+        },
+        "static_phases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeRatePhase"
+          }
+        },
+        "ordinary": {
+          "$ref": "#/$defs/nodeOutputPhase"
+        },
+        "normal_flush": {
+          "$ref": "#/$defs/nodeDynamicPhase"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "sdf"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "static_phases": {
+                "minItems": 1,
+                "maxItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "csdf"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "static_phases": {
+                "minItems": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "keyed_dynamic"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "static_phases": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "nodeResources": {
+      "type": "object",
+      "required": [
+        "scratch_charged_bytes_per_firing",
+        "per_key_state_charged_bytes",
+        "per_scan_workspace_charged_bytes",
+        "retention_charged_bytes",
+        "output_items",
+        "output_charged_bytes",
+        "cpu_permits",
+        "backend_gang_threads",
+        "provider_private_threads",
+        "external_allocation_charged_bytes",
+        "memory_domain"
+      ],
+      "properties": {
+        "scratch_charged_bytes_per_firing": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "per_key_state_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "per_scan_workspace_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "retention_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "output_items": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "output_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "cpu_permits": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "backend_gang_threads": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "provider_private_threads": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "external_allocation_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "memory_domain": {
+          "enum": [
+            "host",
+            "pinned_host",
+            "device",
+            "shared"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeCalibration": {
+      "type": "object",
+      "required": [
+        "role",
+        "binding_id",
+        "max_active_keys",
+        "precalibration_horizon_items",
+        "precalibration_horizon_charged_bytes",
+        "max_calibration_frame_charged_bytes",
+        "max_decoder_staging_bytes"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "none",
+            "producer",
+            "consumer"
+          ]
+        },
+        "binding_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "max_active_keys": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "precalibration_horizon_items": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "precalibration_horizon_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "max_calibration_frame_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "max_decoder_staging_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeJoin": {
+      "type": "object",
+      "required": [
+        "max_retained_charged_bytes_aggregate",
+        "progress_proof"
+      ],
+      "properties": {
+        "max_retained_charged_bytes_aggregate": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "progress_proof": {
+          "enum": [
+            "none",
+            "verified_schedule_automaton",
+            "cohort_reservation"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "terminalPlanning": {
+      "type": "object",
+      "required": [
+        "normal_max_output_items",
+        "normal_max_output_charged_bytes",
+        "normal_max_async_tokens",
+        "cancel_max_async_tokens"
+      ],
+      "properties": {
+        "normal_max_output_items": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "normal_max_output_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "normal_max_async_tokens": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "cancel_max_async_tokens": {
+          "$ref": "#/$defs/safeInteger"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,7 +1,6 @@
 #include "kspacejet/recon/runtime/calibration_gate.hpp"
 #include "kspacejet/recon/runtime/bounded_edge.hpp"
 #include "kspacejet/recon/runtime/key_shard.hpp"
-#include "kspacejet/recon/runtime/reorder_buffer.hpp"
 #include "kspacejet/recon/runtime/resource_ledger.hpp"
 #include "kspacejet/recon/runtime/scan_lifecycle.hpp"
 
@@ -116,20 +115,6 @@ TEST(KSpaceJetReconRuntimeCalibrationGate, ReleasesOnlyMatchingKeyAfterCalibrati
   ASSERT_TRUE(token.ok()) << token.status();
   EXPECT_EQ("abc", token.value().digest);
   EXPECT_EQ((std::vector<std::string>{"slice-1"}), gate.close_missing());
-}
-
-TEST(KSpaceJetReconRuntimeReorder, EmitsOnlyContiguousOrderAndFailsGapAtEndOfInput) {
-  ksj::recon::runtime::ReorderBuffer<std::string> reorder(10U, {.max_ahead_items = 4U, .max_ahead_bytes = 64U});
-
-  auto delayed = reorder.submit(11U, 8U, "eleven");
-  ASSERT_TRUE(delayed.ok()) << delayed.status();
-  EXPECT_TRUE(delayed.value().empty());
-  EXPECT_FALSE(reorder.close().ok());
-
-  auto ready = reorder.submit(10U, 8U, "ten");
-  ASSERT_TRUE(ready.ok()) << ready.status();
-  EXPECT_EQ((std::vector<std::string>{"ten", "eleven"}), ready.value());
-  EXPECT_TRUE(reorder.close().ok());
 }
 
 TEST(KSpaceJetReconRuntimeBoundedEdge, EndOfInputClosesOnlyAfterQueuedDataDrains) {

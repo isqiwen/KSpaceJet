@@ -26,6 +26,15 @@ install step:
 bash tools/devenv/linux/bootstrap.sh --prepare linux-release
 ```
 
+Application-level CTests use the separate application build preset, so product
+targets remain enabled while unit-test-only configuration stays isolated:
+
+```bash
+bash tools/devenv/linux/bootstrap.sh --prepare linux-release-app-tests
+tools/devenv/linux/run.sh cmake --build out/build/linux-release-app-tests --preset linux-release-app-tests
+tools/devenv/linux/run.sh ctest --preset linux-release-app-tests
+```
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 `
   -Prepare windows-vs2022-release

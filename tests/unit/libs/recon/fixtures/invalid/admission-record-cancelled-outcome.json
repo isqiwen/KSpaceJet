@@ -1,0 +1,21 @@
+{
+  "kind": "AdmissionRecord",
+  "execution_plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "verification_record_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "outcome": "cancelled",
+  "reservation": {
+    "host_normal_bytes": 0,
+    "host_pinned_bytes": 0,
+    "host_hugepage_bytes": 0,
+    "shared_host_bytes": 0,
+    "spool_bytes": 0,
+    "transport_bytes": 0,
+    "descriptor_count": 0,
+    "async_token_count": 0,
+    "cpu_leaf_permits": 0,
+    "backend_gang_permits": 0,
+    "provider_private_permits": 0,
+    "io_slots": 0,
+    "devices": []
+  }
+}

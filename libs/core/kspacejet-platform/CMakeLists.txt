@@ -5,6 +5,7 @@ ksj_add_core_component(
   SOURCES
   src/archive.cpp
   src/dynamic_library.cpp
+  src/filesystem.cpp
   src/process.cpp
   src/socket.cpp
   src/socket_subsystem.cpp

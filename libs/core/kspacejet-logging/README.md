@@ -29,7 +29,7 @@ include/kspacejet/logging/logging.hpp
 | --- | --- |
 | `Configure(const ksj::config::LoggingConfig&, ...)` | 使用已解析配置初始化日志。 |
 | `Configure(const char* config_path, ...)` | 从配置文件路径初始化日志。 |
-| `EnsureConfigured()` | 确保 logger 已经可用。 |
+| `ConfigureDefaultConsole(...)` | 在没有 runtime config 的进程入口初始化同步 stderr logger；重复调用保留既有 logger 并成功，后续显式 `Configure(...)` 可替换该 fallback。 |
 | `IsConfigured()` | 查询 logger 是否已初始化。 |
 | `ShouldLog(Level)` | 查询某个 level 当前是否会被记录。 |
 | `Log()` / `LogFormatted()` | 底层日志写入入口。 |
@@ -61,6 +61,8 @@ include/kspacejet/logging/logging.hpp
 - 日志宏是广泛使用的 public API，改名或改变参数语义会影响全仓调用点。
 - 格式化失败时应保持容错，不应因为日志 format error 中断业务路径。
 - 日志初始化应由进程启动层完成，库代码不应随意重新配置全局 logger。
+- 控制台日志统一写入 `stderr`，保留 `stdout` 给 CLI 或其他机器可读协议；结构化命令输出不得与日志混流。
+- `KSJ_LOG_*` 是诊断路径，格式化、分配或 sink 失败不会向调用方抛出异常，因此可安全用于 `noexcept` 的 Provider ABI 回调和错误处理路径。
 - 普通 `KSJ_LOG_INFO`、`KSJ_LOG_WARN` 和 `KSJ_LOG_ERROR` 调用不应再套同级 `ShouldLog()`；日志宏内部已经检查级别，重复判断只会增加锁和分支。
 - 高频 `KSJ_LOG_DEBUG`/`KSJ_LOG_TRACE` 路径，或日志参数需要昂贵计算、分配和遍历时，应先用对应级别的 `ShouldLog()` 保护参数构造和日志调用。
 - 需要降低输出频率时直接使用 `KSJ_LOG_*_EVERY_N`；不要再为限频宏套同级 `ShouldLog()`。高频且通常关闭的 DEBUG/TRACE 限频日志可以在外层使用 `ShouldLog()`，从而在该级别关闭时避免原子计数开销。

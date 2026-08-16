@@ -9,11 +9,48 @@
 #include "kspacejet/linalg/detail/linalg_policy.hpp"
 #include "kspacejet/linalg/types.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <complex>
 #include <cstddef>
 #include <span>
 #include <stdexcept>
 
 namespace ksj::linalg {
+
+// Materializes a whitening matrix from a caller-owned self-adjoint
+// eigendecomposition.  This is the allocation-free counterpart to
+// whitening_matrix_from_covariance(): eigenvalues/eigenvectors originate from
+// an explicit workspace decomposition, and `output` is the caller-owned
+// destination.  The eigenvector columns and eigenvalues must be paired.
+template <typename T>
+void whitening_matrix_from_self_adjoint_eigen_with_workspace(
+  const ksj::array::VectorView<const ksj::array::real_scalar_t<T>> eigenvalues,
+  const ksj::array::MatrixView<const T> eigenvectors, const ksj::array::MatrixView<T> output,
+  const ksj::array::real_scalar_t<T> eigenvalue_floor = static_cast<ksj::array::real_scalar_t<T>>(1.0e-12)) {
+  detail::require_supported_linalg_scalar<T>();
+  using real_type = ksj::array::real_scalar_t<T>;
+  if (eigenvalues.empty() || eigenvectors.rows() != eigenvectors.cols() || eigenvectors.rows() != eigenvalues.size() ||
+      output.rows() != eigenvectors.rows() || output.cols() != eigenvectors.cols() || eigenvalue_floor <= real_type{} ||
+      eigenvalues.data() == nullptr || eigenvectors.data() == nullptr || output.data() == nullptr ||
+      output.data() == eigenvectors.data()) {
+    throw std::invalid_argument("whitening self-adjoint eigendecomposition dimension mismatch");
+  }
+  for (std::size_t row = 0U; row < output.rows(); ++row) {
+    for (std::size_t column = 0U; column < output.cols(); ++column) {
+      T sum{};
+      for (std::size_t eigenvector = 0U; eigenvector < eigenvalues.size(); ++eigenvector) {
+        const auto inverse_sqrt = real_type{1} / std::sqrt(std::max(eigenvalues(eigenvector), eigenvalue_floor));
+        if constexpr (ksj::array::is_complex_v<T>) {
+          sum += eigenvectors(row, eigenvector) * inverse_sqrt * std::conj(eigenvectors(column, eigenvector));
+        } else {
+          sum += eigenvectors(row, eigenvector) * inverse_sqrt * eigenvectors(column, eigenvector);
+        }
+      }
+      output(row, column) = sum;
+    }
+  }
+}
 
 template <typename T>
 [[nodiscard]] Matrix<T> whitening_matrix_from_covariance(

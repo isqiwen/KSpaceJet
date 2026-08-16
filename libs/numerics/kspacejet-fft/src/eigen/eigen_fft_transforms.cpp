@@ -145,6 +145,66 @@ void fft_2d(ksj::array::MatrixView<const std::complex<T>> input, ksj::array::Mat
 }
 
 template <typename T>
+void fft_2d_inplace_with_workspace(ksj::array::MatrixView<std::complex<T>> data,
+                                   ksj::array::MatrixView<std::complex<T>> intermediate,
+                                   ksj::array::VectorView<std::complex<T>> source,
+                                   ksj::array::VectorView<std::complex<T>> destination, const Direction direction,
+                                   const Normalization normalization) {
+  if (data.rows() != intermediate.rows() || data.cols() != intermediate.cols()) {
+    throw std::invalid_argument("fft2 in-place workspace matrix dimension mismatch");
+  }
+  const auto vector_extent = std::max(data.rows(), data.cols());
+  if (source.size() < vector_extent || destination.size() < vector_extent) {
+    throw std::invalid_argument("fft2 in-place workspace vector extent is too small");
+  }
+  if (!data.is_contiguous() || !intermediate.is_contiguous() || !source.is_contiguous() ||
+      !destination.is_contiguous()) {
+    throw std::invalid_argument("fft2 in-place workspace requires contiguous storage");
+  }
+  if (data.empty()) {
+    return;
+  }
+  if (data.data() == intermediate.data() || source.data() == destination.data() || source.data() == data.data() ||
+      source.data() == intermediate.data() || destination.data() == data.data() ||
+      destination.data() == intermediate.data()) {
+    throw std::invalid_argument("fft2 in-place workspace storage must not alias");
+  }
+
+  Eigen::FFT<T> backend;
+  backend.SetFlag(Eigen::FFT<T>::Unscaled);
+
+  const auto row_scale = normalization_scale<T>(data.cols(), direction, normalization);
+  for (std::size_t row = 0; row < data.rows(); ++row) {
+    for (std::size_t col = 0; col < data.cols(); ++col) {
+      source(col) = data(row, col);
+    }
+    if (direction == Direction::forward) {
+      backend.fwd(destination.data(), source.data(), static_cast<Eigen::Index>(data.cols()));
+    } else {
+      backend.inv(destination.data(), source.data(), static_cast<Eigen::Index>(data.cols()));
+    }
+    for (std::size_t col = 0; col < data.cols(); ++col) {
+      intermediate(row, col) = destination(col) * static_cast<std::complex<T>>(row_scale);
+    }
+  }
+
+  const auto col_scale = normalization_scale<T>(data.rows(), direction, normalization);
+  for (std::size_t col = 0; col < data.cols(); ++col) {
+    for (std::size_t row = 0; row < data.rows(); ++row) {
+      source(row) = intermediate(row, col);
+    }
+    if (direction == Direction::forward) {
+      backend.fwd(destination.data(), source.data(), static_cast<Eigen::Index>(data.rows()));
+    } else {
+      backend.inv(destination.data(), source.data(), static_cast<Eigen::Index>(data.rows()));
+    }
+    for (std::size_t row = 0; row < data.rows(); ++row) {
+      data(row, col) = destination(row) * static_cast<std::complex<T>>(col_scale);
+    }
+  }
+}
+
+template <typename T>
 void fft_2d_batch(const ksj::array::PooledCube<std::complex<T>>& input, ksj::array::PooledCube<std::complex<T>>& output,
                   const Direction direction, const Normalization normalization) {
   if (input.dim0() != output.dim0() || input.dim1() != output.dim1() || input.dim2() != output.dim2()) {
@@ -384,6 +444,22 @@ void fft_2d(ksj::array::MatrixView<const std::complex<double>> input,
             ksj::array::MatrixView<std::complex<double>> output, const Direction direction,
             const Normalization normalization) {
   detail::eigen_impl::fft_2d(input, output, direction, normalization);
+}
+
+void fft_2d_inplace_with_workspace(ksj::array::MatrixView<std::complex<float>> data,
+                                   ksj::array::MatrixView<std::complex<float>> intermediate,
+                                   ksj::array::VectorView<std::complex<float>> source,
+                                   ksj::array::VectorView<std::complex<float>> destination, const Direction direction,
+                                   const Normalization normalization) {
+  detail::eigen_impl::fft_2d_inplace_with_workspace(data, intermediate, source, destination, direction, normalization);
+}
+
+void fft_2d_inplace_with_workspace(ksj::array::MatrixView<std::complex<double>> data,
+                                   ksj::array::MatrixView<std::complex<double>> intermediate,
+                                   ksj::array::VectorView<std::complex<double>> source,
+                                   ksj::array::VectorView<std::complex<double>> destination, const Direction direction,
+                                   const Normalization normalization) {
+  detail::eigen_impl::fft_2d_inplace_with_workspace(data, intermediate, source, destination, direction, normalization);
 }
 
 void fft_2d_batch(const ksj::array::PooledCube<std::complex<float>>& input,

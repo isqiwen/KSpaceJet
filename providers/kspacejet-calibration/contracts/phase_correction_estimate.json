@@ -1,0 +1,16 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "phase_correction_estimate",
+  "ports": [
+    {
+      "name": "phase_reference",
+      "type_ref": "ksj.phase-reference-frame",
+      "direction": "input"
+    },
+    {
+      "name": "phase_model",
+      "type_ref": "ksj.phase-model",
+      "direction": "output"
+    }
+  ]
+}

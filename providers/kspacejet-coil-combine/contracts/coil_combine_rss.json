@@ -1,0 +1,16 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "coil_combine_rss",
+  "ports": [
+    {
+      "name": "coil_images",
+      "type_ref": "ksj.coil-image-frame",
+      "direction": "input"
+    },
+    {
+      "name": "image",
+      "type_ref": "ksj.image-frame",
+      "direction": "output"
+    }
+  ]
+}

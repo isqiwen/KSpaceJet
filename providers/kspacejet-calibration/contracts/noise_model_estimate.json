@@ -1,0 +1,16 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "noise_model_estimate",
+  "ports": [
+    {
+      "name": "noise_calibration",
+      "type_ref": "ksj.noise-calibration-frame",
+      "direction": "input"
+    },
+    {
+      "name": "noise_model",
+      "type_ref": "ksj.noise-model",
+      "direction": "output"
+    }
+  ]
+}

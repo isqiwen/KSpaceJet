@@ -1,0 +1,25 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.image-ops",
+  "operator_id": "image_magnitude_float32",
+  "summary": "Convert one complex image to its real magnitude image.",
+  "ports": [
+    {
+      "name": "complex_image",
+      "direction": "input",
+      "semantic_type": "ksj.complex-image-frame"
+    },
+    {
+      "name": "magnitude_image",
+      "direction": "output",
+      "semantic_type": "ksj.image-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [],
+    "optional": []
+  },
+  "notes": "This is a stateless per-image transform. Exact precision, NaN/Inf behavior, TypeDescriptor, resources, and terminal behavior await an executable contract."
+}

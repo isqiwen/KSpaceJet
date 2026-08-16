@@ -612,6 +612,67 @@ TEST(KSpaceJetFft, Writes2dFftIntoExistingStorage) {
   }
 }
 
+TEST(KSpaceJetFft, Transforms2dInCallerWorkspaceWithoutPooledStorage) {
+  constexpr std::size_t kRows = 3U;
+  constexpr std::size_t kCols = 4U;
+  constexpr std::size_t kPixels = kRows * kCols;
+  constexpr std::size_t kLineExtent = kCols;
+
+  std::array<ksj::base::cf32, kPixels> data_storage{};
+  std::array<ksj::base::cf32, kPixels> intermediate_storage{};
+  std::array<ksj::base::cf32, kLineExtent> source_storage{};
+  std::array<ksj::base::cf32, kLineExtent> destination_storage{};
+  auto data = ksj::array::MatrixView<ksj::base::cf32>(data_storage.data(), kRows, kCols);
+  auto intermediate = ksj::array::MatrixView<ksj::base::cf32>(intermediate_storage.data(), kRows, kCols);
+  auto source = ksj::array::VectorView<ksj::base::cf32>(source_storage.data(), source_storage.size());
+  auto destination = ksj::array::VectorView<ksj::base::cf32>(destination_storage.data(), destination_storage.size());
+  data(0U, 0U) = {1.0F, 0.0F};
+
+  // This test target intentionally has no test MemoryBroker environment.
+  // All storage is supplied by stack-backed views, so a hidden pooled
+  // workspace in the bounded API would make this firing-style path fail.
+  ksj::fft::fft2_inplace_with_workspace(data, intermediate, source, destination);
+  for (std::size_t row = 0U; row < kRows; ++row) {
+    for (std::size_t col = 0U; col < kCols; ++col) {
+      EXPECT_NEAR(data(row, col).real(), 1.0F, 1.0e-5F);
+      EXPECT_NEAR(data(row, col).imag(), 0.0F, 1.0e-5F);
+    }
+  }
+
+  ksj::fft::fft2_inplace_with_workspace(data, intermediate, source, destination, ksj::fft::Direction::inverse,
+                                        ksj::fft::Normalization::inverse);
+  for (std::size_t row = 0U; row < kRows; ++row) {
+    for (std::size_t col = 0U; col < kCols; ++col) {
+      EXPECT_NEAR(data(row, col).real(), row == 0U && col == 0U ? 1.0F : 0.0F, 1.0e-5F);
+      EXPECT_NEAR(data(row, col).imag(), 0.0F, 1.0e-5F);
+    }
+  }
+}
+
+TEST(KSpaceJetFft, RejectsInvalid2dCallerWorkspace) {
+  std::array<ksj::base::cf64, 6U> data_storage{};
+  std::array<ksj::base::cf64, 4U> wrong_intermediate_storage{};
+  std::array<ksj::base::cf64, 6U> intermediate_storage{};
+  std::array<ksj::base::cf64, 2U> short_line_storage{};
+  std::array<ksj::base::cf64, 3U> line_storage{};
+  std::array<ksj::base::cf64, 3U> destination_storage{};
+  auto data = ksj::array::MatrixView<ksj::base::cf64>(data_storage.data(), 2U, 3U);
+  auto wrong_intermediate = ksj::array::MatrixView<ksj::base::cf64>(wrong_intermediate_storage.data(), 2U, 2U);
+  auto intermediate = ksj::array::MatrixView<ksj::base::cf64>(intermediate_storage.data(), 2U, 3U);
+  auto short_line = ksj::array::VectorView<ksj::base::cf64>(short_line_storage.data(), short_line_storage.size());
+  auto line = ksj::array::VectorView<ksj::base::cf64>(line_storage.data(), line_storage.size());
+  auto destination = ksj::array::VectorView<ksj::base::cf64>(destination_storage.data(), destination_storage.size());
+
+  EXPECT_THROW(ksj::fft::fft2_inplace_with_workspace(data, wrong_intermediate, line, destination),
+               std::invalid_argument);
+  EXPECT_THROW(ksj::fft::fft2_inplace_with_workspace(data, intermediate, short_line, destination),
+               std::invalid_argument);
+
+  auto aliased_intermediate = ksj::array::MatrixView<ksj::base::cf64>(data_storage.data(), 2U, 3U);
+  EXPECT_THROW(ksj::fft::fft2_inplace_with_workspace(data, aliased_intermediate, line, destination),
+               std::invalid_argument);
+}
+
 TEST(KSpaceJetFft, WritesMatrixFftAlongSelectedDim) {
   auto input = ksj::array::make_pooled_matrix<ksj::base::cf64>(2, 4);
   as_eigen(input).setZero();

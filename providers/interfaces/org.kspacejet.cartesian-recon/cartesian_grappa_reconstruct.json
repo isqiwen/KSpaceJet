@@ -1,0 +1,30 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.cartesian-recon",
+  "operator_id": "cartesian_grappa_reconstruct",
+  "summary": "Recover missing Cartesian k-space samples with a scan-bound GRAPPA kernel.",
+  "ports": [
+    {
+      "name": "undersampled_kspace",
+      "direction": "input",
+      "semantic_type": "ksj.kspace-frame"
+    },
+    {
+      "name": "grappa_kernel",
+      "direction": "input",
+      "semantic_type": "ksj.grappa-kernel"
+    },
+    {
+      "name": "reconstructed_kspace",
+      "direction": "output",
+      "semantic_type": "ksj.kspace-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [],
+    "optional": ["acceleration_policy"]
+  },
+  "notes": "Kernel calibration belongs to the planned org.kspacejet.calibration/cartesian_grappa_kernel_calibrate Operator. This consumer must receive its immutable GRAPPA kernel through a future explicit calibration binding, never by inferring or retaining hidden shared Provider state. The future contract must specify its calibration lifecycle, masking semantics, rate/resource bounds, and failure policy."
+}

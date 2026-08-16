@@ -1,6 +1,6 @@
 # KSpaceJet–Gadgetron 公平对照与复现实验协议
 
-> 状态：v0.2，多基线预注册草案。
+> 状态：多基线预注册草案。
 > 目的：在看到正式性能结果之前冻结比较边界，避免挑选数据、指标、运行次数或配置。
 > 关联稿件：[KSpaceJet 资源合约流式重建论文初稿](kspacejet_resource_contract_streaming_paper_draft.md)。
 >
@@ -88,7 +88,6 @@ flowchart LR
 
 ```json
 {
-  "schema_version": 2,
   "comparison_policy": {
     "primary_confirmatory": "gadgetron",
     "secondary_contextual": "bart-streams",
@@ -125,10 +124,10 @@ flowchart LR
   },
   "matched_kernel": {
     "git_commit": "<full-sha>",
-    "abi_version": 1
+    "abi_identity_digest": "<sha256>"
   },
   "input_transform_lock_sha256": "<sha256>",
-  "protocol_revision": "v0.2"
+  "protocol_lock_sha256": "<sha256>"
 }
 ```
 
@@ -154,7 +153,7 @@ flowchart LR
 
 ### 2.3 MRIReco.jl 触发状态
 
-`baseline-lock.json` 默认记录 `related-work-only` 且 `experiment_trigger=null`，不要求安装 Julia 或运行 MRIReco.jl。如果论文主张在解盲前触发第 5.6 节中任一条，则通过新的 protocol revision 冻结 MRIReco.jl 版本、Julia manifest、数据、任务和端点；不得在看到性能结果后临时添加。
+`baseline-lock.json` 默认记录 `related-work-only` 且 `experiment_trigger=null`，不要求安装 Julia 或运行 MRIReco.jl。如果论文主张在解盲前触发第 5.6 节中任一条，则通过新的锁定 protocol artifact 冻结 MRIReco.jl 的外部发行标识、Julia manifest、数据、任务和端点；不得在看到性能结果后临时添加。
 
 ## 3. 数据集协议
 
@@ -217,7 +216,7 @@ flowchart LR
 
 - source URI/DOI、许可状态、原文件 SHA-256 和 byte size；
 - 转换工具源码 commit、构建锁、完整命令、环境和转换日志；
-- 产物的 schema/format 版本、SHA-256、byte size 和语义摘要；
+- 产物的 schema/format identity、SHA-256、byte size 和语义摘要；
 - sample、trajectory、coil/channel、frame/spoke 顺序、数值精度、尺寸和终止语义的逐项对照；
 - replay chunking、pacing、burst seed、slow-sink schedule 和预计时边界。
 
@@ -648,7 +647,7 @@ ST-00, ST-01, ST-02, ST-03, ST-04, ST-05, ST-06, ST-07, ST-08
 
 | 工具组件 | 输入 | 责任 | 强制边界 |
 | --- | --- | --- | --- |
-| baseline locker | Git/release/container/Conan/Julia metadata | 生成并验证 `baseline-lock.json` | 不自动跟随 latest；变更必须新 protocol revision |
+| baseline locker | Git/release/container/Conan/Julia metadata | 生成并验证 `baseline-lock.json` | 不自动跟随 latest；变更必须生成新的锁定 protocol artifact |
 | dataset fetcher/auditor | DOI/URL/license policy | 下载、hash、匿名/许可检查和 manifest | 未确认再分发权时只发布获取说明与 hash |
 | transform freezer | 只读 source artifact | 生成 ISMRMRD/BART 派生物、语义审计和 transform lock | 只存在于 benchmark tooling；不向 KSpaceJet 生产库添加 BART/私有协议 |
 | replay/load driver | locked artifact + pacing profile | 网络/本地 replay、burst、slow sink、multi-scan | 确定性 seed；运行时拒绝 hash 不符数据 |
@@ -664,7 +663,7 @@ ST-00, ST-01, ST-02, ST-03, ST-04, ST-05, ST-06, ST-07, ST-08
 每次正式 paper suite 产生：
 
 ```text
-paper-artifacts/<paper-revision>/
+paper-artifacts/<paper-identity>/
   baseline-lock.json
   input-transform-lock.json
   protocol.json

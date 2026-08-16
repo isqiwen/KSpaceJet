@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/operator-contract.schema.json",
+  "title": "KSpaceJet OperatorContract",
+  "description": "Provider-owned immutable interface declaration. It publishes only an operator identity and typed ports. Scheduling, rate, resource, terminal, and topology choices belong to node-owned NodePlanningRequirements in a PlanBuildRequest. The Provider ABI remains the executable capability upper bound.",
+  "type": "object",
+  "required": [
+    "kind",
+    "operator_id",
+    "ports"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "OperatorContract"
+    },
+    "operator_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "ports": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/port"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "typeRef": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 255,
+      "pattern": "^[a-z](?:[a-z0-9._-]*[a-z0-9])?$",
+      "description": "A checked-in TypeRegistry reference. Any payload or metadata semantic change requires a distinct TypeRef."
+    },
+    "port": {
+      "type": "object",
+      "required": [
+        "name",
+        "type_ref",
+        "direction"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type_ref": {
+          "$ref": "#/$defs/typeRef"
+        },
+        "direction": {
+          "enum": [
+            "input",
+            "output"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

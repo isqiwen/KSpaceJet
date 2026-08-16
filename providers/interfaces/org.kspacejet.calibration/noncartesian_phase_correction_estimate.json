@@ -1,0 +1,29 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.calibration",
+  "operator_id": "noncartesian_phase_correction_estimate",
+  "summary": "Estimate one scan-bound sequence-specific non-Cartesian phase model from non-Cartesian phase-reference data.",
+  "ports": [
+    {
+      "name": "phase_reference",
+      "direction": "input",
+      "semantic_type": "ksj.noncartesian-phase-reference-frame"
+    },
+    {
+      "name": "phase_model",
+      "direction": "output",
+      "semantic_type": "ksj.noncartesian-phase-model"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [
+      "phase_convention"
+    ],
+    "optional": [
+      "regularization"
+    ]
+  },
+  "notes": "This reserves artifacts distinct from ksj.phase-reference-frame and ksj.phase-model: a non-Cartesian sequence must define its reference acquisition, trajectory/sample association, echo or readout dependence, phase convention, key projection, completion, finite retention, resource bounds, and terminal behavior in a future exact contract. The immutable ksj.noncartesian-phase-model reaches noncartesian_phase_correct only through an explicit calibration binding; it is never implicit Provider state."
+}

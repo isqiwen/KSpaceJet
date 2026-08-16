@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/admission-record.schema.json",
+  "title": "KSpaceJet AdmissionRecord",
+  "description": "Dynamic admission decision for one verified ExecutionPlan. Plan and VerificationRecord identities are detached references. Rejection carries an empty ResourceVector and a reason; cancellation is a run-lifecycle event, not an admission outcome.",
+  "type": "object",
+  "required": [
+    "kind",
+    "execution_plan_digest",
+    "verification_record_digest",
+    "outcome",
+    "reservation"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "AdmissionRecord"
+    },
+    "execution_plan_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "verification_record_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "outcome": {
+      "enum": [
+        "admitted",
+        "rejected"
+      ]
+    },
+    "reservation": {
+      "$ref": "#/$defs/resourceVector"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "rejected"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reservation": {
+            "$ref": "#/$defs/emptyResourceVector"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "deviceResourceSlot": {
+      "type": "object",
+      "required": [
+        "device_id",
+        "device_bytes",
+        "gpu_stream_slots",
+        "copy_engine_slots"
+      ],
+      "properties": {
+        "device_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "device_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "gpu_stream_slots": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "copy_engine_slots": {
+          "$ref": "#/$defs/safeInteger"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resourceVector": {
+      "type": "object",
+      "required": [
+        "host_normal_bytes",
+        "host_pinned_bytes",
+        "host_hugepage_bytes",
+        "shared_host_bytes",
+        "spool_bytes",
+        "transport_bytes",
+        "descriptor_count",
+        "async_token_count",
+        "cpu_leaf_permits",
+        "backend_gang_permits",
+        "provider_private_permits",
+        "io_slots",
+        "devices"
+      ],
+      "properties": {
+        "host_normal_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "host_pinned_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "host_hugepage_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "shared_host_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "spool_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "transport_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "descriptor_count": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "async_token_count": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "cpu_leaf_permits": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "backend_gang_permits": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "provider_private_permits": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "io_slots": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deviceResourceSlot"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "emptyResourceVector": {
+      "type": "object",
+      "required": [
+        "host_normal_bytes",
+        "host_pinned_bytes",
+        "host_hugepage_bytes",
+        "shared_host_bytes",
+        "spool_bytes",
+        "transport_bytes",
+        "descriptor_count",
+        "async_token_count",
+        "cpu_leaf_permits",
+        "backend_gang_permits",
+        "provider_private_permits",
+        "io_slots",
+        "devices"
+      ],
+      "properties": {
+        "host_normal_bytes": {
+          "const": 0
+        },
+        "host_pinned_bytes": {
+          "const": 0
+        },
+        "host_hugepage_bytes": {
+          "const": 0
+        },
+        "shared_host_bytes": {
+          "const": 0
+        },
+        "spool_bytes": {
+          "const": 0
+        },
+        "transport_bytes": {
+          "const": 0
+        },
+        "descriptor_count": {
+          "const": 0
+        },
+        "async_token_count": {
+          "const": 0
+        },
+        "cpu_leaf_permits": {
+          "const": 0
+        },
+        "backend_gang_permits": {
+          "const": 0
+        },
+        "provider_private_permits": {
+          "const": 0
+        },
+        "io_slots": {
+          "const": 0
+        },
+        "devices": {
+          "type": "array",
+          "maxItems": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

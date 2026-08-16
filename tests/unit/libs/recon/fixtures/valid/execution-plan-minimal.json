@@ -1,0 +1,249 @@
+{
+  "kind": "ExecutionPlan",
+  "input_digests": {
+    "resolved_pipeline": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "scan_descriptor": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "target_envelope": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "machine_policy": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "operator_plan_bindings": [
+    {
+      "node_id": "process",
+      "canonical_config_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  ],
+  "execution_profile": "bounded-online",
+  "synchronous_nodes": [
+    {
+      "node_id": "process",
+      "provider_id": "org.example.image",
+      "provider_bundle_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "operator_id": "image_process",
+      "dynamic_input_join_policy": "exact-item-identity",
+      "inputs": [
+        {
+          "port_name": "image",
+          "abi_port": 0,
+          "source_kind": "data-edge",
+          "source_id": "ingress-to-process",
+          "type_descriptor": {
+            "type_ref": "ksj.image-frame",
+            "type_identity_digest": "sha256:66d13ed43407ba9dd449327f62a752f8137d328bad2620f56b817bf2140b3586",
+            "payload_kind": "buffer_handle",
+            "element_type": "float32",
+            "rank": 2,
+            "dimensions": ["ky", "kx"],
+            "layout": "row_major_contiguous",
+            "strides": "canonical",
+            "explicit_byte_strides": [],
+            "allowed_memory_domains": ["host_normal"],
+            "min_alignment_bytes": 64,
+            "mutability": "immutable_after_publish"
+          },
+          "maximum_item_count": 1
+        }
+      ],
+      "outputs": [
+        {
+          "port_name": "image",
+          "abi_port": 0,
+          "destination_kind": "data-edge",
+          "destination_id": "process-to-images",
+          "pool_id": "pool:process:image",
+          "type_descriptor": {
+            "type_ref": "ksj.image-frame",
+            "type_identity_digest": "sha256:66d13ed43407ba9dd449327f62a752f8137d328bad2620f56b817bf2140b3586",
+            "payload_kind": "buffer_handle",
+            "element_type": "float32",
+            "rank": 2,
+            "dimensions": ["ky", "kx"],
+            "layout": "row_major_contiguous",
+            "strides": "canonical",
+            "explicit_byte_strides": [],
+            "allowed_memory_domains": ["host_normal"],
+            "min_alignment_bytes": 64,
+            "mutability": "immutable_after_publish"
+          },
+          "maximum_item_count": 1
+        }
+      ],
+      "firing": {
+        "maximum_input_batches": 1,
+        "maximum_input_items": 1,
+        "maximum_output_grants": 1,
+        "maximum_input_payload_bytes": 4096,
+        "maximum_scratch_bytes": 0,
+        "maximum_metadata_bytes": 64,
+        "staging_charged_bytes": 256,
+        "staging_descriptor_count": 1,
+        "firing_reservation": {
+          "host_normal_bytes": 0,
+          "host_pinned_bytes": 0,
+          "host_hugepage_bytes": 0,
+          "shared_host_bytes": 0,
+          "spool_bytes": 0,
+          "transport_bytes": 0,
+          "descriptor_count": 0,
+          "async_token_count": 0,
+          "cpu_leaf_permits": 1,
+          "backend_gang_permits": 0,
+          "provider_private_permits": 0,
+          "io_slots": 0,
+          "devices": []
+        }
+      },
+      "terminal": {
+        "normal_max_output_items": 0,
+        "normal_max_output_charged_bytes": 0,
+        "normal_max_async_tokens": 0,
+        "cancel_max_async_tokens": 0
+      }
+    }
+  ],
+  "synchronous_buffer_pools": [
+    {
+      "pool_id": "pool:ingress:input",
+      "owner_kind": "ingress",
+      "owner_id": "input",
+      "owner_port_name": "",
+      "type_descriptor": {
+        "type_ref": "ksj.image-frame",
+        "type_identity_digest": "sha256:66d13ed43407ba9dd449327f62a752f8137d328bad2620f56b817bf2140b3586",
+        "payload_kind": "buffer_handle",
+        "element_type": "float32",
+        "rank": 2,
+        "dimensions": ["ky", "kx"],
+        "layout": "row_major_contiguous",
+        "strides": "canonical",
+        "explicit_byte_strides": [],
+        "allowed_memory_domains": ["host_normal"],
+        "min_alignment_bytes": 64,
+        "mutability": "immutable_after_publish"
+      },
+      "memory_domain": "host_normal",
+      "slot_count": 1,
+      "payload_capacity_bytes": 4096,
+      "metadata_capacity_bytes": 0,
+      "payload_alignment_bytes": 64,
+      "storage_accounting_id": "kspacejet.buffer-pool-storage/host-normal",
+      "host_metadata_charged_bytes": 40,
+      "descriptor_charged_count": 1,
+      "physical_charge_bytes": 4136
+    },
+    {
+      "pool_id": "pool:process:image",
+      "owner_kind": "node",
+      "owner_id": "process",
+      "owner_port_name": "image",
+      "type_descriptor": {
+        "type_ref": "ksj.image-frame",
+        "type_identity_digest": "sha256:66d13ed43407ba9dd449327f62a752f8137d328bad2620f56b817bf2140b3586",
+        "payload_kind": "buffer_handle",
+        "element_type": "float32",
+        "rank": 2,
+        "dimensions": ["ky", "kx"],
+        "layout": "row_major_contiguous",
+        "strides": "canonical",
+        "explicit_byte_strides": [],
+        "allowed_memory_domains": ["host_normal"],
+        "min_alignment_bytes": 64,
+        "mutability": "immutable_after_publish"
+      },
+      "memory_domain": "host_normal",
+      "slot_count": 1,
+      "payload_capacity_bytes": 4096,
+      "metadata_capacity_bytes": 0,
+      "payload_alignment_bytes": 64,
+      "storage_accounting_id": "kspacejet.buffer-pool-storage/host-normal",
+      "host_metadata_charged_bytes": 40,
+      "descriptor_charged_count": 1,
+      "physical_charge_bytes": 4136
+    }
+  ],
+  "synchronous_data_edges": [
+    {
+      "edge_id": "ingress-to-process",
+      "source_pool_id": "pool:ingress:input",
+      "producer_kind": "ingress",
+      "producer_id": "input",
+      "producer_port_name": "",
+      "producer_abi_port": 0,
+      "consumer_kind": "node",
+      "consumer_id": "process",
+      "consumer_port_name": "image",
+      "consumer_abi_port": 0,
+      "type_descriptor": {
+        "type_ref": "ksj.image-frame",
+        "type_identity_digest": "sha256:66d13ed43407ba9dd449327f62a752f8137d328bad2620f56b817bf2140b3586",
+        "payload_kind": "buffer_handle",
+        "element_type": "float32",
+        "rank": 2,
+        "dimensions": ["ky", "kx"],
+        "layout": "row_major_contiguous",
+        "strides": "canonical",
+        "explicit_byte_strides": [],
+        "allowed_memory_domains": ["host_normal"],
+        "min_alignment_bytes": 64,
+        "mutability": "immutable_after_publish"
+      },
+      "max_items": 1,
+      "max_logical_bytes": 4096,
+      "storage_accounting_id": "kspacejet.data-edge-storage/fixed-fifo",
+      "host_metadata_charged_bytes": 128,
+      "descriptor_charged_count": 1,
+      "terminal_policy": "normal-eoi-drain-cancellation-fail"
+    },
+    {
+      "edge_id": "process-to-images",
+      "source_pool_id": "pool:process:image",
+      "producer_kind": "node",
+      "producer_id": "process",
+      "producer_port_name": "image",
+      "producer_abi_port": 0,
+      "consumer_kind": "egress",
+      "consumer_id": "images",
+      "consumer_port_name": "",
+      "consumer_abi_port": 0,
+      "type_descriptor": {
+        "type_ref": "ksj.image-frame",
+        "type_identity_digest": "sha256:66d13ed43407ba9dd449327f62a752f8137d328bad2620f56b817bf2140b3586",
+        "payload_kind": "buffer_handle",
+        "element_type": "float32",
+        "rank": 2,
+        "dimensions": ["ky", "kx"],
+        "layout": "row_major_contiguous",
+        "strides": "canonical",
+        "explicit_byte_strides": [],
+        "allowed_memory_domains": ["host_normal"],
+        "min_alignment_bytes": 64,
+        "mutability": "immutable_after_publish"
+      },
+      "max_items": 1,
+      "max_logical_bytes": 4096,
+      "storage_accounting_id": "kspacejet.data-edge-storage/fixed-fifo",
+      "host_metadata_charged_bytes": 128,
+      "descriptor_charged_count": 1,
+      "terminal_policy": "normal-eoi-drain-cancellation-fail"
+    }
+  ],
+  "calibration_artifact_bindings": [],
+  "resource_vector": {
+    "host_normal_bytes": 8784,
+    "host_pinned_bytes": 0,
+    "host_hugepage_bytes": 0,
+    "shared_host_bytes": 0,
+    "spool_bytes": 0,
+    "transport_bytes": 0,
+    "descriptor_count": 5,
+    "async_token_count": 0,
+    "cpu_leaf_permits": 1,
+    "backend_gang_permits": 0,
+    "provider_private_permits": 0,
+    "io_slots": 0,
+    "devices": []
+  },
+  "terminal_occurrences": 1,
+  "proof_obligations": [
+    "PO-01.generic-synchronous-graph"
+  ]
+}

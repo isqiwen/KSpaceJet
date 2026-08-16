@@ -1,0 +1,30 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.image-quality",
+  "operator_id": "image_nonfinite_check",
+  "summary": "Check one image for non-finite samples, forward it on success, and emit a quality report.",
+  "ports": [
+    {
+      "name": "image",
+      "direction": "input",
+      "semantic_type": "ksj.image-frame"
+    },
+    {
+      "name": "validated_image",
+      "direction": "output",
+      "semantic_type": "ksj.image-frame"
+    },
+    {
+      "name": "quality_report",
+      "direction": "output",
+      "semantic_type": "ksj.image-quality-report"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": ["policy"],
+    "optional": []
+  },
+  "notes": "The future executable contract must define report delivery, failure/forwarding policy, exact image and report descriptors, resource bounds, and terminal semantics."
+}

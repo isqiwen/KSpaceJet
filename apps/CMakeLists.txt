@@ -4,6 +4,8 @@ if(NOT KSJ_BUILD_APPLICATIONS)
   return()
 endif()
 
+find_package(CLI11 CONFIG REQUIRED)
+
 function(ksj_add_application)
   set(options INSTALL)
   set(one_value_args TARGET OUTPUT_NAME)
@@ -18,7 +20,7 @@ function(ksj_add_application)
 
   add_executable(${KSJ_APP_TARGET} ${KSJ_APP_SOURCES})
   ksj_target_enable_defaults(${KSJ_APP_TARGET})
-  target_link_libraries(${KSJ_APP_TARGET} PRIVATE ksj_program KSpaceJet::platform_runtime_libraries
+  target_link_libraries(${KSJ_APP_TARGET} PRIVATE CLI11::CLI11 KSpaceJet::core KSpaceJet::platform_runtime_libraries
                                                   KSpaceJet::executable_link_options)
   set_target_properties(${KSJ_APP_TARGET} PROPERTIES OUTPUT_NAME "${KSJ_APP_OUTPUT_NAME}" FOLDER "apps")
   ksj_set_executable_runtime_path(${KSJ_APP_TARGET})

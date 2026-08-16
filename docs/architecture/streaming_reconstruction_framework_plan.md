@@ -18,15 +18,15 @@ KSpaceJet 是一个以 ISMRMRD 为唯一公开原始采集输入契约的高性�
 ```mermaid
 flowchart LR
     inputSource["公开 ISMRMRD .h5 或实时 source"] --> boundedPipeline["有界流式 pipeline"]
-    boundedPipeline --> referenceProvider["公开 reference provider"]
-    referenceProvider --> imageOutput["ISMRMRD image 输出"]
+    boundedPipeline --> cartesianReconProvider["公开 Cartesian reconstruction Provider"]
+    cartesianReconProvider --> imageOutput["ISMRMRD image 输出"]
     imageOutput --> validationReport["Golden-result 校验与性能报告"]
 ```
 
 ### 非目标
 
 - 不兼容旧 BRF、私有 replay、DPC operation queue 或 vendor 私有采集格式。
-- 不将专有重建算法放入本仓库；公开 provider 仅用于验证框架能力。
+- 不将专有重建算法放入本仓库；公开 Cartesian reconstruction Provider 仅用于验证框架能力。
 - 不让 public API 暴露 Eigen、MKL、IPP、OpenCV、ITK 或 FFTW 类型。
 - 不以 GUI、DICOM、云端调度或多节点分布式运行为首个发布版本的前置条件。
 - 不允许无界队列、隐藏数据复制、全局可变 scan 状态或没有基准依据的“优化”。
@@ -46,7 +46,7 @@ flowchart LR
 - scan 生命周期、数据帧、错误和取消等稳定 runtime 契约；
 - 算子图、端口类型、静态 graph 校验、背压和调度器；
 - 可在异步边界安全持有的数据所有权模型；
-- provider SDK、插件 ABI、版本兼容和动态加载；
+- provider SDK、插件 ABI、接口一致性和动态加载；
 - 标准 image writer、公开 reference pipeline 与端到端 golden 测试；
 - 服务进程、CLI、指标、trace 与可复现实验协议。
 
@@ -74,7 +74,7 @@ flowchart LR
 
 ### 3.1 四工程、命名与部署边界
 
-所有 KSpaceJet 自有可执行文件使用小写 kebab-case 的 `ksj` 前缀；安装文件名、服务名和文档名称使用同一个精确名字。`KSpaceJet` 仅用于项目/显示品牌，`ksj` 用于命令和内部 CMake target 前缀。CMake target 使用 `ksj_` snake case：`ksj_cli`、`ksj_gateway`、`ksj_recon`、`ksj_research`；源码目录遵循仓库统一的 `kspacejet-*` 目录命名。不得使用含义不明的 `fe`、`be`、`d` 后缀，也不得保留与 CLI 或动态插件加载重复的并列 helper 程序。扩展重建模块不是新的可执行程序，而是带版本化 Provider C ABI 的独立 `.so`/`.dll`。
+所有 KSpaceJet 自有可执行文件使用小写 kebab-case 的 `ksj` 前缀；安装文件名、服务名和文档名称使用同一个精确名字。`KSpaceJet` 仅用于项目/显示品牌，`ksj` 用于命令和内部 CMake target 前缀。CMake target 使用 `ksj_` snake case：`ksj_cli`、`ksj_gateway`、`ksj_recon`、`ksj_research`；源码目录遵循仓库统一的 `kspacejet-*` 目录命名。不得使用含义不明的 `fe`、`be`、`d` 后缀，也不得保留与 CLI 或动态插件加载重复的并列 helper 程序。扩展重建模块不是新的可执行程序，而是使用当前 Provider C ABI 的独立 `.so`/`.dll`。
 
 | 工程目录 / 二进制 | 运行与安装 | 唯一职责 | 明确不负责 |
 | --- | --- | --- | --- |
@@ -83,7 +83,7 @@ flowchart LR
 | `apps/kspacejet-recon` / `ksj-recon` | 默认构建、安装 | 真正的在线重建服务：admission、`ExecutionPlan`、runtime、背压、内存/线程预算、动态加载的 Provider plugin 和标准 image delivery | 厂商 SDK、PACS/workflow 逻辑或任意私有采集格式 |
 | `apps/kspacejet-research` / `ksj-research` | 默认构建、安装 | 跨框架实验编排、证据冻结、统计和论文制品 | CLI、gateway、reconstruction service 的 runtime/data-plane 依赖、Provider ABI 或私有 wire shortcut |
 
-在 `KSJ_BUILD_APPLICATIONS=ON` 的应用配置中，四个工程均进入默认构建和安装。VS Code 的 `KSJ: build Linux Debug applications`、`KSJ: build Linux Release applications`、`KSJ: build Windows Debug applications` 和 `KSJ: build Windows Release applications` 均构建全部四个可执行程序。既有 `KSJ_BUILD_RESEARCH` 继续只控制 `tests/research` 中的研究测试/实验目标，不控制 `ksj-research`。Provider plugin 是单独构建、安装和版本化的动态库，而不是应用进程。
+在 `KSJ_BUILD_APPLICATIONS=ON` 的应用配置中，四个工程均进入默认构建和安装。VS Code 的 `KSJ: build Linux Debug applications`、`KSJ: build Linux Release applications`、`KSJ: build Windows Debug applications` 和 `KSJ: build Windows Release applications` 均构建全部四个可执行程序。既有 `KSJ_BUILD_RESEARCH` 继续只控制 `tests/research` 中的研究测试/实验目标，不控制 `ksj-research`。Provider plugin 是单独构建、安装并由内容摘要标识的动态库，而不是应用进程。
 
 `ksj-gateway` 与 `ksj-recon` 的边界是稳定的部署边界，而不是旧系统前/后端代码的迁移边界：独立部署的站点 Connector 先把外部系统差异收敛为冻结的**公开** MRD/ISMRMRD streaming session，gateway 只监管/转发该公开 session，reconstruction service 只消费/生成该公开 session。Connector 不属于四个 KSpaceJet 标准工程，也不能把专有 payload 转交给 gateway 或 reconstruction service。两者之间绝不引入 KSpaceJet 私有封包、credit、重试或数据格式。最小部署和公平 runtime benchmark 可以让合规 MRD client 直接连接 `ksj-recon`；真实 scanner/站点集成默认经过 Connector 与 `ksj-gateway`，其额外 hop、copy 和延迟必须独立计量。
 
@@ -100,7 +100,7 @@ libs/core/
   kspacejet-program/             四个入口共用的内部 program 库
 
 libs/recon/
-  kspacejet-recon-contracts/     稳定数据、状态、错误、事件契约
+  kspacejet-recon-model/     稳定数据、状态、错误、事件契约
   kspacejet-recon-graph/         图配置、静态校验、图编译
   kspacejet-recon-runtime/       executor、队列、背压、scan 生命周期
   kspacejet-provider-sdk/        provider C ABI 与 C++ 包装
@@ -110,13 +110,14 @@ libs/transport/
   kspacejet-control/             后期控制 API；不得进入热数据面
 
 providers/
-  reference-cartesian/           公开、简单、可验证的 Cartesian reference provider
+  kspacejet-cartesian-recon/     公开、简单、可验证的 Cartesian reconstruction Provider
   examples/                      passthrough、计数器、质量控制示例
 
 schemas/
-  pipeline-v1.schema.json
-  provider-manifest-v1.schema.json
-  metrics-v1.schema.json
+  pipeline.schema.json
+  operator-contract.schema.json
+  execution-plan.schema.json
+  run-record.schema.json
 
 tests/integration/
   datasets/
@@ -140,7 +141,7 @@ flowchart TB
         productRecon --> productRuntime["KSpaceJet 有界 runtime"]
         productRuntime --> productOutput["标准 image 输出"]
         productOutput --> productGateway
-        productRuntime --> productTelemetry["版本化 metrics 与 trace"]
+        productRuntime --> productTelemetry["稳定 metrics 与 trace"]
     end
 
     subgraph researchPlane["仅 research 与 benchmark"]
@@ -169,7 +170,7 @@ flowchart TB
 | 能力 | 所属边界 | 发布/ABI 规则 |
 | --- | --- | --- |
 | ISMRMRD inspect/validate、通用 paced replay、标准 image compare、trace/metrics、run artifact | 产品 tooling | 可以随 `ksj` 发布；只通过稳定产品契约工作 |
-| `ksj-gateway`、`ksj-recon`、有界 runtime、Provider SDK、reference provider、passthrough 示例 Operator | 产品 runtime/SDK | 不包含任何基线名称、论文 case id 或 research callback；gateway/reconstruction service 之间只使用公开 MRD session |
+| `ksj-gateway`、`ksj-recon`、有界 runtime、Provider SDK、Cartesian reconstruction Provider、passthrough 示例 Operator | 产品 runtime/SDK | 不包含任何基线名称、论文 case id 或 research callback；gateway/reconstruction service 之间只使用公开 MRD session |
 | 数据下载与一次性转换、baseline lock、跨框架 runner、matched-kernel adapter、slow-sink proxy、统计和作图 | `research/benchmarks` | 默认不构建、不安装、不导出 CMake target，不进入产品 Conan graph |
 | Gadgetron、BART Streams、可选 MRIReco.jl 环境 | 外部冻结实验环境 | 只以容器/环境 digest 和独立进程运行；不得链接进 KSpaceJet 二进制 |
 
@@ -177,7 +178,7 @@ flowchart TB
 
 ## 4. 先冻结的数据与生命周期契约
 
-必须先完成契约和测试，之后再实现并行 runtime 或 provider。v1 应定义以下对象：
+必须先完成契约和测试，之后再实现并行 runtime 或 provider。当前实现应定义以下对象：
 
 - `ScanDescriptor`：从 ISMRMRD XML 提取的 encoding、矩阵、FOV、trajectory、coil、方向等不可变描述。
 - `FrameEnvelope`：`scan_id`、单调 `sequence_id`、时间戳、trace id、deadline、取消 token、内存 lease。
@@ -188,8 +189,8 @@ flowchart TB
 - `ScanContext`：每个 scan 独占，禁止静态变量承载结果相关状态。
 - `RuntimeServices`：内存、executor、trace、plan cache、配置快照；不得暴露后端实现类型。
 
-PipelineDefinition v1、OperatorContract、ResolvedPipeline、ScanDescriptor 到
-ExecutionPlan 的字段所有权和编译顺序，以[PipelineDefinition v1 与重建流水线设计](pipeline_definition_v1.md)
+PipelineDefinition、OperatorContract、ResolvedPipeline、ScanDescriptor 到
+ExecutionPlan 的字段所有权和编译顺序，以[PipelineDefinition 与重建流水线设计](pipeline_definition.md)
 为准；本规划负责产品边界、Provider ABI、服务部署和权威工作单。PipelineDefinition
 不得写入任务数、KeyShard 数、队列容量或线程数，这些值只能由 scan-specific compiler
 从 ISMRMRD XML、TargetEnvelope、OperatorContract 和 MachinePolicy 推导。
@@ -202,11 +203,11 @@ runtime 内部 frame payload 使用不可变、引用计数、带 generation 的
 2. 初版允许在 source 到 runtime 的边界进行一次受控 materialization；该复制必须可见、被计数并纳入 benchmark。
 3. 以后只有在数据证明收益时，才将 source 优化为直接写入 pooled buffer。
 4. plan、kernel、trajectory 预计算可放在有完整 key 的只读 process cache；scan 结果相关状态不可跨 scan。
-5. provider 的 C++ 内部 API 可以演进；外部 ABI 只能是版本化 C ABI。
+5. provider 的 C++ 内部 API 可以演进；外部 ABI 只使用当前唯一的 C ABI。
 
 ## 5. 流式执行与性能模型
 
-> PipelineDefinition v1、OperatorContract、ScanDescriptor 到 ExecutionPlan 的产品 schema 和运行时同步规则见 [PipelineDefinition v1 与重建流水线设计](pipeline_definition_v1.md)；详细的 MRI key/dependency 模型、准静态与动态区域划分、OperatorInstance 内部 `KeyShard`、校准进展条件、NUMA/多 scan 调度、形式化命题和 `ExecutionPlanCertificate` 见 [MRI 流水线、并行模型与可证明执行理论](streaming_pipeline_parallelism_theory.md)。本节只保留总体实施约束；三份文档冲突时应先通过 ADR 和 claim audit 统一，不得分别实现两套 runtime 语义。
+> PipelineDefinition、OperatorContract、ScanDescriptor 到 ExecutionPlan 的产品 schema 和运行时同步规则见 [PipelineDefinition 与重建流水线设计](pipeline_definition.md)；详细的 MRI key/dependency 模型、准静态与动态区域划分、OperatorInstance 内部 `KeyShard`、校准进展条件、NUMA/多 scan 调度、形式化命题和 `ExecutionPlanCertificate` 见 [MRI 流水线、并行模型与可证明执行理论](streaming_pipeline_parallelism_theory.md)。本节只保留总体实施约束；三份文档冲突时应先通过 ADR 和 claim audit 统一，不得分别实现两套 runtime 语义。
 
 不得简单地将“每条 acquisition 投入线程池”视为流式框架。应由测量结果决定 batch 和并发边界。每个 operator 必须声明：
 
@@ -315,7 +316,7 @@ KSpaceJet 可以在 ingress 后为 frame 分配内部单调 `event_index`、trac
 
 ### 6.5 连接与 scan 状态机
 
-本状态机属于 `ksj-recon` 看到的公开 MRD session。v1 每条数据连接最多承载一个活动 scan，避免多 scan 复用造成 head-of-line blocking、复杂公平性和故障耦合。reconstruction service 控制面可以同时管理多个 scan，每个 scan 分配独立的数据连接和 runtime budget；`ksj-gateway` 的外部 Connector 连接生命周期不得改变这里的 admitted/rejected/failed 语义，只能通过公开 session 的正常建立、关闭或错误映射到 reconstruction service。
+本状态机属于 `ksj-recon` 看到的公开 MRD session。每条数据连接最多承载一个活动 scan，避免多 scan 复用造成 head-of-line blocking、复杂公平性和故障耦合。reconstruction service 控制面可以同时管理多个 scan，每个 scan 分配独立的数据连接和 runtime budget；`ksj-gateway` 的外部 Connector 连接生命周期不得改变这里的 admitted/rejected/failed 语义，只能通过公开 session 的正常建立、关闭或错误映射到 reconstruction service。
 
 ```mermaid
 stateDiagram-v2
@@ -369,14 +370,14 @@ stateDiagram-v2
 
 状态不变量：
 
-- 消息顺序、合法终止和 unknown-message 行为完全服从冻结的公开 MRD session binding；同一连接 v1 不复用为多个活动 scan。
+- 消息顺序、合法终止和 unknown-message 行为完全服从冻结的公开 MRD session binding；同一连接不复用为多个活动 scan。
 - 接受连接只创建 `Session candidate`，不等于 scan admitted；在 certificate 通过独立 verifier 且 process budget 原子预留成功前，任何 acquisition 都不得进入算法 graph。
 - plan、certificate、profile obligation 或 process budget 不可行进入 `Rejected`；已经 admitted 后的协议、连接、Provider 或执行错误进入 `Failed`，两者不得混记。
 - ingress 分配的 `event_index` 只供本进程排序、trace 和账本使用，不能伪装成网络 exactly-once 或公开 sequence。
 - `Completed` 只在输入结束、所有 graph edge drain、所有 sink flush 成功后产生。
 - cancellation 必须从 source 传播至 queue、operator、provider 和 sink，并有有限完成 deadline；线上只使用标准关闭/错误语义，不发送私有 cancel message。
 - 活动接收期间断线默认进入 `Failed`；只有输入已经完整接收且策略明确允许完成时，才可以继续 drain 并持久化结果。
-- v1 不支持活动 scan 的部分断线续传。文件 replay 或外部可靠 spooler 可以从头启动一个新 run，但不得把重跑描述为连接恢复或 exactly-once。
+- 当前实现不支持活动 scan 的部分断线续传。文件 replay 或外部可靠 spooler 可以从头启动一个新 run，但不得把重跑描述为连接恢复或 exactly-once。
 
 ### 6.6 Transport-neutral 背压与资源预算
 
@@ -429,25 +430,25 @@ TLS、第三方库或 layout 转换导致的必要复制必须计入 `copy_bytes
 
 ### 6.8 断线、重试与幂等
 
-在线 scanner 未必能重发数据，因此 v1 采用可证明的语义：
+在线 scanner 未必能重发数据，因此当前实现采用可证明的语义：
 
 - 活动 scan 断线直接进入 `Failed`，不假装自动恢复，也不在公开 MRD session 外增加续传或确认 message。
 - ingress `event_index` 只检测单次连接内的 runtime 顺序，不能用于跨连接去重；ISMRMRD header 字段不被解释为 transport sequence。
-- 文件 replay 失败后可以从冻结输入重新开始一个新的 run；v1 不从中间 frame 继续，也不复用旧 run 的成功状态。
+- 文件 replay 失败后可以从冻结输入重新开始一个新的 run；当前实现不从中间 frame 继续，也不复用旧 run 的成功状态。
 - 必须容忍不可重放的在线 source：接收不完整时输出不得标记为完成。需要可靠落盘的部署可以显式使用独立 spool adapter，先原子完成标准 ISMRMRD HDF5，再启动离线 reconstruction。
 - `ksj-recon` restart 使活动 scan 失败；gateway/Connector 重启也只能通过公开 session 关闭使该 scan 明确失败。将来的部分恢复必须同时具备公开/标准化 transport 语义、durable input/output journal、pipeline/provider digest 和 provider checkpoint contract；不能只修改 KSpaceJet wire protocol。
 - sink 写出使用临时结果和原子 finalize，避免失败 scan 被误认为完整结果。
 
 ### 6.9 控制面
 
-`ksj-recon` 控制面提供版本化 `ControlService`，首版可用 Boost.Beast 实现 HTTP/1.1 JSON API，以避免把重量级 RPC 框架引入核心依赖。建议端点：
+`ksj-recon` 控制面提供 `ControlService`，可用 Boost.Beast 实现 HTTP/1.1 JSON API，以避免把重量级 RPC 框架引入核心依赖。建议端点：
 
 ```text
-POST   /v1/scans                 创建 scan、选择 pipeline、返回 data endpoint
-GET    /v1/scans/{id}            状态、进度、资源和错误摘要
-POST   /v1/scans/{id}/cancel     取消
-GET    /v1/pipelines             可用 pipeline 与 schema
-GET    /v1/plugins               已加载 provider 与兼容状态
+POST   /scans                    创建 scan、选择 pipeline、返回 data endpoint
+GET    /scans/{id}               状态、进度、资源和错误摘要
+POST   /scans/{id}/cancel        取消
+GET    /pipelines                可用 pipeline 与 schema
+GET    /plugins                  已加载 provider 与当前状态
 GET    /health/live              进程存活
 GET    /health/ready             是否可接收新 scan
 GET    /metrics                  低基数运行指标
@@ -487,30 +488,30 @@ reconstruction service 控制面只传配置和状态，不传大 acquisition/im
 
 术语必须保持稳定：
 
-- `Provider`：可安装、可版本化、可签名的算法发布包，可以开源或闭源。
+- `Provider`：可安装、以内容摘要标识、可签名的算法发布包，可以开源或闭源。
 - `Plugin`：Provider 在某个平台上的 `.so`/`.dll` 实现。
 - `Operator`：Provider 导出的 graph node factory；一个 Provider 可以导出多个 Operator。
 - `OperatorInstance`：某个 pipeline node 在一次 scan 中的运行实例。
 - `KeyShard`：`OperatorInstance` 内部由 host 执行计划解析的 per-key 单写者状态/mailbox；是 runtime 私有调度概念，不新增 Provider ABI lifecycle。
-- `Pipeline` / `PipelineDefinition`：版本化的声明式 typed DAG；只引用 provider id、operator id、版本或 digest 与 config/端口断言，不依赖动态库文件名，也不携带 scan-specific task、KeyShard、queue 或线程数。完整 schema 见 [PipelineDefinition v1 与重建流水线设计](pipeline_definition_v1.md)。
+- `Pipeline` / `PipelineDefinition`：声明式 typed DAG；只引用 provider id、operator id、digest 与 config/端口断言，不依赖动态库文件名，也不携带 scan-specific task、KeyShard、queue 或线程数。完整 schema 见 [PipelineDefinition 与重建流水线设计](pipeline_definition.md)。
 
-v1 Provider 只扩展算法 Operator，不扩展 scanner 协议、控制服务或任意网络 source/sink。这样 framework 始终拥有传输、背压、内存、取消、资源预算和观测语义。
+Provider 只扩展算法 Operator，不扩展 scanner 协议、控制服务或任意网络 source/sink。这样 framework 始终拥有传输、背压、内存、取消、资源预算和观测语义。
 
 ### 7.1 扩展层级
 
 | 模式 | 目标用户 | 性能与隔离 | 推荐用途 |
 | --- | --- | --- | --- |
-| 内置 operator | KSpaceJet 自身与 reference provider | 最低开销，不承诺二进制兼容 | 框架验证、基础公开算子 |
+| 内置 operator | KSpaceJet 自身的串行 Cartesian 基线 | 最低开销，不承诺二进制兼容 | 框架验证、基础公开算子 |
 | 动态库 C ABI plugin | 第三方 C/C++ provider | 接近内置性能；非法内存、`abort` 或不协作 callback 会影响 host 进程 | 默认且唯一的第三方扩展方案 |
 
 第三方 C++ SDK 是 C ABI 的 header-only/薄封装，不把 STL、异常、RTTI 或编译器私有 ABI 暴露到动态库边界。算法作者主要编写现代 C++ `Operator` 类，生成模板负责导出 C entry point。
 
 ### 7.2 独立 SDK 分发
 
-第三方不应克隆完整 KSpaceJet 源码才能开发 provider。应发布独立的：
+第三方不应克隆完整 KSpaceJet 源码才能开发 provider。应发布独立的 Provider SDK 包：
 
 ```text
-kspacejet-provider-sdk/<version>@kspacejet/stable
+kspacejet-provider-sdk@kspacejet/stable
 ```
 
 SDK Conan package 包含：
@@ -535,17 +536,17 @@ ksj plugin package <built-plugin>
 
 ### 7.3 稳定 C ABI
 
-每个 ABI major 使用唯一导出入口；v1 为：
+当前唯一导出入口为：
 
 ```text
-ksj_plugin_get_v1(host_abi_minor, host_api, out_plugin_api)
+ksj_provider_query(request, out_descriptor, out_api, out_error)
 ```
 
 ABI 规则：
 
-- 所有公开 struct 第一个字段为 `struct_size`，后续版本只在尾部添加字段。
+- 所有公开 struct 第一个字段为 `struct_size`；调用方只读取当前 `struct_size` 覆盖的字段，未知字段一律不解释。
 - 使用固定宽度整数、显式 enum 值、opaque handle、pointer+length 和函数表；不使用 ABI 宽度不稳定的 `bool`、`long` 或 `size_t`。
-- host 与 plugin 先协商 ABI major/minor 和 capability bits，再创建对象。
+- host 与 plugin 先验证必需的 descriptor/table 大小和 capability bits，再创建对象。
 - 不跨边界传递 `std::string`、`std::vector`、`std::complex`、异常、allocator 或 C++ object ownership。
 - ABI callback 全部 `noexcept` 语义；异常必须在 plugin wrapper 内转换为 `ksj_status`。
 - C ABI header 必须能被 C11、GCC/Clang C++20 和 MSVC C++20 直接编译，并固定 Windows calling convention。
@@ -573,7 +574,7 @@ ABI 规则：
 
 ```mermaid
 flowchart TD
-    subgraph processLifetime["Plugin version and process lifetime"]
+    subgraph processLifetime["Provider module and process lifetime"]
         loadLibrary["Load library"] --> negotiateAbi["Negotiate ABI"]
         negotiateAbi --> enumerateDescriptors["Enumerate descriptors"]
         enumerateDescriptors --> validateConfig["Validate manifest and config"]
@@ -612,14 +613,14 @@ flowchart TD
 ```
 
 - scan instance 默认不能跨 scan 复用；其成员状态随 scan 销毁。
-- factory 属于 plugin-version/process lifetime；单个 scan 的终态只能销毁自己的 `OperatorInstance`，不得直接销毁 factory。只有 retire/shutdown 已阻止新 scan，且所有实例、异步 token、buffer retain 和 callback 引用归零后，才能 destroy factory 与 unload library。
+- factory 属于 Provider module/process lifetime；单个 scan 的终态只能销毁自己的 `OperatorInstance`，不得直接销毁 factory。只有 retire/shutdown 已阻止新 scan，且所有实例、异步 token、buffer retain 和 callback 引用归零后，才能 destroy factory 与 unload library。
 - `on_scan_end`/`on_cancel` 是 certificate 中的 terminal occurrence：先停止新普通 firing并按 ABI 序列化规则调用一次，再等待它触发的 bounded flush/cleanup、KeyShard、counter、token、output 和 handle quiescence，最后 destroy instance。尤其不得先等待 pending token/retain 归零再调用 `on_cancel`。
-- cross-scan plan/cache 只能通过 host cache API，key 必须包含算法版本、配置、shape、类型、backend 和硬件能力。
+- cross-scan plan/cache 只能通过 host cache API，key 必须包含 bundle/contract digest、配置、shape、类型、backend 和硬件能力。
 - plugin mutable global state 默认禁止；必要的 process service 必须声明线程安全且不影响 scan 正确性。
 - runtime 可以同时创建多个 scan instance；plugin 必须根据 descriptor 声明 `single_threaded`、`keyed_parallel` 或 `fully_parallel`。
-- side-by-side 升级时，一个 scan 固定使用创建时的 plugin 版本；新版本只供新 scan 使用。
+- side-by-side bundle 切换时，一个 scan 固定使用创建时的 bundle digest；新 bundle 只供新 scan 使用。
 - ISMRMRD XML 可用后调用 factory/descriptor 级 `plan_resources`；该调用必须确定、无持久 scan allocation，并把结果纳入 plan digest 和 certificate。只有独立 verifier 通过且 process budget 原子预留成功后，host 才为每个 pipeline node 创建一个 `OperatorInstance` 并调用 `on_scan_start`；per-key 并行只创建 runtime-private `KeyShard`，不创建 partition 级 Provider instance。所有 planning/start 耗时单独计量，首条 acquisition 在此之前不得进入算法 graph。
-- v1 不自动重试普通 operator callback；只有未来显式声明 side-effect-free、idempotent 且有 checkpoint 契约的 operator 才能重试。
+- 当前实现不自动重试普通 operator callback；只有未来显式声明 side-effect-free、idempotent 且有 checkpoint 契约的 operator 才能重试。
 
 ### 7.5 同步、异步与 buffer 规则
 
@@ -643,12 +644,12 @@ ABI 以 `process_batch` 为基本调用粒度，避免每个 acquisition 都跨�
 
 ### 7.6 Manifest 与能力声明
 
-每个 plugin bundle 必须包含 `provider-manifest-v1.json`，至少声明：
+每个 plugin bundle 必须包含 `provider-manifest.json`，至少声明：
 
 ```text
 plugin_id / display_name / vendor
-plugin_version / build_id / source_revision
-required_sdk_abi_min / required_sdk_abi_max
+build_id / source_identity / bundle_digest
+required ABI descriptor/table capabilities
 supported_os / arch / compiler_runtime
 operator ids / input ports / output ports
 ordering / concurrency / batching / max_in_flight
@@ -666,7 +667,7 @@ manifest 是 discovery 和 admission 信息，不能替代运行时校验。host
 ### 7.7 Plugin bundle 与依赖规则
 
 ```text
-<plugin-id>-<version>/
+<plugin-id>-<bundle-digest>/
   manifest.json
   schemas/
   bin/linux-x86_64/<plugin>.so
@@ -679,36 +680,36 @@ manifest 是 discovery 和 admission 信息，不能替代运行时校验。host
 - bundle 只允许动态库；Windows `.lib` 仅作为开发期 DLL import library，不进入运行 bundle。
 - `ksj plugin package` 解析 runtime dependencies、收集许可证、生成 SBOM 和 hash manifest。
 - 不得从任意当前工作目录搜索 DLL/SO；加载路径由 bundle manifest 和安装根确定。
-- plugin id、版本和内容 hash 一起进入 reconstruction provenance。
+- plugin id 和内容 hash 一起进入 reconstruction provenance。
 - 签名和 trusted publisher policy 作为生产部署能力，开发模式可显式允许 unsigned bundle。
 
-### 7.8 Hardened loader 与版本兼容
+### 7.8 Hardened loader 与身份一致性
 
 - manifest、artifact、schema、SBOM 在加载前进行大小、路径和 hash 校验；pipeline 或网络请求不能提供任意 DLL/SO 路径。
 - Windows 使用 Unicode `LoadLibraryExW` 与受控 search flags，不搜索当前工作目录；Linux 使用 `RTLD_NOW | RTLD_LOCAL`，不使用 lazy 或 `RTLD_DEEPBIND`。
 - 加载路径 canonicalize 后必须仍位于已注册、不可变的 Provider root；不得全局修改 `PATH` 或 `LD_LIBRARY_PATH`。
-- 动态库首版默认保持加载到进程退出；side-by-side 新 digest 服务新 scan，旧 scan 继续固定旧版本。
+- 动态库默认保持加载到进程退出；side-by-side 新 digest 服务新 scan，旧 scan 继续固定原 bundle digest。
 - 动态依赖冲突的 provider 不得与现有 plugin 同时加载；必须修复 bundle 依赖，或部署到独立的 `ksj-recon` 进程。
 
-必须独立管理以下版本：Provider C ABI、frame ABI、manifest schema、operator/config semantic version。major 版本不兼容；minor 只能追加可忽略字段或 optional callback。config migration 由显式工具完成，runtime 不静默迁移。CI 至少维护 host N 与 plugin N-1/N 的 fixture matrix。
+当前项目只维护一套 Provider C ABI、frame ABI、manifest schema 和 operator/config 语义。`struct_size` 与 capability bits 用于边界安全检查，不构成平行 ABI。config migration 由显式工具完成，runtime 不静默迁移。CI 维护当前 header、contract、loader 与 Provider 的一致性 fixture。
 
 ### 7.9 进程内加载与故障边界
 
 每个 Provider 是一个独立的动态库 bundle；`ksj-recon` 使用 hardened loader 在自身进程中加载它。`ksj plugin doctor` 和 `ksj plugin test` 复用同一 loader、ABI fixture 和 conformance harness，但它们是 `ksj` 的子命令，不引入独立插件执行程序或私有 IPC。
 
-这是一项明确的 v1 信任边界：动态库可以被拒绝、禁用或在单独的 reconstruction-service 部署中隔离，但不能在同一进程内隔离 native crash、内存破坏、`abort` 或不合作的无限 callback。所有生产 Provider 因而必须经过兼容性、资源和协作取消验证；不能满足者不得注册到可接收在线 scan 的 reconstruction service。
+这是一项明确的当前信任边界：动态库可以被拒绝、禁用或在单独的 reconstruction-service 部署中隔离，但不能在同一进程内隔离 native crash、内存破坏、`abort` 或不合作的无限 callback。所有生产 Provider 因而必须经过接口、资源和协作取消验证；不能满足者不得注册到可接收在线 scan 的 reconstruction service。
 
 - reconstruction service 只在 bundle manifest、签名/信任策略（启用时）、ABI、descriptor、动态依赖和 config 均通过检查后加载 plugin。
 - 运行时强制 plugin 的 buffer handle、output reservation、permit、batch 和 cooperative-cancel contract；普通异常转换为结构化 `ProviderFailure`。
 - 任意 native process failure 是 reconstruction-service 进程失败，不伪称为单 scan 隔离；部署方需要更强故障域时运行独立 reconstruction service 实例，而不是引入额外的 Provider 执行协议。
-- v1 默认不强制热卸载 plugin；版本 retirement 仅在所有引用归零后发生，常态可保持到 reconstruction service 退出。
+- 当前实现默认不强制热卸载 plugin；retirement 仅在所有引用归零后发生，常态可保持到 reconstruction service 退出。
 
-### 7.10 第三方兼容与验收
+### 7.10 第三方 conformance 与验收
 
 每个发布的 SDK 和 plugin 必须通过：
 
 - manifest/schema/ABI 静态校验；
-- 上一支持版本 ABI fixture 加载测试；
+- 当前 ABI fixture 加载测试；
 - frame 类型、shape、ordering、retain/release conformance；
 - cancellation、deadline、异常、超时、重复 completion、忘记 release 等故障注入；
 - AddressSanitizer/UndefinedBehaviorSanitizer，Linux 再运行 ThreadSanitizer；
@@ -723,7 +724,7 @@ manifest 是 discovery 和 admission 信息，不能替代运行时校验。host
 
 用户入口收敛为一个原生 C++ `ksj` CLI；在线服务明确分为 `ksj-gateway` 与 `ksj-recon`，扩展重建模块以由 reconstruction service 加载的动态库 Provider plugin 交付。发布包不要求用户安装 Python。仓库内部可以使用 Python 做 benchmark 统计和 CI 编排，但产品语义必须实现在可复用 C++ library/runtime 中，不能只存在于脚本；`ksj-research` 是随应用安装的实验 runner，不能成为 CLI、gateway 或 reconstruction service 的 runtime/data-plane 依赖。
 
-所有命令支持 `--format text|json`、`--no-color` 和稳定退出码；机器 JSON 包含 `schema_version`，错误包含稳定 `code`、JSON pointer/输入位置和修复建议。脚本不得解析人类日志判断成功失败。
+所有命令支持 `--format text|json`、`--no-color` 和稳定退出码；机器 JSON 包含固定 `kind`，错误包含稳定 `code`、JSON pointer/输入位置和修复建议。脚本不得解析人类日志判断成功失败。
 
 工具不得进入默认或同步 reconstruction 热路径。显式启用的 capture、frame tap 和 trace producer 必须有界、非阻塞、允许按声明策略丢弃诊断事件并计量自身开销；inspect、trace conversion 和 report generation 只在热路径外运行。
 
@@ -733,7 +734,7 @@ manifest 是 discovery 和 admission 信息，不能替代运行时校验。host
 
 | 工具/命令 | 主要用户 | 功能 | 关键输出 | 阶段 |
 | --- | --- | --- | --- | --- |
-| `ksj version` | 所有用户 | 显示 CLI/runtime/SDK/ABI、build、Conan lock、Intel payload | version JSON | MVP |
+| `ksj version` | 所有用户 | 显示 CLI/runtime/SDK/ABI、build、Conan lock、Intel payload | identity JSON | MVP |
 | `ksj config resolve/explain` | 集成/运维 | 展开配置来源、默认值并脱敏 | canonical config + hash | MVP |
 | `ksj inspect <input.h5>` | 算法作者、用户 | XML、encoding、维度、flags、coil、trajectory、数量与时间线 | text/JSON scan summary | MVP |
 | `ksj dataset validate` | 数据生产者 | ISMRMRD 结构、shape、flag、sequence、有限值检查 | validation report、稳定错误码 | MVP |
@@ -749,7 +750,7 @@ manifest 是 discovery 和 admission 信息，不能替代运行时校验。host
 | `ksj scan list/show/cancel` | 在线运维 | 管理 `ksj-recon` scan | status/progress/error | 在线 MVP |
 | `ksj gateway list/show` | 集成/运维 | 查询 `ksj-gateway` Connector、路由和健康状态 | status/route/diagnostics JSON | 在线 MVP |
 | `ksj plugin new` | 第三方作者 | 从模板生成独立 Conan/CMake provider 项目 | 可构建 sample project | MVP |
-| `ksj plugin inspect` | 作者/运维 | 显示 manifest、ABI、operators、依赖和 hash | compatibility report | MVP |
+| `ksj plugin inspect` | 作者/运维 | 显示 manifest、ABI、operators、依赖和 hash | conformance report | MVP |
 | `ksj plugin doctor` | 作者 | 使用 hardened loader 检查 SDK、exports、runtime DLL/SO、CRT/OpenMP 冲突 | actionable diagnostics | MVP |
 | `ksj plugin test` | 作者/CI | 在单独启动的 `ksj` test command 中运行 frame、取消、错误和并发 conformance | JUnit/JSON report；native crash 为该 test process 失败 | MVP |
 | `ksj plugin package` | 发布者 | 收集动态依赖、schema、license、SBOM、hash/signature | portable plugin bundle | MVP |
@@ -815,12 +816,12 @@ run/
   benchmark.json                benchmark mode only
 ```
 
-`run-manifest.json` 至少记录 run/scan id、`deployment_mode=direct|gateway`、input hash、pipeline/config hash、provider/SDK/ABI 版本与 artifact hash、KSpaceJet build、Conan lock、Intel payload、机器/CPU/NUMA/OS、执行 profile、适用的 plan/certificate hash、AdmissionRecord hash、verifier status、proof-audit trace schema/drop/gap 状态、开始/终态、脱敏策略和每个 artifact checksum。`gateway` mode 还记录 `ksj-gateway` build/config digest、公开 session path、relay staging/copy/hop 指标范围；不得记录患者 payload 或秘密。每个 admitted scan 必须保留其准入前已验证的 certificate 与 outcome 为 `admitted` 的 record；rejected scan 写 outcome 为 `rejected` 的 record、`decision_stage`、结构化原因和该阶段已经存在且可安全保留的 plan/certificate 诊断。产物写入必须失败原子化；未完成 scan 不能生成成功 manifest。
+`run-manifest.json` 至少记录 run/scan id、`deployment_mode=direct|gateway`、input hash、pipeline/config hash、Provider/SDK/ABI descriptor 与 artifact hash、KSpaceJet build identity、Conan lock、Intel payload、机器/CPU/NUMA/OS、执行 profile、适用的 plan/certificate hash、AdmissionRecord hash、verifier status、proof-audit trace schema/drop/gap 状态、开始/终态、脱敏策略和每个 artifact checksum。`gateway` mode 还记录 `ksj-gateway` build/config digest、公开 session path、relay staging/copy/hop 指标范围；不得记录患者 payload 或秘密。每个 admitted scan 必须保留其准入前已验证的 certificate 与 outcome 为 `admitted` 的 record；rejected scan 写 outcome 为 `rejected` 的 record、`decision_stage`、结构化原因和该阶段已经存在且可安全保留的 plan/certificate 诊断。产物写入必须失败原子化；未完成 scan 不能生成成功 manifest。
 
 ### 8.6 Pipeline 开发体验
 
-- pipeline 使用单一版本化 JSON 格式，并附 JSON Schema；不同时维护 XML/YAML/JSON 三种等价语法。
-- `pipeline explain` 输出解析后的默认值、plugin 精确版本、端口类型、队列容量、thread budget、预计峰值内存和 DOT graph。
+- pipeline 使用单一 canonical JSON 格式，并附 JSON Schema；不同时维护 XML/YAML/JSON 三种等价语法。
+- `pipeline explain` 输出解析后的默认值、plugin 精确 bundle digest、端口类型、队列容量、thread budget、预计峰值内存和 DOT graph。
 - 配置错误必须指向 JSON pointer、operator id、错误值、允许范围和修复建议。
 - `dry-run` 完成 plugin load、ABI negotiation、config validation、shape propagation 和 resource admission，但不读取患者数据。
 - IDE 可直接使用 JSON Schema 自动补全；可视化 Studio 后续复用相同 schema/control API，不创建第二套 graph 模型。
@@ -913,7 +914,7 @@ flowchart LR
 
 BART Streams radial FLASH 数据以 DOI `10.5281/zenodo.17671124` 作为候选来源；该记录当前声明 `CC BY 4.0`。正式纳入前，dataset freezer 仍须冻结 license 证据 hash，并分别完成再分发、派生物和人体数据隐私审核，同时核验源文件、转换器和冻结派生产物 hash。转换、indexing、coil/layout 准备和 cache 生成全部在测量区间外完成并单独记录耗时。若不同 baseline 无法消费数值等价的 logical samples、trajectory 和 metadata，该 case 自动降级为 `product-level`。
 
-`replay-schedule-v1.json` 是 research out-of-band artifact，不是 MRD wire 字段。它至少记录 logical event ordinal、目标单调时钟 offset、payload logical bytes、rate profile、burst windows、jitter/pause、slow-sink delay、随机 seed、`recovery_deadline_ms`、`steady_state_baseline_window_ms`、`steady_state_tolerance`、`steady_state_hold_ms` 和 schedule hash。adapter 只能将同一 schedule 翻译到各框架的公开输入接口，不能重新决定事件顺序、pacing 或在看到结果后修改恢复判据。
+`replay-schedule.json` 是 research out-of-band artifact，不是 MRD wire 字段。它至少记录 logical event ordinal、目标单调时钟 offset、payload logical bytes、rate profile、burst windows、jitter/pause、slow-sink delay、随机 seed、`recovery_deadline_ms`、`steady_state_baseline_window_ms`、`steady_state_tolerance`、`steady_state_hold_ms` 和 schedule hash。adapter 只能将同一 schedule 翻译到各框架的公开输入接口，不能重新决定事件顺序、pacing 或在看到结果后修改恢复判据。
 
 负载 actor 位于被测进程之外：
 
@@ -967,10 +968,10 @@ evidence/<study-hash>/<case-hash>/<run-id>/
 
 ### 9.1 配置与可复现性
 
-- reconstruction-service server、gateway Connector/route、pipeline、plugin manifest 都使用独立版本化 JSON schema；gateway schema 只描述集成与公开 session mapping，不得嵌入算法或 runtime queue 参数。
+- reconstruction-service server、gateway Connector/route、pipeline、plugin manifest 都使用独立、严格的 JSON schema；gateway schema 只描述集成与公开 session mapping，不得嵌入算法或 runtime queue 参数。
 - 配置解析后生成 canonical JSON 和 SHA-256 hash；每个 scan 固定使用 admission 时的不可变快照。
 - 环境变量只用于部署位置和秘密，不用于悄悄改变数值算法、queue 或 benchmark threshold。
-- 每个输出记录 input hash、pipeline hash、plugin id/version/hash、SDK ABI、KSpaceJet build、Conan lockfile、CPU capabilities、reconstruction-service runtime 配置，以及适用时 gateway build/config digest 与 deployment mode。
+- 每个输出记录 input hash、pipeline hash、Provider id/bundle digest、SDK ABI descriptor、KSpaceJet build identity、Conan lockfile、CPU capabilities、reconstruction-service runtime 配置，以及适用时 gateway build/config digest 与 deployment mode。
 - 不支持旧 schema 的运行时猜测分支；提供显式离线迁移命令。
 
 ### 9.2 日志、指标与 trace
@@ -1000,11 +1001,11 @@ time_to_first_image_seconds / scan_completion_seconds
 
 - 错误分为 protocol、input validation、resource exhaustion、deadline、cancelled、provider、sink、internal。
 - 每个错误有稳定 code、stage、可重试性和安全 message；原始异常只写受保护的本地诊断。
-- operator failure 默认使所属 scan 在 `ksj-recon` 中失败，不使 reconstruction-service 进程崩溃；v1 进程内 plugin 无 worker/OS kill 隔离，native crash 或内存破坏只能使 reconstruction-service 进程失败；需要更强故障域时部署独立 service 实例。
+- operator failure 默认使所属 scan 在 `ksj-recon` 中失败，不使 reconstruction-service 进程崩溃；当前进程内 plugin 无 worker/OS kill 隔离，native crash 或内存破坏只能使 reconstruction-service 进程失败；需要更强故障域时部署独立 service 实例。
 - `ksj-recon` shutdown 先停止 admission，再取消或 drain scan，最后卸载 plugin 和 runtime services。`ksj-gateway` shutdown 先停止接受新的外部会话、通知/关闭已有公开 session，再等待其自身有界 relay 清理；它不得伪造 reconstruction service 的 scan completion。
 - reconstruction service `/health/live` 只表示进程运行；reconstruction service `/health/ready` 还检查内存、executor、必要 plugin、输出路径和 admission 状态。gateway 健康状态另行报告 Connector、route 与 reconstruction-service reachability，不替代 reconstruction-service ready。
 
-### 9.4 CI 与兼容矩阵
+### 9.4 CI 与平台门禁
 
 | 门禁 | Linux | Windows |
 | --- | --- | --- |
@@ -1020,7 +1021,7 @@ time_to_first_image_seconds / scan_completion_seconds
 | 正式性能 sweep | 代表性 Linux 机器 | 发布前代表性 Windows 机器 |
 | Clean-machine bundle test | 必须 | 必须 |
 
-release 必须发布 SDK/runtime/plugin compatibility matrix，明确支持的 ABI major、SDK 版本、编译器 runtime、OS/arch 和 bundled Intel payload；并验证 install tree 包含四个应用，同时 `ksj`、`ksj-gateway` 和 `ksj-recon` 不携带 `ksj-research`、研究 adapter 或实验依赖作为 runtime/data-plane 依赖。
+release 必须发布 SDK/runtime/plugin platform matrix，明确当前 ABI descriptor layout、编译器 runtime、OS/arch 和 bundled Intel payload；并验证 install tree 包含四个应用，同时 `ksj`、`ksj-gateway` 和 `ksj-recon` 不携带 `ksj-research`、研究 adapter 或实验依赖作为 runtime/data-plane 依赖。
 
 ## 10. 分阶段路线图与门禁
 
@@ -1028,7 +1029,7 @@ release 必须发布 SDK/runtime/plugin compatibility matrix，明确支持的 A
 
 产物：
 
-- `docs/architecture/` 下的 ADR：输入输出、公开 MRD session binding、transport-neutral 背压、frame/buffer handle、状态、线程模型、provider 信任/ABI、版本策略、性能协议。
+- `docs/architecture/` 下的 ADR：输入输出、公开 MRD session binding、transport-neutral 背压、frame/buffer handle、状态、线程模型、provider 信任/ABI、artifact identity、性能协议。
 - 公开测试数据与许可证清单。
 - 无旧格式、无工作区外 `common`、无系统 Intel 依赖的自动检查。
 - Linux/Windows Conan 安装、动态库审计和运行时 DLL/SO 打包检查。
@@ -1045,7 +1046,7 @@ release 必须发布 SDK/runtime/plugin compatibility matrix，明确支持的 A
 
 产物：
 
-- `kspacejet-recon-contracts`。
+- `kspacejet-recon-model`。
 - ISMRMRD XML 到 `ScanDescriptor` 的解析。
 - synthetic ISMRMRD fixture generator：Cartesian、multi-coil、noise、flags、trajectory、截断和损坏输入。
 - `AcquisitionFrame` 的 pooled ownership、sequence 与 metadata 校验。
@@ -1102,9 +1103,9 @@ release 必须发布 SDK/runtime/plugin compatibility matrix，明确支持的 A
 - 在线 loopback 在 burst、fragmentation、慢 consumer、取消、断线下保持有界并通过协议验收。
 - `strict-online` 只在 certificate verifier、runtime invariant、calibration progress 和无丢失 proof-audit evidence gate 全部通过后启用；任何 proof event gap 使该次 evidence run 失效。
 
-### P4：公开 reference provider
+### P4：公开 Cartesian reconstruction Provider
 
-首个 provider 不追求临床先进算法；目标是完整、公开、可验证：
+首个 Cartesian reconstruction Provider 不追求临床先进算法；目标是完整、公开、可验证：
 
 ```mermaid
 flowchart LR
@@ -1117,9 +1118,9 @@ flowchart LR
 
 产物：
 
-- `providers/reference-cartesian`。
+- `providers/kspacejet-cartesian-recon`。
 - passthrough、quality-control、image writer 示例 operator。
-- reference pipeline JSON 和 golden image。
+- Cartesian reconstruction pipeline JSON 和 golden image。
 
 验收：
 
@@ -1133,8 +1134,8 @@ flowchart LR
 
 产物：
 
-- `ksj_plugin_get_v1()` C ABI。
-- plugin manifest、capability discovery、配置 schema、版本兼容规则。
+- `ksj_provider_query()` C ABI。
+- plugin manifest、capability discovery、配置 schema、当前接口一致性规则。
 - C++ RAII wrapper；ABI 只允许 POD、buffer handle、status code、callback table。
 - plugin loader、动态库路径处理、Windows DLL staging。
 - `ksj plugin doctor/test` 复用 hardened loader 与 in-process conformance harness；每个外部 Provider 都是独立动态库 bundle。
@@ -1143,7 +1144,7 @@ flowchart LR
 验收：
 
 - 外部 plugin 不需要 runtime 私有头。
-- ABI compatibility test 可加载上一版本 fixture plugin。
+- ABI conformance test 可加载当前 fixture Provider。
 - 进程内 plugin 的异常和非法 frame 可转换/拒绝并报告 scan failure；segfault、`abort`、内存破坏和不协作超时明确不承诺进程内隔离。
 - 明确不承诺进程内 crash、hang 或 OOM 隔离；无法满足协作取消和资源合约的 Provider 不得进入在线 registry。
 - Linux `.so` 与 Windows `.dll` 均可在干净环境加载。
@@ -1161,9 +1162,9 @@ flowchart LR
 
 验收：
 
-- 用户执行 Conan 安装与一条 CLI 命令即可完成 reference reconstruction。
+- 用户执行 Conan 安装与一条 CLI 命令即可完成 Cartesian reconstruction。
 - 无 scanner 环境可用 `ksj stream replay` 对 `ksj-recon` 完成 direct 在线端到端验证，并可经 `ksj-gateway` 完成独立的集成验证。
-- 输出包含 pipeline/provider 版本、配置 hash、输入 hash、机器信息与性能报告。
+- 输出包含 pipeline/provider identity digest、配置 hash、输入 hash、机器信息与性能报告。
 - `ksj-gateway` 与 `ksj-recon` 之间只能通过冻结公开 MRD session；双平台 relay fixture、失速、断线和有界 staging 测试通过。
 - 未安装系统 oneAPI 时 bundled Intel 动态库可工作；Intel 不可用时能降级到便携后端。
 
@@ -1196,10 +1197,10 @@ flowchart LR
 
 ### 11.1 执行封装与依赖供应链
 
-`KSJ-GOV-001` 是除纯文档评审外所有实现工作单的全局前置。它把本章每个 ID 物化为 `docs/work-items/<ID>.yaml`，并由 `schemas/work-item-v1.schema.json` 校验；AI 只能在 manifest 完整且依赖已关闭后开始对应任务。
+`KSJ-GOV-001` 是除纯文档评审外所有实现工作单的全局前置。它把本章每个 ID 物化为 `docs/work-items/<ID>.yaml`，并由 `schemas/work-item.schema.json` 校验；AI 只能在 manifest 完整且依赖已关闭后开始对应任务。
 
 ```yaml
-schema_version: 1
+kind: WorkItem
 id: KSJ-CORE-002
 objective: "单一、可验收的结果"
 allowed_paths: []
@@ -1254,8 +1255,8 @@ predicate 输入必须由已关闭前置产生、带 schema/hash 且在开始工
 | KSJ-DATA-001 | 实现 deterministic ISMRMRD fixture generator 与 manifest | CORE-001 | 正常、边界、损坏、waveform、multi-coil fixtures |
 | KSJ-DATA-002 | 实现同步 file `AcquisitionSource` 和 image writer | CORE-002、DATA-001 | 无 borrowed-view 逃逸，标准 HDF5 闭环 |
 | KSJ-CORE-003 | 实现不使用线程池的串行 `PipelineRunner` | CORE-002、DATA-002 | reference passthrough golden 通过 |
-| KSJ-GRAPH-001 | 实现 `PipelineDefinition v1`、`ResolvedPipeline v1`、typed DAG、参数/Provider resolution 与 canonical digest | CORE-002 | invalid corpus、JCS exact-integer、端口/graph/Provider mismatch、无硬编码任务数、内存上界测试 |
-| KSJ-GRAPH-002 | 实现 `OperatorContract`/DependencySpec、RateSpec/CompletionSpec、KeyShard、MergeSpec、calibration binding、join/reorder、ChannelGroupSpec、双 horizon 与 profile schemas | GRAPH-001 | valid/invalid corpus、canonical digest、static/CSDF/dynamic rate、calibration producer-consumer binding、未知或单维上界拒绝；不硬编码 slice/channel group |
+| KSJ-GRAPH-001 | 实现 `PipelineDefinition`、`ResolvedPipeline`、typed DAG、参数/Provider resolution 与 canonical digest | CORE-002 | invalid corpus、JCS exact-integer、端口/graph/Provider mismatch、无硬编码任务数、内存上界测试 |
+| KSJ-GRAPH-002 | 实现 `OperatorContract` 与 node-owned `NodePlanningRequirements`（含 `NodeExecutionSpec`、`NodeBatchSpec`、`NodeRateSpec`、`NodeResourceRequirements`、`NodeCalibrationRequirements`、`NodeJoinSpec`、`TerminalPlanningSpec`）、显式 data-edge/calibration binding、双 horizon 与 profile schemas；旧规划名 RateSpec/CompletionSpec、MergeSpec 与 ChannelGroupSpec 仅作概念对照 | GRAPH-001 | valid/invalid corpus、canonical digest、static/CSDF/dynamic rate、calibration producer-consumer binding、未知或单维上界拒绝；不硬编码 slice/channel group |
 | KSJ-GRAPH-003 | 实现 scan scenario/resource compiler、TargetEnvelope/MachinePolicy、`ExecutionPlanCertificate` schema 与独立 verifier | GRAPH-002、NET-001 | rate/EndOfInput balance、join progress proof、finite termination ranking、shared/process cap、capacity、M_plan、arrival/service assumptions、resource lower bound、overflow、corrupt certificate corpus 通过 |
 | KSJ-CORE-004 | 实现 bounded edge、双预算、callback 前完整 reservation 与 continuation publish | CORE-002、GRAPH-003 | stall/fan-out all-or-none、ledger conservation、rollback-as-release、TSAN 通过 |
 | KSJ-CORE-005 | 实现 scan 状态机、AdmissionRecord、termination counter enforcement、cancel/deadline/error propagation | CORE-003、004 | connection-accepted、scan-admitted、scan-rejected 分离；每个 firing/flush/cleanup 消费认证计数；underflow、非零 Completed、终态和清理测试通过 |
@@ -1265,17 +1266,17 @@ predicate 输入必须由已关闭前置产生、带 schema/hash 且在开始工
 | KSJ-CORE-007 | 实现 bounded adaptive batch、safe fusion、workspace、copy/allocation/trace telemetry | CORE-006 | first-image/steady policy；稳态 allocation、copy 和 telemetry overhead 可归因 |
 | KSJ-CORE-008 | 实现 bounded keyed join/reorder、watermark 与 EndOfInput flush | CORE-004、GRAPH-002 | 串行 oracle、skew/gap/missing input/cancel、retention ledger 通过 |
 | KSJ-CORE-009 | 实现 calibration gate、per-key/aggregate progress reservoir 与准入 | CORE-008、NET-003、GRAPH-003 | late/missing/interleaved calibration、decoder staging 和双预算自锁反例通过 |
-| KSJ-CORE-010 | 实现 NUMA home planner、本地 queues 和后续可选受限 steal | CORE-006、GRAPH-003 | v1 默认无 steal；双平台 topology、remote bytes 与 idle-with-work benchmark |
+| KSJ-CORE-010 | 实现 NUMA home planner、本地 queues 和后续可选受限 steal | CORE-006、GRAPH-003 | 默认无 steal；双平台 topology、remote bytes 与 idle-with-work benchmark |
 | KSJ-CORE-011 | 实现 hierarchical DRR、per-scan quota 与 bounded first-image boost | CORE-006、GRAPH-003 | service-lag、starvation、cancel storm 和多 scan TTFI 测试 |
 | KSJ-CORE-012 | 实现统一 CPU/backend/provider permit 与 gang dispatch | CORE-006、SDK-004 | coordinator 不重复计数；MKL/OpenMP/FFTW nested-parallel conformance 通过 |
 | KSJ-CORE-013 | 建立 ledger/fan-out/join/calibration/termination/cancel/fairness 形式模型与虚拟时间 conformance suite | CORE-008–012、GRAPH-003 | 固定 TLA+/model state space、shared-pool growth 与 termination counterexample fixtures、TSAN/property tests 通过；formal tools 不进入产品 build/Conan graph |
 | KSJ-NET-004 | 实现冻结 MRD binding 所需的 Asio transport 与 cross-platform interop | NET-002、003 | partial I/O、关闭、IPv4/6、适用时 TLS、clean machine |
 | KSJ-NET-005 | 实现 online source、image sink、replay/capture | NET-004、CORE-005/006 | 直接 pooled receive，在线 HDF5 闭环 |
-| KSJ-REF-001 | 实现 reference Cartesian provider | CORE-003/006/007、DATA-001、NET-005 | file/online golden image 一致 |
-| KSJ-SVC-001 | 实现 `ksj-recon` control service、公开 MRD session 数据面与 admission | APP-001、GRAPH-003、CORE-009–013、NET-005、REF-001 | health/status/cancel、多 scan 资源门禁；默认 `bounded-best-effort`，`strict-online` 保持禁用 |
+| KSJ-CART-001 | 实现 Cartesian reconstruction Provider | CORE-003/006/007、DATA-001、NET-005 | file/online golden image 一致 |
+| KSJ-SVC-001 | 实现 `ksj-recon` control service、公开 MRD session 数据面与 admission | APP-001、GRAPH-003、CORE-009–013、NET-005、CART-001 | health/status/cancel、多 scan 资源门禁；默认 `bounded-best-effort`，`strict-online` 保持禁用 |
 | KSJ-GATEWAY-001 | 实现 `ksj-gateway` 的独立 Connector 监管、认证/TLS、站点路由、公开 MRD relay 与输出分发 | APP-001、NET-004/005、SVC-001 | Connector/gateway/reconstruction service 仅走冻结公开 session；bounded relay、断线/失速、direct/gateway provenance、Linux/Windows relay fixtures 通过；专有 Connector/SDK、Provider/runtime 均不泄漏到 reconstruction service |
 | KSJ-SVC-002 | 启用并冻结 `strict-online` 产品 gate | SVC-001、TOOL-016、PERF-002 | certificate、runtime invariant、shared/process cap、termination ranking、calibration progress、完整 proof-audit trace/refinement 与 TH-F1–TH-F8 evidence 全部通过；任一缺口阻断启用 |
-| KSJ-PERF-001 | 建立 transport、runtime、reference replay benchmark | CORE-007、NET-005、REF-001 | TargetEnvelope、TTFI、p99、内存、CI baseline |
+| KSJ-PERF-001 | 建立 transport、runtime、Cartesian reconstruction replay benchmark | CORE-007、NET-005、CART-001 | TargetEnvelope、TTFI、p99、内存、CI baseline |
 | KSJ-PERF-002 | 建立理论 falsification 与 small-instance exact-oracle suite | PERF-001、CORE-013、TOOL-016 | bound/gap、late calibration、burst/slow sink、key skew、NUMA、multi-scan、permit evidence |
 
 ### 11.3 Provider SDK 与动态插件
@@ -1283,11 +1284,11 @@ predicate 输入必须由已关闭前置产生、带 schema/hash 且在开始工
 | ID | 工作内容 | 前置 | 完成定义 |
 | --- | --- | --- | --- |
 | KSJ-SDK-001 | 冻结 Provider/Plugin/Operator 术语、状态和信任 ADR | CORE-001 | 明确进程内不能隔离 crash/hang |
-| KSJ-SDK-002 | 实现纯 C ABI primitive、版本协商、layout fixtures | SDK-001 | C11/GCC/MSVC 编译与 golden offsets 通过 |
+| KSJ-SDK-002 | 实现纯 C ABI primitive、`struct_size`/capability 校验、layout fixtures | SDK-001 | C11/GCC/MSVC 编译与 golden offsets 通过 |
 | KSJ-SDK-003 | 实现 ABI buffer handle、frame descriptor 和配额 | SDK-002、CORE-002 | transfer/retain/release/overflow 测试 |
 | KSJ-SDK-004 | 实现 batched operator 生命周期、resource plan、output capacity reservation | SDK-003、GRAPH-003、CORE-005 | factory/process 与 OperatorInstance/scan 生命周期分离；admission 后 start；terminal callback 先于 quiescence/destroy，且 flush/cleanup 计入认证 counter；有界输出、取消和错误测试 |
 | KSJ-SDK-005 | 实现 C++20 typed wrapper 与 exception trampoline | SDK-004 | sample operator 不接触裸 function table |
-| KSJ-SDK-006 | 实现 manifest schema、pipeline lock 和 descriptor 核对 | SDK-004 | schema/hash/mismatch/版本测试 |
+| KSJ-SDK-006 | 实现 manifest schema、pipeline lock 和 descriptor 核对 | SDK-004 | schema/hash/identity-mismatch 测试 |
 | KSJ-SDK-007 | 实现 hardened loader 与本地 provider registry | SDK-006 | Linux/Windows 路径、符号、依赖冲突测试 |
 | KSJ-SDK-008 | 在 `ksj plugin doctor/test` 实现共享 loader 的动态插件 conformance harness 与 N-1 fixtures | APP-001、TOOL-002、SDK-005、007 | 独立启动的 CLI test process 使用同一 loader；生命周期、并发、错误、取消、配额套件；native crash 明确作为该 test process 失败 |
 | KSJ-SDK-009 | 发布独立 Conan SDK 与 provider starter template | SDK-005、008 | Linux/Windows out-of-tree build/run |
@@ -1298,12 +1299,12 @@ predicate 输入必须由已关闭前置产生、带 schema/hash 且在开始工
 
 | ID | 工作内容 | 前置 | 完成定义 |
 | --- | --- | --- | --- |
-| KSJ-TOOL-001 | 定义 CLI、退出码、run artifact、脱敏 JSON schemas | CORE-001 | fixtures 与兼容策略评审通过 |
-| KSJ-TOOL-002 | 建立原生 `ksj` skeleton、version、统一 text/JSON 输出 | APP-001、TOOL-001 | Linux/Windows install 与 snapshot tests |
+| KSJ-TOOL-001 | 定义 CLI、退出码、run artifact、脱敏 JSON schemas | CORE-001 | fixtures 与接口策略评审通过 |
+| KSJ-TOOL-002 | 建立原生 `ksj` skeleton、identity、统一 text/JSON 输出 | APP-001、TOOL-001 | Linux/Windows install 与 snapshot tests |
 | KSJ-TOOL-003 | 实现 config resolve/explain 与 `ksj doctor` | TOOL-002 | canonical hash、来源、脱敏、环境诊断 |
 | KSJ-TOOL-004 | 实现 dataset inspect/validate/generate | TOOL-002、DATA-001/002 | 大文件有界内存和 invalid corpus |
 | KSJ-TOOL-005 | 实现 pipeline validate/explain/render/certified dry-run | TOOL-002、GRAPH-003、SDK-007 | plugin discovery、plan compiler、certificate verifier 与 runtime validator 完全一致 |
-| KSJ-TOOL-006 | 实现统一 run artifact 和 `ksj run` | TOOL-001/002、CORE-003/005、GRAPH-003、REF-001 | 原子产物、强制 plan/certificate/AdmissionRecord/verifier status 与单命令 reference reconstruction |
+| KSJ-TOOL-006 | 实现统一 run artifact 和 `ksj run` | TOOL-001/002、CORE-003/005、GRAPH-003、CART-001 | 原子产物、强制 plan/certificate/AdmissionRecord/verifier status 与单命令 Cartesian reconstruction |
 | KSJ-TOOL-007 | 实现 stream replay/capture/inspect/fault proxy 与 direct/gateway mode provenance | TOOL-002、NET-005、GATEWAY-001 | deterministic online/fault reports；不能混淆 reconstruction-service runtime 与 gateway 集成测量 |
 | KSJ-TOOL-008 | 实现 plugin new/inspect/doctor/test/package | TOOL-002、SDK-008/009/011 | 第三方从模板到 bundle 的完整流程 |
 | KSJ-TOOL-009 | 实现 image compare 与 golden verify/update | TOOL-002、DATA-002 | metadata/shape/tolerance/CI exit code 测试 |
@@ -1341,7 +1342,7 @@ predicate 输入必须由已关闭前置产生、带 schema/hash 且在开始工
 C++20；新增可链接的一方 library target 必须为 SHARED；可执行目标使用正常 executable target。
 public API 不得暴露 Eigen、MKL、IPP、OpenCV、ITK、FFTW 类型。
 数据跨异步边界时必须使用明确的 pooled ownership，不得保存临时 span。
-product-facing CLI 不得要求 Python；机器输出先定义 versioned schema 和 fixtures。
+product-facing CLI 不得要求 Python；机器输出先定义当前 schema 和 fixtures。
 未经验证的第三方 plugin 只能由独立启动的 `ksj plugin doctor/test` 命令加载；通过 ABI、资源和 conformance 门禁后才能注册到在线 reconstruction service。
 不得在重建热路径执行日志格式化、文件 I/O、无界分配或阻塞 telemetry。
 baseline adapter、converter、fault actor 和统计脚本只能位于 research boundary；不得改变产品 ABI 或公开 MRD session。
@@ -1363,13 +1364,13 @@ source / canonical / derived dataset hash
 converter / logical-event / replay-schedule / case hash
 conversion_in_timed_region=false
 pipeline/config hash
-provider version
+provider bundle/contract digest
 CPU / NUMA topology / RAM
 OS / compiler / Conan lockfile / Intel payload version
 线程数、affinity、batch 配置
 source=file|public-MRD-stream、MRD binding version、transport/TLS profile、MTU、socket/TLS buffers、client/server affinity
 deployment_mode=direct|gateway、gateway build/config digest、Connector/route identity、relay staging/copy/hop scope（仅 gateway mode）
-plugin mode=builtin|in-process|worker、ABI/version/digest
+plugin mode=builtin|in-process|worker、ABI descriptor/digest
 actor target/actual rate、burst、slow-sink、seed 和发送偏差
 warm-up、重复次数、median、p95、p99、置信区间
 吞吐、time-to-first-image、end-to-last-image、峰值内存
@@ -1398,7 +1399,7 @@ Gadgetron 主基线覆盖完整实验和机制归因；BART Streams 次级结果
 ```mermaid
 flowchart LR
     publicDataset["公开 ISMRMRD Cartesian 数据"] --> validateInput["Dataset 与 pipeline 校验"]
-    validateInput --> offlinePath["ksj run reference-cartesian.json"]
+    validateInput --> offlinePath["ksj-recon cartesian-recon"]
     validateInput --> directOnlinePath["ksj-recon 与公开 MRD session replay"]
     validateInput -.-> gatewayOnlinePath["ksj-gateway 到 ksj-recon 集成 replay"]
     offlinePath --> boundedPipeline["有界并行 pipeline 与 provider"]
@@ -1454,7 +1455,7 @@ Gadgetron 主实验回答“在 framework-isolation 和 matched-reconstruction �
 | ID | 工作内容 | 前置 | 完成定义 |
 | --- | --- | --- | --- |
 | KSJ-PAPER-001 | 冻结符号、Operator contract、ledger invariant、条件性内存/活性/性能界定理和 claim boundary | CORE-001、GRAPH-003 | 论文、ADR、certificate schema、public descriptor 术语一致；反例评审通过 |
-| KSJ-PAPER-002 | 冻结并验证 BENCH-008 产出的 K0–K5 matched-kernel SHARED library、双 adapter 与 PL-00 runner | REF-001、SDK-004、BENCH-008 | 同一二进制/backend/precision；布局 copy 单列；PL-00 明确不调用 matched kernel |
+| KSJ-PAPER-002 | 冻结并验证 BENCH-008 产出的 K0–K5 matched-kernel SHARED library、双 adapter 与 PL-00 runner | CART-001、SDK-004、BENCH-008 | 同一二进制/backend/precision；布局 copy 单列；PL-00 明确不调用 matched kernel |
 | KSJ-PAPER-003 | 冻结公开 dataset、许可/再分发状态、逐级 SHA-256、replay schedule 和 correctness tolerance | DATA-001/002、BENCH-003–005 | manifest 完整；转换在 timed region 外；主结果无 proprietary-only 数据 |
 | KSJ-PAPER-004 | 实现 declared/compiled/reserved/observed/enforced resource telemetry | CORE-004/007、SDK-004 | 每个 ledger bucket 可审计；managed 与 total RSS 分开 |
 | KSJ-PAPER-005 | 实现资源账本、read gating、send queue、executor、batch、thread、NUMA 和 Provider 动态插件 ABI 开销消融 | CORE-006/007/010/012、NET-003、SDK-012 | 每个变体先过正确性；production 默认无 research 分支副作用 |

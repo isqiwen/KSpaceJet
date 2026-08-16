@@ -16,7 +16,7 @@ struct ProviderModuleState {
   ksj::platform::DynamicLibrary library;
   std::filesystem::path loaded_path;
   ProviderDescriptor descriptor;
-  ksj_provider_api_v1 api{};
+  ksj_provider_api api{};
 };
 
 } // namespace ksj::provider::loader::detail
@@ -26,11 +26,6 @@ namespace {
 
 using ksj::base::Result;
 using ksj::base::Status;
-
-// A newer host remains able to read an older compatible Provider v1
-// descriptor, provided all fields required below fit in its declared size.
-constexpr std::uint16_t kMinimumSupportedAbiMinor = 0U;
-constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
 
 [[nodiscard]] std::string bracketed(const std::string_view value) {
   return "[" + std::string(value) + "]";
@@ -52,15 +47,7 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
     return validation_error(path, std::string(subject) + " has struct_size " + std::to_string(header.struct_size) +
                                     ", below required " + std::to_string(required_size));
   }
-  if (header.abi_major != KSJ_PROVIDER_ABI_MAJOR) {
-    return validation_error(path, std::string(subject) + " has ABI major " + std::to_string(header.abi_major) +
-                                    ", expected " + std::to_string(KSJ_PROVIDER_ABI_MAJOR));
-  }
-  if (header.abi_minor < kMinimumSupportedAbiMinor || header.abi_minor > kMaximumSupportedAbiMinor) {
-    return validation_error(path,
-                            std::string(subject) + " has unsupported ABI minor " + std::to_string(header.abi_minor));
-  }
-  if (header.reserved[0] != 0U || header.reserved[1] != 0U) {
+  if (header.reserved0 != 0U || header.reserved[0] != 0U || header.reserved[1] != 0U) {
     return validation_error(path, std::string(subject) + " sets reserved ABI header fields");
   }
   return Status::Ok();
@@ -163,9 +150,6 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
   if (!header_status.ok()) {
     return header_status;
   }
-  if (raw.interface_revision == 0U) {
-    return validation_error(path, label + " has interface_revision 0");
-  }
   if (raw.max_in_flight == 0U) {
     return validation_error(path, label + " has max_in_flight 0");
   }
@@ -177,22 +161,11 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
   if (!operator_id.ok()) {
     return operator_id.status();
   }
-  auto interface_digest = copy_digest(raw.interface_digest, path, label + ".interface_digest");
-  if (!interface_digest.ok()) {
-    return interface_digest.status();
-  }
-  auto contract_digest = copy_digest(raw.contract_digest, path, label + ".contract_digest");
-  if (!contract_digest.ok()) {
-    return contract_digest.status();
-  }
 
   return OperatorDescriptor{
     .capability_bits = raw.abi.capability_bits,
     .operator_id = std::move(operator_id).value(),
-    .interface_revision = raw.interface_revision,
     .max_in_flight = raw.max_in_flight,
-    .interface_digest = std::move(interface_digest).value(),
-    .contract_digest = std::move(contract_digest).value(),
     .thread_safety = raw.thread_safety,
     .max_private_threads = raw.max_private_threads,
     .max_input_items_per_firing = raw.max_input_items_per_firing,
@@ -212,15 +185,6 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
   if (!header_status.ok()) {
     return header_status;
   }
-  if (raw.provider_abi_major != KSJ_PROVIDER_ABI_MAJOR) {
-    return validation_error(path, "provider descriptor has provider ABI major " +
-                                    std::to_string(raw.provider_abi_major) + ", expected " +
-                                    std::to_string(KSJ_PROVIDER_ABI_MAJOR));
-  }
-  if (raw.provider_abi_minor < kMinimumSupportedAbiMinor || raw.provider_abi_minor > kMaximumSupportedAbiMinor) {
-    return validation_error(path, "provider descriptor has unsupported provider ABI minor " +
-                                    std::to_string(raw.provider_abi_minor));
-  }
   if (raw.operator_count == 0U || raw.operator_count > options.maximum_operator_count) {
     return validation_error(path, "provider descriptor operator_count is zero or exceeds configured limit");
   }
@@ -229,12 +193,6 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
   }
   if (raw.reserved0 != 0U) {
     return validation_error(path, "provider descriptor sets its reserved0 field");
-  }
-
-  const std::size_t version_size = offsetof(ksj_provider_version, prerelease) + sizeof(raw.version.prerelease);
-  const Status version_status = validate_abi_header(raw.version.abi, version_size, path, "provider version");
-  if (!version_status.ok()) {
-    return version_status;
   }
 
   auto provider_id = copy_utf8_view(raw.provider_id, options, path, "provider_id", true);
@@ -252,12 +210,6 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
   ProviderDescriptor descriptor{
     .capability_bits = raw.abi.capability_bits,
     .provider_id = std::move(provider_id).value(),
-    .version = {.major = raw.version.major,
-                .minor = raw.version.minor,
-                .patch = raw.version.patch,
-                .prerelease = raw.version.prerelease},
-    .provider_abi_major = raw.provider_abi_major,
-    .provider_abi_minor = raw.provider_abi_minor,
     .bundle_digest = std::move(bundle_digest).value(),
     .operators = {},
   };
@@ -277,28 +229,8 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
   return descriptor;
 }
 
-[[nodiscard]] Status validate_required_operator_contracts(const ProviderDescriptor& descriptor,
-                                                          const ProviderLoadOptions& options,
-                                                          const std::string_view path) {
-  for (const auto& requirement : options.required_operator_contracts) {
-    const auto operator_descriptor = std::find_if(descriptor.operators.begin(), descriptor.operators.end(),
-                                                  [&requirement](const OperatorDescriptor& value) {
-                                                    return value.operator_id == requirement.operator_id;
-                                                  });
-    if (operator_descriptor == descriptor.operators.end()) {
-      return validation_error(path, "provider descriptor does not expose required operator_id " +
-                                      bracketed(requirement.operator_id));
-    }
-    if (operator_descriptor->contract_digest != requirement.contract_digest) {
-      return validation_error(path, "operator " + bracketed(requirement.operator_id) +
-                                      " contract_digest does not match the frozen required digest");
-    }
-  }
-  return Status::Ok();
-}
-
-[[nodiscard]] Status validate_api(const ksj_provider_api_v1& api, const std::string_view path) {
-  const std::size_t required_size = offsetof(ksj_provider_api_v1, operator_destroy) + sizeof(api.operator_destroy);
+[[nodiscard]] Status validate_api(const ksj_provider_api& api, const std::string_view path) {
+  const std::size_t required_size = offsetof(ksj_provider_api, operator_destroy) + sizeof(api.operator_destroy);
   const Status header_status = validate_abi_header(api.abi, required_size, path, "provider API table");
   if (!header_status.ok()) {
     return header_status;
@@ -315,8 +247,8 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
 
 [[nodiscard]] std::string describe_query_error(const ksj_error_view& error, const ProviderLoadOptions& options) {
   constexpr std::size_t kErrorRequiredSize = offsetof(ksj_error_view, message) + sizeof(error.message);
-  if (error.abi.struct_size < kErrorRequiredSize || error.abi.abi_major != KSJ_PROVIDER_ABI_MAJOR ||
-      error.abi.abi_minor > kMaximumSupportedAbiMinor) {
+  if (error.abi.struct_size < kErrorRequiredSize || error.abi.reserved0 != 0U || error.abi.reserved[0] != 0U ||
+      error.abi.reserved[1] != 0U) {
     return "Provider returned status " + std::to_string(error.status) + " without a valid error view";
   }
   const auto message = copy_utf8_view(error.message, options, "<query-error>", "provider error message", false);
@@ -374,28 +306,6 @@ constexpr std::uint16_t kMaximumSupportedAbiMinor = KSJ_PROVIDER_ABI_MINOR;
   if (options.host_build_id.size() > options.maximum_utf8_bytes) {
     return Status::InvalidArgument("Provider loader host_build_id exceeds maximum_utf8_bytes");
   }
-  if (options.required_operator_contracts.size() > options.maximum_operator_count) {
-    return Status::InvalidArgument("Provider loader required_operator_contracts exceeds maximum_operator_count");
-  }
-
-  std::set<std::string, std::less<>> required_operator_ids;
-  for (std::size_t index = 0U; index < options.required_operator_contracts.size(); ++index) {
-    const auto& requirement = options.required_operator_contracts[index];
-    const std::string label = "Provider loader required_operator_contracts[" + std::to_string(index) + "]";
-    if (requirement.operator_id.empty() || requirement.operator_id.find('\0') != std::string::npos ||
-        !is_valid_utf8(requirement.operator_id)) {
-      return Status::InvalidArgument(label + ".operator_id must be non-empty valid UTF-8 without NUL");
-    }
-    if (requirement.operator_id.size() > options.maximum_utf8_bytes) {
-      return Status::InvalidArgument(label + ".operator_id exceeds maximum_utf8_bytes");
-    }
-    if (is_zero_digest(requirement.contract_digest)) {
-      return Status::InvalidArgument(label + ".contract_digest must not be all zero");
-    }
-    if (!required_operator_ids.insert(requirement.operator_id).second) {
-      return Status::InvalidArgument(label + ".operator_id duplicates an earlier contract requirement");
-    }
-  }
   return Status::Ok();
 }
 
@@ -420,7 +330,7 @@ const ProviderDescriptor* ProviderLease::descriptor() const noexcept {
   return state_ == nullptr ? nullptr : &state_->descriptor;
 }
 
-const ksj_provider_api_v1* ProviderLease::api() const noexcept {
+const ksj_provider_api* ProviderLease::api() const noexcept {
   return state_ == nullptr ? nullptr : &state_->api;
 }
 
@@ -461,14 +371,12 @@ Result<ProviderModule> ProviderModule::load(const std::filesystem::path& immutab
 
   ksj_provider_query_request request{};
   request.abi = make_header(sizeof(request));
-  request.minimum_abi_minor = kMinimumSupportedAbiMinor;
-  request.maximum_abi_minor = kMaximumSupportedAbiMinor;
   request.host_capability_bits = options.host_capability_bits;
   request.host_build_id = host_build_id;
 
   ksj_provider_descriptor raw_descriptor{};
   raw_descriptor.abi = make_header(sizeof(raw_descriptor));
-  ksj_provider_api_v1 raw_api{};
+  ksj_provider_api raw_api{};
   raw_api.abi = make_header(sizeof(raw_api));
   ksj_error_view raw_error{};
   raw_error.abi = make_header(sizeof(raw_error));
@@ -489,11 +397,6 @@ Result<ProviderModule> ProviderModule::load(const std::filesystem::path& immutab
   auto descriptor = copy_provider_descriptor(raw_descriptor, options, state->loaded_path.string());
   if (!descriptor.ok()) {
     return descriptor.status();
-  }
-  const Status contract_status =
-    validate_required_operator_contracts(descriptor.value(), options, state->loaded_path.string());
-  if (!contract_status.ok()) {
-    return contract_status;
   }
   const Status api_status = validate_api(raw_api, state->loaded_path.string());
   if (!api_status.ok()) {

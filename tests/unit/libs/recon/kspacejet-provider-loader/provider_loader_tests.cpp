@@ -2,7 +2,6 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -36,7 +35,6 @@ TEST(ProviderLoader, LoadsValidatedProviderAndLeasePinsModule) {
   EXPECT_EQ(module.descriptor()->provider_id, "org.kspacejet.tests.provider-loader");
   ASSERT_EQ(module.descriptor()->operators.size(), 1U);
   EXPECT_EQ(module.descriptor()->operators.front().operator_id, "test_operator");
-  EXPECT_EQ(module.descriptor()->operators.front().interface_revision, 1U);
 
   auto lease = module.acquire();
   ASSERT_TRUE(lease.valid());
@@ -50,10 +48,10 @@ TEST(ProviderLoader, LoadsValidatedProviderAndLeasePinsModule) {
   lease.api()->operator_destroy(nullptr);
 }
 
-TEST(ProviderLoader, RejectsProviderAbiMismatch) {
+TEST(ProviderLoader, RejectsProviderWithReservedHeaderFields) {
   auto loaded = ProviderModule::load(std::filesystem::path(KSJ_PROVIDER_LOADER_BAD_ABI_MODULE));
   ASSERT_FALSE(loaded.ok());
-  EXPECT_NE(loaded.status().message().find("provider ABI major"), std::string::npos) << loaded.status();
+  EXPECT_NE(loaded.status().message().find("reserved ABI header fields"), std::string::npos) << loaded.status();
 }
 
 TEST(ProviderLoader, RejectsModuleWithoutQuerySymbol) {
@@ -80,26 +78,16 @@ TEST(ProviderLoader, EnforcesTrustedRootWhenConfigured) {
   EXPECT_NE(rejected.status().message().find("trusted_root"), std::string::npos) << rejected.status();
 }
 
-TEST(ProviderLoader, AttestsRequiredOperatorContractDigests) {
+TEST(ProviderLoader, AttestsRequiredBundleDigest) {
   ksj::provider::loader::ProviderLoadOptions options;
-  options.required_operator_contracts = {
-    {.operator_id = "test_operator", .contract_digest = digest(0x40U)},
-  };
+  options.required_bundle_digest = digest(0x80U);
   auto loaded = ProviderModule::load(valid_provider_path(), options);
   ASSERT_TRUE(loaded.ok()) << loaded.status();
 
-  options.required_operator_contracts.front().contract_digest = digest(0x41U);
+  options.required_bundle_digest = digest(0x81U);
   auto mismatch = ProviderModule::load(valid_provider_path(), options);
   ASSERT_FALSE(mismatch.ok());
-  EXPECT_NE(mismatch.status().message().find("test_operator"), std::string::npos) << mismatch.status();
-  EXPECT_NE(mismatch.status().message().find("contract_digest"), std::string::npos) << mismatch.status();
-
-  options.required_operator_contracts = {
-    {.operator_id = "absent_operator", .contract_digest = digest(0x40U)},
-  };
-  auto missing = ProviderModule::load(valid_provider_path(), options);
-  ASSERT_FALSE(missing.ok());
-  EXPECT_NE(missing.status().message().find("absent_operator"), std::string::npos) << missing.status();
+  EXPECT_NE(mismatch.status().message().find("bundle_digest"), std::string::npos) << mismatch.status();
 }
 
 } // namespace

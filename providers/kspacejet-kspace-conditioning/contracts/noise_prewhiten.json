@@ -1,0 +1,21 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "noise_prewhiten",
+  "ports": [
+    {
+      "name": "kspace",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "input"
+    },
+    {
+      "name": "noise_model",
+      "type_ref": "ksj.noise-model",
+      "direction": "input"
+    },
+    {
+      "name": "prewhitened_kspace",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "output"
+    }
+  ]
+}

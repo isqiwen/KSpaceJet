@@ -1,0 +1,14 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "legacy_capability_probe",
+  "ports": [
+    {
+      "name": "image",
+      "type_ref": "ksj.image-frame",
+      "direction": "input",
+      "required": true,
+      "layout_capabilities": [],
+      "metadata_capabilities": []
+    }
+  ]
+}

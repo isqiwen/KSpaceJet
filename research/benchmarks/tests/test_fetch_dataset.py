@@ -87,7 +87,6 @@ class FetchDatasetTests(unittest.TestCase):
         md5 = fetch_dataset.new_md5()
         md5.update(self.payload)
         manifest = {
-            "schema_version": 1,
             "dataset_id": self.dataset_id,
             "title": "Local downloader fixture",
             "storage_root": storage_root,

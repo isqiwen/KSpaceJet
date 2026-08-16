@@ -1,0 +1,30 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.coil-combine",
+  "operator_id": "coil_combine_adaptive",
+  "summary": "Combine complex coil images into one image using scan-bound sensitivity maps.",
+  "ports": [
+    {
+      "name": "coil_images",
+      "direction": "input",
+      "semantic_type": "ksj.coil-image-frame"
+    },
+    {
+      "name": "sensitivity_maps",
+      "direction": "input",
+      "semantic_type": "ksj.sensitivity-map"
+    },
+    {
+      "name": "image",
+      "direction": "output",
+      "semantic_type": "ksj.complex-image-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [],
+    "optional": ["normalization"]
+  },
+  "notes": "Sensitivity-map estimation belongs to the planned org.kspacejet.calibration/sensitivity_map_estimate Operator. This consumer must receive its immutable sensitivity maps through a future explicit calibration binding, never by inferring or retaining hidden shared Provider state. The future contract must define artifact-identity matching, output semantics, resource bounds, cancellation, and terminal behavior."
+}

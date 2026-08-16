@@ -1,5 +1,4 @@
 {
-  "schema_version": 1,
   "dataset_id": "gadgetron-simple-gre-ismrmrd-dump",
   "title": "Gadgetron simple GRE MRD input with integration reconstruction reference",
   "storage_root": "gadgetron-integration-1d14c4cd",

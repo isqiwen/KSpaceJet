@@ -267,6 +267,10 @@ prepare_build() {
       profile="conan/profiles/linux-gcc14-release-unit-tests"
       output_folder="out/build/linux-release-unit-tests"
       ;;
+    linux-release-app-tests)
+      profile="conan/profiles/linux-gcc14-release"
+      output_folder="out/build/linux-release-app-tests"
+      ;;
     *)
       die "unsupported Linux prepare preset: ${prepare_preset}"
       ;;

@@ -1,0 +1,16 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "reference_reconstruct",
+  "ports": [
+    {
+      "name": "acquisition",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "input"
+    },
+    {
+      "name": "image",
+      "type_ref": "ksj.image-frame",
+      "direction": "output"
+    }
+  ]
+}

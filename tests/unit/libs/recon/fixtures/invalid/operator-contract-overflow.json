@@ -1,0 +1,18 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "legacy_planning_probe",
+  "ports": [
+    {
+      "name": "control",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "input"
+    }
+  ],
+  "execution": {
+    "input_granularity": "acquisition",
+    "partition_key": [],
+    "max_active_keys": 1,
+    "max_in_flight": 1,
+    "max_items_per_activation": 1
+  }
+}

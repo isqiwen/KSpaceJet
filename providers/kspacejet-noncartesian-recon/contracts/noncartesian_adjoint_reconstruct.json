@@ -1,0 +1,21 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "noncartesian_adjoint_reconstruct",
+  "ports": [
+    {
+      "name": "kspace",
+      "type_ref": "ksj.noncartesian-kspace-frame",
+      "direction": "input"
+    },
+    {
+      "name": "trajectory",
+      "type_ref": "ksj.trajectory-frame",
+      "direction": "input"
+    },
+    {
+      "name": "coil_images",
+      "type_ref": "ksj.coil-image-frame",
+      "direction": "output"
+    }
+  ]
+}

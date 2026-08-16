@@ -12,10 +12,9 @@
 
 namespace ksj::recon::runtime {
 
-// Completed FrameSlot bytes become the exact host-pageable Provider ABI input
-// of the narrow M3.7 Cartesian bridge.  Do not rely on an allocator's
-// incidental malloc alignment: the frozen completed-frame descriptor requires
-// 64-byte alignment.
+// Completed FrameSlot bytes become a host-pageable Provider ABI input through
+// a graph ingress bridge. Do not rely on an allocator's incidental malloc
+// alignment: the frozen completed-frame descriptor requires 64-byte alignment.
 inline constexpr std::size_t kCartesianFrameSlotStorageAlignment = 64U;
 
 namespace detail {
@@ -186,8 +185,15 @@ struct CartesianFrameSlotSnapshot {
 };
 
 // The backing vector and both bitmaps are allocated exactly once by create().
-// scatter() performs a checked, direct copy into the final physical line
-// location and never accumulates heap-owned acquisition objects.
+// scatter() accepts one raw ISMRMRD Cartesian line in
+// [channel][readout] order and writes it directly into the canonical frame
+// layout [channel][phase_encode_2][phase_encode_1][readout].  In particular,
+// it does not preserve the acquisition-line interleave as a misleading
+// [phase_encode][channel][readout] frame layout.  This is the layout consumed
+// by multi-channel conditioning Providers.
+//
+// The backing vector and both bitmaps are allocated exactly once by create();
+// scatter() never accumulates heap-owned acquisition objects.
 class CartesianFrameSlot final {
 public:
   [[nodiscard]] static ksj::base::Result<CartesianFrameSlot> create(CartesianFrameSlotConfig config);

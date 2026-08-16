@@ -1,12 +1,11 @@
 #include "kspacejet/recon/runtime/host_frame_assembler.hpp"
 
-#include "kspacejet/recon/runtime/fixed_reorder_buffer.hpp"
-
 #include <algorithm>
 #include <limits>
 #include <mutex>
 #include <new>
-#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace ksj::recon::runtime {
@@ -28,36 +27,16 @@ struct HostFrameSlotRecord {
 };
 
 struct HostFrameAssemblerState {
-  HostFrameAssemblerState(std::string scan_instance_id_value, ArtifactDigest execution_plan_digest_value,
-                          ArtifactDigest verification_record_digest_value, ExecutionProfile execution_profile_value,
-                          std::string node_id_value, std::string completed_frame_input_port_value,
-                          std::vector<HostFrameSlotRecord> slots_value) noexcept
-      : scan_instance_id(std::move(scan_instance_id_value)),
-        execution_plan_digest(std::move(execution_plan_digest_value)),
-        verification_record_digest(std::move(verification_record_digest_value)),
-        execution_profile(execution_profile_value), node_id(std::move(node_id_value)),
-        completed_frame_input_port(std::move(completed_frame_input_port_value)), slots(std::move(slots_value)) {}
+  HostFrameAssemblerState(std::string scan_instance_id_value, std::vector<HostFrameSlotRecord> slots_value) noexcept
+      : scan_instance_id(std::move(scan_instance_id_value)), slots(std::move(slots_value)) {}
 
   mutable std::mutex mutex;
   const std::string scan_instance_id;
-  const ArtifactDigest execution_plan_digest;
-  const ArtifactDigest verification_record_digest;
-  const ExecutionProfile execution_profile;
-  const std::string node_id;
-  const std::string completed_frame_input_port;
   std::vector<HostFrameSlotRecord> slots;
   bool ingress_closed{false};
   bool failed{false};
-  std::uint64_t m3_reorder_ingress_identity{0U};
-  FixedReorderBuffer* m3_reorder_buffer{nullptr};
   ksj::base::Status last_error{ksj::base::Status::Ok()};
   std::uint64_t next_lease_id{0U};
-
-  void notify_bound_reorder_failure_noexcept() const noexcept {
-    if (m3_reorder_buffer != nullptr && m3_reorder_ingress_identity != 0U) {
-      m3_reorder_buffer->fail_from_bound_host_noexcept(m3_reorder_ingress_identity);
-    }
-  }
 };
 
 } // namespace detail
@@ -81,17 +60,6 @@ using HostFrameSlotRecord = detail::HostFrameSlotRecord;
   return phase == HostFrameSlotPhase::ready || phase == HostFrameSlotPhase::dispatched;
 }
 
-[[nodiscard]] bool all_slots_free(const HostFrameAssemblerState& state) noexcept {
-  return std::all_of(state.slots.begin(), state.slots.end(), [](const HostFrameSlotRecord& record) {
-    return record.phase == HostFrameSlotPhase::free;
-  });
-}
-
-[[nodiscard]] bool contains_identifier(const std::vector<std::string>& values,
-                                       const std::string_view expected) noexcept {
-  return std::find(values.begin(), values.end(), expected) != values.end();
-}
-
 [[nodiscard]] ksj::base::Status current_failure_locked(const HostFrameAssemblerState& state,
                                                        const std::string_view operation) {
   if (!state.last_error.ok()) {
@@ -107,8 +75,8 @@ void quarantine_record_noexcept(HostFrameSlotRecord& record) noexcept {
   try {
     static_cast<void>(record.frame_slot.quarantine(record.token));
   } catch (...) {
-    // This helper is used from terminal cleanup.  The host phase below is
-    // authoritative even if the lower-level diagnostic path cannot allocate.
+    // The host phase below remains authoritative if lower-level diagnostics
+    // cannot be emitted while failing closed.
   }
   record.phase = HostFrameSlotPhase::quarantined;
 }
@@ -119,7 +87,6 @@ void fail_closed_locked(HostFrameAssemblerState& state, ksj::base::Status cause)
     state.ingress_closed = true;
     state.last_error = std::move(cause);
   }
-  state.notify_bound_reorder_failure_noexcept();
   for (auto& record : state.slots) {
     quarantine_record_noexcept(record);
   }
@@ -140,7 +107,7 @@ void fail_closed_locked(HostFrameAssemblerState& state, ksj::base::Status cause)
       return disposition.status();
     }
     fail_closed_locked(
-      state, ksj::base::Status::InternalError("M3.5 FrameSlot produced a non-complete EndOfInput disposition"));
+      state, ksj::base::Status::InternalError("HostFrameAssembler received a non-complete frame at EndOfInput"));
     return current_failure_locked(state, "end_of_input");
   }
   if (std::any_of(state.slots.begin(), state.slots.end(), [](const HostFrameSlotRecord& record) {
@@ -158,10 +125,6 @@ void fail_closed_locked(HostFrameAssemblerState& state, ksj::base::Status cause)
   return ksj::base::Status::Ok();
 }
 
-// Lease destruction is a no-throw terminal path.  In particular, it must not
-// turn an allocation failure while constructing a diagnostic Status into
-// process termination.  Keep this fallback deliberately allocation-free; the
-// ordinary path above records the precise cause whenever it can do so.
 void emergency_fail_closed_noexcept(const std::shared_ptr<HostFrameAssemblerState>& state) noexcept {
   if (state == nullptr) {
     return;
@@ -170,22 +133,17 @@ void emergency_fail_closed_noexcept(const std::shared_ptr<HostFrameAssemblerStat
     std::scoped_lock lock(state->mutex);
     state->failed = true;
     state->ingress_closed = true;
-    state->notify_bound_reorder_failure_noexcept();
     for (auto& record : state->slots) {
       if (record.phase == HostFrameSlotPhase::free || record.phase == HostFrameSlotPhase::quarantined) {
         continue;
       }
       try {
         static_cast<void>(record.frame_slot.quarantine(record.token));
-      } catch (...) {
-        // The host phase below is the fail-closed authority even if a
-        // lower-level best-effort quarantine cannot report a diagnostic.
-      }
+      } catch (...) {}
       record.phase = HostFrameSlotPhase::quarantined;
     }
   } catch (...) {
-    // Destruction has no error channel.  There is no retry path once the
-    // capability is gone, so never throw from this terminal cleanup.
+    // Destruction has no error channel and must not throw.
   }
 }
 
@@ -296,7 +254,7 @@ void abandon_assembly_lease_noexcept(const std::shared_ptr<HostFrameAssemblerSta
     if (slot_index >= state->slots.size()) {
       return;
     }
-    const auto& validation = validate_assembly_lease_locked(*state, slot_index, token, lease_id, "lease destruction");
+    const auto validation = validate_assembly_lease_locked(*state, slot_index, token, lease_id, "lease destruction");
     if (!validation.ok()) {
       return;
     }
@@ -318,7 +276,7 @@ void abandon_completed_lease_noexcept(const std::shared_ptr<HostFrameAssemblerSt
     if (slot_index >= state->slots.size()) {
       return;
     }
-    const auto& validation = validate_completed_lease_locked(*state, slot_index, token, lease_id, "lease destruction");
+    const auto validation = validate_completed_lease_locked(*state, slot_index, token, lease_id, "lease destruction");
     if (!validation.ok()) {
       return;
     }
@@ -326,81 +284,6 @@ void abandon_completed_lease_noexcept(const std::shared_ptr<HostFrameAssemblerSt
   } catch (...) {
     emergency_fail_closed_noexcept(state);
   }
-}
-
-[[nodiscard]] ksj::base::Status validate_create_artifacts(const ExecutionPlan& execution_plan,
-                                                          const VerificationRecord& verification_record,
-                                                          const std::string_view node_id,
-                                                          const HostFrameAssemblerConfig& config,
-                                                          const ReorderPlan*& selected_reorder_plan) {
-  if (config.scan_instance_id.empty()) {
-    return ksj::base::Status::InvalidArgument("HostFrameAssembler requires a non-empty scan_instance_id");
-  }
-  if (node_id.empty()) {
-    return ksj::base::Status::InvalidArgument("HostFrameAssembler requires a non-empty reorder node id");
-  }
-  if (config.frame_slots.empty()) {
-    return ksj::base::Status::InvalidArgument("HostFrameAssembler requires at least one preallocated FrameSlot");
-  }
-  if (verification_record.execution_plan_digest() != execution_plan.digest() ||
-      verification_record.execution_profile() != execution_plan.execution_profile()) {
-    return ksj::base::Status::ValidationError(
-      "HostFrameAssembler VerificationRecord does not bind the supplied ExecutionPlan/profile");
-  }
-  if (!is_currently_supported_in_process(execution_plan.execution_profile())) {
-    return ksj::base::Status::ValidationError("HostFrameAssembler supports only in-process ExecutionPlan profiles");
-  }
-  if (!contains_identifier(execution_plan.proof_obligations(), kM3CompletedFrameSlotBindingProofObligation) ||
-      !contains_identifier(execution_plan.proof_obligations(), kM3StrictDenseAllTuplesEoiRuntimeAssumption)) {
-    return ksj::base::Status::ValidationError("HostFrameAssembler requires the M3 completed-frame plan obligations");
-  }
-  if (!contains_identifier(verification_record.verified_obligations(),
-                           kM3CompletedFrameSlotBindingVerificationObligation) ||
-      !contains_identifier(verification_record.verified_obligations(),
-                           kM3StrictDenseAllTuplesEoiVerificationObligation)) {
-    return ksj::base::Status::ValidationError(
-      "HostFrameAssembler requires the M3 completed-frame verification verdicts");
-  }
-
-  selected_reorder_plan = nullptr;
-  for (const auto& candidate : execution_plan.reorder_plans()) {
-    if (candidate.node_id() != node_id) {
-      continue;
-    }
-    if (selected_reorder_plan != nullptr) {
-      return ksj::base::Status::ValidationError("HostFrameAssembler found multiple ReorderPlans for one node");
-    }
-    selected_reorder_plan = &candidate;
-  }
-  if (selected_reorder_plan == nullptr || selected_reorder_plan->completed_frame_input_port().empty()) {
-    return ksj::base::Status::ValidationError("HostFrameAssembler node does not have a completed-frame ReorderPlan");
-  }
-
-  const auto max_ahead = selected_reorder_plan->max_ahead_items();
-  if (max_ahead >= std::numeric_limits<std::size_t>::max() ||
-      config.frame_slots.size() < static_cast<std::size_t>(max_ahead + 1U)) {
-    return ksj::base::Status::ValidationError(
-      "HostFrameAssembler FrameSlot pool must reserve one head slot beyond the ReorderPlan ahead capacity");
-  }
-  if (selected_reorder_plan->ordinal_domain_bound() < config.frame_slots.size()) {
-    return ksj::base::Status::ValidationError(
-      "HostFrameAssembler FrameSlot pool cannot exceed the frozen ordinal domain cardinality");
-  }
-
-  for (std::size_t index = 0U; index < config.frame_slots.size(); ++index) {
-    const auto& slot = config.frame_slots[index];
-    if (slot.duplicate_policy != DuplicateAcquisitionPolicy::reject ||
-        slot.incomplete_policy != IncompleteFramePolicy::fail) {
-      return ksj::base::Status::ValidationError(
-        "HostFrameAssembler M3.5 requires reject-duplicate and fail-incomplete FrameSlots");
-    }
-    for (std::size_t prior = 0U; prior < index; ++prior) {
-      if (config.frame_slots[prior].slot_id == slot.slot_id) {
-        return ksj::base::Status::ValidationError("HostFrameAssembler FrameSlot ids must be unique");
-      }
-    }
-  }
-  return ksj::base::Status::Ok();
 }
 
 } // namespace
@@ -537,46 +420,11 @@ ksj::base::Result<FrameSlotToken> CompletedFrameLease::token() const {
   return token_;
 }
 
-CompletedFrameLeaseBindingStatus
-CompletedFrameLease::binding_status(const ExecutionPlan& execution_plan, const VerificationRecord& verification_record,
-                                    const std::string_view node_id,
-                                    const std::string_view completed_frame_input_port) const noexcept {
-  try {
-    if (!valid()) {
-      return CompletedFrameLeaseBindingStatus::stale_or_consumed;
-    }
-    std::scoped_lock lock(state_->mutex);
-    if (state_->failed || slot_index_ >= state_->slots.size()) {
-      return CompletedFrameLeaseBindingStatus::stale_or_consumed;
-    }
-    const auto& record = state_->slots[slot_index_];
-    if (!is_completed_phase(record.phase) || record.token != token_ || record.lease_id != lease_id_) {
-      return CompletedFrameLeaseBindingStatus::stale_or_consumed;
-    }
-    if (state_->execution_plan_digest != execution_plan.digest() ||
-        state_->verification_record_digest != verification_record.digest() ||
-        state_->execution_profile != execution_plan.execution_profile() || state_->node_id != node_id ||
-        state_->completed_frame_input_port != completed_frame_input_port) {
-      return CompletedFrameLeaseBindingStatus::foreign;
-    }
-    return CompletedFrameLeaseBindingStatus::match;
-  } catch (...) {
-    // A noexcept binding probe must conservatively classify lock/runtime
-    // failure as stale. The ingress will fail the same scan closed only after
-    // it has established exact issuer identity.
-    return CompletedFrameLeaseBindingStatus::stale_or_consumed;
-  }
-}
-
 ksj::base::Status CompletedFrameLease::begin_dispatch() {
   if (!valid()) {
     return ksj::base::Status::StateError("begin_dispatch requires a live CompletedFrameLease");
   }
   std::scoped_lock lock(state_->mutex);
-  if (state_->m3_reorder_ingress_identity != 0U) {
-    return ksj::base::Status::StateError(
-      "CompletedFrameLease source consumption is owned by the bound M3ReorderIngress");
-  }
   return begin_completed_dispatch_locked(*state_, slot_index_, token_, lease_id_, "begin_dispatch");
 }
 
@@ -584,22 +432,16 @@ ksj::base::Status CompletedFrameLease::acknowledge_consumed() {
   if (!valid()) {
     return ksj::base::Status::StateError("acknowledge_consumed requires a live CompletedFrameLease");
   }
-  std::scoped_lock lock(state_->mutex);
-  if (state_->m3_reorder_ingress_identity != 0U) {
-    return ksj::base::Status::StateError(
-      "CompletedFrameLease source consumption is owned by the bound M3ReorderIngress");
+  {
+    std::scoped_lock lock(state_->mutex);
+    const auto acknowledged =
+      acknowledge_completed_consumption_locked(*state_, slot_index_, token_, lease_id_, "acknowledge_consumed");
+    if (!acknowledged.ok()) {
+      return acknowledged;
+    }
+    lease_id_ = 0U;
   }
-  const auto acknowledged =
-    acknowledge_completed_consumption_locked(*state_, slot_index_, token_, lease_id_, "acknowledge_consumed");
-  if (!acknowledged.ok()) {
-    return acknowledged;
-  }
-  lease_id_ = 0U;
-  // Keep the shared control state while this now-invalid lease object lives.
-  // A downstream FrameDispatch still owns its reorder permit after source
-  // recycle and must be able to fail the coupled host if that permit is later
-  // dropped or otherwise violates its lifecycle. valid() remains false
-  // because lease_id_ is zero, and ordinary lease destruction is a no-op.
+  state_.reset();
   return ksj::base::Status::Ok();
 }
 
@@ -607,63 +449,8 @@ ksj::base::Status CompletedFrameLease::abandon() {
   if (!valid()) {
     return ksj::base::Status::StateError("abandon requires a live CompletedFrameLease");
   }
-  {
-    std::scoped_lock lock(state_->mutex);
-    if (state_->m3_reorder_ingress_identity != 0U) {
-      return ksj::base::Status::StateError(
-        "CompletedFrameLease source consumption is owned by the bound M3ReorderIngress");
-    }
-  }
   abandon_completed_lease_noexcept(state_, slot_index_, token_, lease_id_,
                                    "CompletedFrameLease was abandoned before downstream settlement");
-  lease_id_ = 0U;
-  state_.reset();
-  return ksj::base::Status::Ok();
-}
-
-ksj::base::Status CompletedFrameLease::begin_dispatch_from_m3_reorder_ingress(const std::uint64_t ingress_identity) {
-  if (!valid()) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  std::scoped_lock lock(state_->mutex);
-  if (ingress_identity == 0U || state_->m3_reorder_ingress_identity != ingress_identity) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  return begin_completed_dispatch_locked(*state_, slot_index_, token_, lease_id_, "M3ReorderIngress begin_dispatch");
-}
-
-ksj::base::Status
-CompletedFrameLease::acknowledge_consumed_from_m3_reorder_ingress(const std::uint64_t ingress_identity) {
-  if (!valid()) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  std::scoped_lock lock(state_->mutex);
-  if (ingress_identity == 0U || state_->m3_reorder_ingress_identity != ingress_identity) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  const auto acknowledged = acknowledge_completed_consumption_locked(*state_, slot_index_, token_, lease_id_,
-                                                                     "M3ReorderIngress acknowledge_consumed");
-  if (!acknowledged.ok()) {
-    return acknowledged;
-  }
-  // Keep state_ as a private post-recycle terminal capability for the M3
-  // dispatch/publish path. valid() is nevertheless false after this point.
-  lease_id_ = 0U;
-  return ksj::base::Status::Ok();
-}
-
-ksj::base::Status CompletedFrameLease::abandon_from_m3_reorder_ingress(const std::uint64_t ingress_identity) {
-  if (!valid()) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  {
-    std::scoped_lock lock(state_->mutex);
-    if (ingress_identity == 0U || state_->m3_reorder_ingress_identity != ingress_identity) {
-      return {ksj::base::StatusCode::state_error};
-    }
-  }
-  abandon_completed_lease_noexcept(state_, slot_index_, token_, lease_id_,
-                                   "M3ReorderIngress abandoned a CompletedFrameLease");
   lease_id_ = 0U;
   state_.reset();
   return ksj::base::Status::Ok();
@@ -676,39 +463,19 @@ void CompletedFrameLease::abandon_noexcept() noexcept {
   state_.reset();
 }
 
-void CompletedFrameLease::emergency_abandon_noexcept() noexcept {
-  emergency_fail_closed_noexcept(state_);
-  lease_id_ = 0U;
-  state_.reset();
-}
-
-void CompletedFrameLease::release_terminal_authority_noexcept() noexcept {
-  lease_id_ = 0U;
-  state_.reset();
-}
-
-bool CompletedFrameLease::host_failed_noexcept() const noexcept {
-  try {
-    if (state_ == nullptr) {
-      return true;
-    }
-    std::scoped_lock lock(state_->mutex);
-    return state_->failed;
-  } catch (...) {
-    // Output-bearing M3 paths must favor coupled cancellation over exposing a
-    // frame after the source state can no longer be observed reliably.
-    return true;
+ksj::base::Result<std::unique_ptr<HostFrameAssembler>> HostFrameAssembler::create(HostFrameAssemblerConfig config) {
+  if (config.scan_instance_id.empty()) {
+    return ksj::base::Status::InvalidArgument("HostFrameAssembler requires a non-empty scan_instance_id");
   }
-}
-
-ksj::base::Result<std::unique_ptr<HostFrameAssembler>>
-HostFrameAssembler::create(const ExecutionPlan& execution_plan, const VerificationRecord& verification_record,
-                           const std::string_view node_id, HostFrameAssemblerConfig config) {
-  const ReorderPlan* selected_reorder_plan = nullptr;
-  const auto validation =
-    validate_create_artifacts(execution_plan, verification_record, node_id, config, selected_reorder_plan);
-  if (!validation.ok()) {
-    return validation;
+  if (config.frame_slots.empty()) {
+    return ksj::base::Status::InvalidArgument("HostFrameAssembler requires at least one preallocated FrameSlot");
+  }
+  for (std::size_t index = 0U; index < config.frame_slots.size(); ++index) {
+    for (std::size_t prior = 0U; prior < index; ++prior) {
+      if (config.frame_slots[prior].slot_id == config.frame_slots[index].slot_id) {
+        return ksj::base::Status::ValidationError("HostFrameAssembler FrameSlot ids must be unique");
+      }
+    }
   }
 
   std::vector<HostFrameSlotRecord> slots;
@@ -722,10 +489,7 @@ HostFrameAssembler::create(const ExecutionPlan& execution_plan, const Verificati
   }
 
   try {
-    auto state = std::make_shared<HostFrameAssemblerState>(
-      std::move(config.scan_instance_id), execution_plan.digest(), verification_record.digest(),
-      execution_plan.execution_profile(), std::string(node_id), selected_reorder_plan->completed_frame_input_port(),
-      std::move(slots));
+    auto state = std::make_shared<HostFrameAssemblerState>(std::move(config.scan_instance_id), std::move(slots));
     return std::unique_ptr<HostFrameAssembler>(new HostFrameAssembler(std::move(state)));
   } catch (const std::bad_alloc&) {
     return ksj::base::Status::OutOfMemory("unable to allocate HostFrameAssembler control state");
@@ -737,119 +501,6 @@ HostFrameAssembler::HostFrameAssembler(std::shared_ptr<detail::HostFrameAssemble
 
 void HostFrameAssembler::emergency_abort_noexcept() noexcept {
   emergency_fail_closed_noexcept(state_);
-}
-
-ksj::base::Status HostFrameAssembler::bind_m3_reorder_ingress(const std::uint64_t ingress_identity,
-                                                              FixedReorderBuffer& reorder_buffer) {
-  if (ingress_identity == 0U) {
-    return {ksj::base::StatusCode::invalid_argument};
-  }
-  if (state_ == nullptr) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  std::scoped_lock lock(state_->mutex);
-  if (state_->failed || state_->ingress_closed || state_->m3_reorder_ingress_identity != 0U) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  if (state_->next_lease_id != 0U || !all_slots_free(*state_)) {
-    // Binding is an admission boundary, not a mid-scan ownership transfer.
-    // A recycled pre-admission frame still increments next_lease_id, so it
-    // cannot make a host look pristine after source work bypassed the paired
-    // reorder authority.
-    return {ksj::base::StatusCode::state_error};
-  }
-  if (!reorder_buffer.has_m3_reorder_ingress(ingress_identity)) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  state_->m3_reorder_ingress_identity = ingress_identity;
-  state_->m3_reorder_buffer = &reorder_buffer;
-  return ksj::base::Status::Ok();
-}
-
-bool HostFrameAssembler::has_m3_reorder_ingress(const std::uint64_t ingress_identity) const noexcept {
-  try {
-    if (state_ == nullptr || ingress_identity == 0U) {
-      return false;
-    }
-    std::scoped_lock lock(state_->mutex);
-    return state_->m3_reorder_ingress_identity == ingress_identity && state_->m3_reorder_buffer != nullptr;
-  } catch (...) {
-    return false;
-  }
-}
-
-bool HostFrameAssembler::has_same_issuer_state(const CompletedFrameLease& lease) const noexcept {
-  try {
-    if (state_ == nullptr || lease.state_ == nullptr || state_ != lease.state_) {
-      return false;
-    }
-    // Taking the state mutex keeps this identity observation synchronized with
-    // terminal transitions.  In particular, an acknowledged lease retains
-    // state_ after lease_id_ becomes zero so M3 can classify it as a stale
-    // same-issuer capability rather than as a harmless foreign/moved value.
-    std::scoped_lock lock(state_->mutex);
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
-ksj::base::Status HostFrameAssembler::end_of_input_from_m3_reorder_ingress(const std::uint64_t ingress_identity) {
-  if (state_ == nullptr) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  std::scoped_lock lock(state_->mutex);
-  if (ingress_identity == 0U || state_->m3_reorder_ingress_identity != ingress_identity) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  return end_of_input_locked(*state_);
-}
-
-ksj::base::Status HostFrameAssembler::abort_from_m3_reorder_ingress(const std::uint64_t ingress_identity) {
-  if (state_ == nullptr) {
-    return ksj::base::Status::Ok();
-  }
-  std::scoped_lock lock(state_->mutex);
-  if (ingress_identity == 0U || state_->m3_reorder_ingress_identity != ingress_identity) {
-    return {ksj::base::StatusCode::state_error};
-  }
-  return abort_locked(*state_);
-}
-
-void HostFrameAssembler::detach_m3_reorder_failure_notifier_after_terminal(
-  const std::uint64_t ingress_identity) noexcept {
-  try {
-    if (state_ == nullptr || ingress_identity == 0U) {
-      return;
-    }
-    std::scoped_lock lock(state_->mutex);
-    if (state_->m3_reorder_ingress_identity != ingress_identity || (!state_->failed && !state_->ingress_closed)) {
-      return;
-    }
-    state_->m3_reorder_buffer = nullptr;
-  } catch (...) {
-    // The terminal ingress has no recovery channel. Keeping the binding
-    // identity sealed is safer than attempting a throwing cleanup retry.
-  }
-}
-
-bool HostFrameAssembler::matches_m3_reorder_ingress_binding(
-  const ExecutionPlan& execution_plan, const VerificationRecord& verification_record, const std::string_view node_id,
-  const std::string_view completed_frame_input_port) const noexcept {
-  try {
-    if (state_ == nullptr) {
-      return false;
-    }
-    std::scoped_lock lock(state_->mutex);
-    return !state_->failed && !state_->ingress_closed && state_->m3_reorder_ingress_identity == 0U &&
-           state_->m3_reorder_buffer == nullptr && state_->next_lease_id == 0U && all_slots_free(*state_) &&
-           state_->execution_plan_digest == execution_plan.digest() &&
-           state_->verification_record_digest == verification_record.digest() &&
-           state_->execution_profile == execution_plan.execution_profile() && state_->node_id == node_id &&
-           state_->completed_frame_input_port == completed_frame_input_port;
-  } catch (...) {
-    return false;
-  }
 }
 
 HostFrameAssembler::~HostFrameAssembler() {
@@ -910,9 +561,6 @@ ksj::base::Status HostFrameAssembler::end_of_input() {
     return ksj::base::Status::StateError("HostFrameAssembler was moved from or destroyed");
   }
   std::scoped_lock lock(state_->mutex);
-  if (state_->m3_reorder_ingress_identity != 0U) {
-    return ksj::base::Status::StateError("HostFrameAssembler terminal control is owned by its bound M3ReorderIngress");
-  }
   return end_of_input_locked(*state_);
 }
 
@@ -921,9 +569,6 @@ ksj::base::Status HostFrameAssembler::abort() {
     return ksj::base::Status::Ok();
   }
   std::scoped_lock lock(state_->mutex);
-  if (state_->m3_reorder_ingress_identity != 0U) {
-    return ksj::base::Status::StateError("HostFrameAssembler terminal control is owned by its bound M3ReorderIngress");
-  }
   return abort_locked(*state_);
 }
 

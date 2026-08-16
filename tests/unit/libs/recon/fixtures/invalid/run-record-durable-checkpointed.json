@@ -1,0 +1,13 @@
+{
+  "kind": "RunRecord",
+  "run_id": "scan.durable.0001",
+  "execution_profile": "bounded-online",
+  "outcome": "failed",
+  "recovery_class": "durable_checkpointed",
+  "egress_visibility": "none",
+  "primary_cause": {
+    "kind": "failure",
+    "code": "WORKER_CRASH"
+  },
+  "secondary_causes": []
+}

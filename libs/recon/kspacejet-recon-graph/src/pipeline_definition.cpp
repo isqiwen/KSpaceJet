@@ -1,10 +1,11 @@
 #include "kspacejet/recon/graph/pipeline_definition.hpp"
 
+#include "kspacejet/recon/type_registry.hpp"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <deque>
 #include <initializer_list>
 #include <optional>
@@ -176,212 +177,6 @@ using Json = nlohmann::json;
   return std::move(value).value();
 }
 
-struct StableSemVer {
-  std::string_view major;
-  std::string_view minor;
-  std::string_view patch;
-};
-
-[[nodiscard]] bool is_valid_numeric_identifier(const std::string_view value) noexcept {
-  return !value.empty() && std::ranges::all_of(value, is_ascii_digit) && (value.size() == 1U || value.front() != '0');
-}
-
-[[nodiscard]] std::optional<StableSemVer> parse_stable_semver(const std::string_view value) noexcept {
-  const auto first_dot = value.find('.');
-  if (first_dot == std::string_view::npos) {
-    return std::nullopt;
-  }
-  const auto second_dot = value.find('.', first_dot + 1U);
-  if (second_dot == std::string_view::npos || value.find('.', second_dot + 1U) != std::string_view::npos) {
-    return std::nullopt;
-  }
-  const StableSemVer result{.major = value.substr(0U, first_dot),
-                            .minor = value.substr(first_dot + 1U, second_dot - first_dot - 1U),
-                            .patch = value.substr(second_dot + 1U)};
-  if (!is_valid_numeric_identifier(result.major) || !is_valid_numeric_identifier(result.minor) ||
-      !is_valid_numeric_identifier(result.patch)) {
-    return std::nullopt;
-  }
-  return result;
-}
-
-[[nodiscard]] bool is_valid_semver_identifier(const std::string_view value,
-                                              const bool reject_leading_zero_numeric) noexcept {
-  if (value.empty() || !std::ranges::all_of(value, [](const char character) {
-        return is_ascii_alphanumeric(character) || character == '-';
-      })) {
-    return false;
-  }
-  const bool numeric = std::ranges::all_of(value, is_ascii_digit);
-  return !reject_leading_zero_numeric || !numeric || value.size() == 1U || value.front() != '0';
-}
-
-[[nodiscard]] bool are_valid_dot_separated_semver_identifiers(const std::string_view value,
-                                                              const bool reject_leading_zero_numeric) noexcept {
-  std::size_t begin = 0U;
-  while (begin < value.size()) {
-    const auto dot = value.find('.', begin);
-    const auto identifier = value.substr(begin, dot == std::string_view::npos ? std::string_view::npos : dot - begin);
-    if (!is_valid_semver_identifier(identifier, reject_leading_zero_numeric)) {
-      return false;
-    }
-    if (dot == std::string_view::npos) {
-      return true;
-    }
-    begin = dot + 1U;
-  }
-  return false;
-}
-
-[[nodiscard]] bool is_strict_semver(const std::string_view value) noexcept {
-  const auto plus = value.find('+');
-  if (plus != std::string_view::npos && value.find('+', plus + 1U) != std::string_view::npos) {
-    return false;
-  }
-  const auto core_and_prerelease = value.substr(0U, plus);
-  if (plus != std::string_view::npos && !are_valid_dot_separated_semver_identifiers(value.substr(plus + 1U), false)) {
-    return false;
-  }
-  const auto hyphen = core_and_prerelease.find('-');
-  if (hyphen != std::string_view::npos &&
-      !are_valid_dot_separated_semver_identifiers(core_and_prerelease.substr(hyphen + 1U), true)) {
-    return false;
-  }
-  return parse_stable_semver(core_and_prerelease.substr(0U, hyphen)).has_value();
-}
-
-enum class VersionComparatorKind {
-  equal,
-  greater,
-  greater_or_equal,
-  less,
-  less_or_equal,
-};
-
-struct VersionComparator {
-  VersionComparatorKind kind;
-  StableSemVer version;
-};
-
-[[nodiscard]] Status invalid_provider_version_requirement(const std::string_view path) {
-  return validation_error(path, "must be an exact stable MAJOR.MINOR.PATCH version or whitespace-separated stable "
-                                "SemVer comparator clauses");
-}
-
-[[nodiscard]] Result<std::vector<VersionComparator>> parse_provider_version_requirement(const std::string_view value,
-                                                                                        const std::string_view path) {
-  if (value.empty() || value.size() > 256U) {
-    return invalid_provider_version_requirement(path);
-  }
-  if (const auto exact = parse_stable_semver(value); exact.has_value()) {
-    return std::vector<VersionComparator>{{.kind = VersionComparatorKind::equal, .version = *exact}};
-  }
-
-  const auto is_separator = [](const char character) {
-    return character == ' ' || character == '\t';
-  };
-  std::vector<VersionComparator> clauses;
-  std::size_t begin = 0U;
-  while (begin < value.size()) {
-    if (is_separator(value[begin])) {
-      return invalid_provider_version_requirement(path);
-    }
-    std::size_t end = begin;
-    while (end < value.size() && !is_separator(value[end])) {
-      ++end;
-    }
-    const auto clause = value.substr(begin, end - begin);
-    VersionComparatorKind kind;
-    std::size_t operator_size = 0U;
-    if (clause.starts_with(">=")) {
-      kind = VersionComparatorKind::greater_or_equal;
-      operator_size = 2U;
-    } else if (clause.starts_with("<=")) {
-      kind = VersionComparatorKind::less_or_equal;
-      operator_size = 2U;
-    } else if (clause.starts_with('>')) {
-      kind = VersionComparatorKind::greater;
-      operator_size = 1U;
-    } else if (clause.starts_with('<')) {
-      kind = VersionComparatorKind::less;
-      operator_size = 1U;
-    } else if (clause.starts_with('=')) {
-      kind = VersionComparatorKind::equal;
-      operator_size = 1U;
-    } else {
-      return invalid_provider_version_requirement(path);
-    }
-    const auto version = parse_stable_semver(clause.substr(operator_size));
-    if (!version.has_value()) {
-      return invalid_provider_version_requirement(path);
-    }
-    clauses.push_back({.kind = kind, .version = *version});
-
-    if (end == value.size()) {
-      break;
-    }
-    begin = end;
-    while (begin < value.size() && is_separator(value[begin])) {
-      ++begin;
-    }
-    if (begin == value.size()) {
-      return invalid_provider_version_requirement(path);
-    }
-  }
-  return clauses;
-}
-
-[[nodiscard]] int compare_numeric_identifiers(const std::string_view left, const std::string_view right) noexcept {
-  if (left.size() != right.size()) {
-    return left.size() < right.size() ? -1 : 1;
-  }
-  if (left == right) {
-    return 0;
-  }
-  return left < right ? -1 : 1;
-}
-
-[[nodiscard]] int compare_stable_semver(const StableSemVer& left, const StableSemVer& right) noexcept {
-  for (const auto [left_component, right_component] :
-       {std::pair{left.major, right.major}, std::pair{left.minor, right.minor}, std::pair{left.patch, right.patch}}) {
-    const auto comparison = compare_numeric_identifiers(left_component, right_component);
-    if (comparison != 0) {
-      return comparison;
-    }
-  }
-  return 0;
-}
-
-[[nodiscard]] bool satisfies(const StableSemVer& version, const VersionComparator& comparator) noexcept {
-  const auto comparison = compare_stable_semver(version, comparator.version);
-  switch (comparator.kind) {
-    case VersionComparatorKind::equal:
-      return comparison == 0;
-    case VersionComparatorKind::greater:
-      return comparison > 0;
-    case VersionComparatorKind::greater_or_equal:
-      return comparison >= 0;
-    case VersionComparatorKind::less:
-      return comparison < 0;
-    case VersionComparatorKind::less_or_equal:
-      return comparison <= 0;
-  }
-  return false;
-}
-
-[[nodiscard]] Result<std::uint64_t> require_positive_integer(const Json& object, const std::string_view key,
-                                                             const std::string_view path) {
-  const auto iterator = object.find(std::string(key));
-  if (iterator == object.end() || !iterator->is_number_unsigned()) {
-    return validation_error(path, "field '" + std::string(key) + "' must be a positive integer");
-  }
-  const auto value = iterator->get<std::uint64_t>();
-  if (value == 0U || value > kMaxCanonicalJsonInteger) {
-    return validation_error(path, "field '" + std::string(key) + "' is outside the canonical positive range");
-  }
-  return value;
-}
-
 [[nodiscard]] Result<NodePortReference> parse_node_port_reference(const Json& value, const std::string_view path) {
   const auto status = validate_object_keys(value, path, {"node", "port"}, {"node", "port"});
   if (!status.ok())
@@ -397,29 +192,17 @@ struct VersionComparator {
 
 [[nodiscard]] bool has_forbidden_runtime_field(const Json& value, std::string& path) {
   static const std::unordered_set<std::string> forbidden{
-    "task_count",
-    "tasks",
-    "key_shards",
-    "key_slot_tables",
-    "dense_dimensions",
-    "slot_count",
-    "max_live_keys",
-    "key_domain_bound",
-    "host_metadata_charged_bytes",
-    "shard_count",
-    "queue_capacity",
-    "queue_bytes",
-    "edge_capacity",
-    "worker_count",
-    "num_workers",
-    "threads",
-    "num_threads",
-    "numa_home",
-    "runtime_queue",
-    "runtime_threads",
-    "gpu_stream_count",
-    "batch_size",
-    "memory_reservation",
+    "task_count",       "tasks",
+    "key_shards",       "dense_dimensions",
+    "slot_count",       "max_live_keys",
+    "key_domain_bound", "host_metadata_charged_bytes",
+    "shard_count",      "queue_capacity",
+    "queue_bytes",      "edge_capacity",
+    "worker_count",     "num_workers",
+    "threads",          "num_threads",
+    "numa_home",        "runtime_queue",
+    "runtime_threads",  "gpu_stream_count",
+    "batch_size",       "memory_reservation",
   };
   if (value.is_object()) {
     for (auto iterator = value.begin(); iterator != value.end(); ++iterator) {
@@ -444,60 +227,16 @@ struct VersionComparator {
 }
 
 [[nodiscard]] Result<ProviderSelection> parse_provider(const Json& value, const std::string_view path) {
-  const auto status =
-    validate_object_keys(value, path, {"alias", "provider_id", "version_requirement", "required_abi_major"},
-                         {"alias", "provider_id", "version_requirement", "required_abi_major"});
+  const auto status = validate_object_keys(value, path, {"alias", "provider_id"}, {"alias", "provider_id"});
   if (!status.ok())
     return status;
   auto alias = require_identifier(value, "alias", path);
   auto provider_id = require_qualified_identifier(value, "provider_id", path);
-  auto version_requirement = require_bounded_string(value, "version_requirement", path, 256U);
-  auto abi_major = require_positive_integer(value, "required_abi_major", path);
   if (!alias.ok())
     return alias.status();
   if (!provider_id.ok())
     return provider_id.status();
-  if (!version_requirement.ok())
-    return version_requirement.status();
-  auto parsed_requirement =
-    parse_provider_version_requirement(version_requirement.value(), std::string(path) + ".version_requirement");
-  if (!parsed_requirement.ok())
-    return parsed_requirement.status();
-  if (!abi_major.ok())
-    return abi_major.status();
-  return ProviderSelection{.alias = std::move(alias).value(),
-                           .provider_id = std::move(provider_id).value(),
-                           .version_requirement = std::move(version_requirement).value(),
-                           .required_abi_major = abi_major.value()};
-}
-
-[[nodiscard]] Result<InterfaceRequirement> parse_interface_requirement(const Json& object,
-                                                                       const std::string_view path) {
-  InterfaceRequirement result;
-  if (const auto iterator = object.find("requires_interface_revision"); iterator != object.end()) {
-    if (!iterator->is_string() || iterator->get_ref<const std::string&>().empty()) {
-      return validation_error(path, "requires_interface_revision must be a non-empty string");
-    }
-    const auto& revision = iterator->get_ref<const std::string&>();
-    auto characters = utf8_character_count(revision, path);
-    if (!characters.ok()) {
-      return characters.status();
-    }
-    if (characters.value() > 128U) {
-      return validation_error(path, "requires_interface_revision exceeds its maximum character length");
-    }
-    result.revision = revision;
-  }
-  if (const auto iterator = object.find("requires_interface_digest"); iterator != object.end()) {
-    if (!iterator->is_string()) {
-      return validation_error(path, "requires_interface_digest must be a sha256 digest string");
-    }
-    auto digest = ArtifactDigest::parse(iterator->get<std::string>(), "requires_interface_digest");
-    if (!digest.ok())
-      return digest.status();
-    result.digest = std::move(digest).value();
-  }
-  return result;
+  return ProviderSelection{.alias = std::move(alias).value(), .provider_id = std::move(provider_id).value()};
 }
 
 [[nodiscard]] Result<PipelineNode> parse_node(const Json& value, const std::string_view path) {
@@ -508,19 +247,15 @@ struct VersionComparator {
   if (!id.ok())
     return id.status();
   const auto operator_status =
-    validate_object_keys(value.at("operator"), std::string(path) + ".operator", {"provider", "id"},
-                         {"provider", "id", "requires_interface_revision", "requires_interface_digest"});
+    validate_object_keys(value.at("operator"), std::string(path) + ".operator", {"provider", "id"}, {"provider", "id"});
   if (!operator_status.ok())
     return operator_status;
   auto provider = require_identifier(value.at("operator"), "provider", std::string(path) + ".operator");
   auto operator_id = require_identifier(value.at("operator"), "id", std::string(path) + ".operator");
-  auto interface_requirement = parse_interface_requirement(value.at("operator"), std::string(path) + ".operator");
   if (!provider.ok())
     return provider.status();
   if (!operator_id.ok())
     return operator_id.status();
-  if (!interface_requirement.ok())
-    return interface_requirement.status();
   const auto config_status = require_object(value.at("config"), std::string(path) + ".config");
   if (!config_status.ok())
     return config_status;
@@ -530,7 +265,6 @@ struct VersionComparator {
   return PipelineNode{.id = std::move(id).value(),
                       .provider_alias = std::move(provider).value(),
                       .operator_id = std::move(operator_id).value(),
-                      .interface_requirement = std::move(interface_requirement).value(),
                       .canonical_config = std::move(config).value()};
 }
 
@@ -551,7 +285,8 @@ struct VersionComparator {
 [[nodiscard]] Status validate_dag_and_reachability(const std::vector<PipelineNode>& nodes,
                                                    const std::vector<PipelineEdge>& edges,
                                                    const std::vector<IngressPort>& ingress,
-                                                   const std::vector<EgressPort>& egress) {
+                                                   const std::vector<EgressPort>& egress,
+                                                   const std::vector<CalibrationBinding>& calibration_bindings) {
   std::unordered_map<std::string, std::vector<std::string>> forward;
   std::unordered_map<std::string, std::vector<std::string>> reverse;
   std::unordered_map<std::string, std::size_t> indegree;
@@ -561,6 +296,17 @@ struct VersionComparator {
     forward[edge.from.node].push_back(edge.to.node);
     reverse[edge.to.node].push_back(edge.from.node);
     ++indegree.at(edge.to.node);
+  }
+  // An explicit calibration artifact is a real producer/consumer dependency,
+  // even though it is stored outside ordinary data-edge transport.  Include it
+  // in both cycle and reachability checks so calibration branches cannot be
+  // accidentally treated as disconnected side work.
+  for (const auto& binding : calibration_bindings) {
+    for (const auto& consumer : binding.consumers) {
+      forward[binding.producer.node].push_back(consumer.node);
+      reverse[consumer.node].push_back(binding.producer.node);
+      ++indegree.at(consumer.node);
+    }
   }
   std::deque<std::string> ready;
   for (const auto& [node, degree] : indegree) {
@@ -676,31 +422,12 @@ normalize_resolved_providers(const PipelineDefinition& definition, std::vector<R
     if (selection == selections.end() || !aliases.insert(provider.alias).second) {
       return Status::ValidationError("resolver returned unknown or duplicate Provider alias '" + provider.alias + "'");
     }
-    if (provider.provider_id != selection->second->provider_id ||
-        provider.abi_major != selection->second->required_abi_major) {
-      return Status::ValidationError("resolved Provider does not match authored provider_id/ABI");
-    }
-    const auto provider_version = parse_stable_semver(provider.version);
-    if (!provider_version.has_value()) {
-      return Status::ValidationError("resolved Provider must carry an exact stable MAJOR.MINOR.PATCH version");
-    }
-    auto requirement = parse_provider_version_requirement(selection->second->version_requirement,
-                                                          "resolved Provider version_requirement");
-    if (!requirement.ok()) {
-      return requirement.status();
-    }
-    const auto satisfies_requirement = std::ranges::all_of(requirement.value(), [&](const VersionComparator& clause) {
-      return satisfies(*provider_version, clause);
-    });
-    if (!satisfies_requirement) {
-      return Status::ValidationError("resolved Provider version '" + provider.version +
-                                     "' does not satisfy authored version_requirement '" +
-                                     selection->second->version_requirement + "'");
+    if (provider.provider_id != selection->second->provider_id) {
+      return Status::ValidationError("resolved Provider does not match authored provider_id");
     }
     std::unordered_set<std::string> operators;
     for (const auto& operator_value : provider.operators) {
-      if (operator_value.id.empty() || operator_value.interface_revision.empty() ||
-          !operators.insert(operator_value.id).second) {
+      if (operator_value.id.empty() || !operators.insert(operator_value.id).second) {
         return Status::ValidationError("resolved Provider contains an invalid or duplicate operator");
       }
     }
@@ -712,14 +439,6 @@ normalize_resolved_providers(const PipelineDefinition& definition, std::vector<R
     const auto operator_value = std::ranges::find(provider->operators, node.operator_id, &ResolvedOperator::id);
     if (operator_value == provider->operators.end()) {
       return Status::ValidationError("resolved Provider does not expose node operator '" + node.operator_id + "'");
-    }
-    if (node.interface_requirement.revision.has_value() &&
-        node.interface_requirement.revision.value() != operator_value->interface_revision) {
-      return Status::ValidationError("resolved Provider interface revision does not satisfy node '" + node.id + "'");
-    }
-    if (node.interface_requirement.digest.has_value() &&
-        node.interface_requirement.digest.value() != operator_value->contract_digest) {
-      return Status::ValidationError("resolved Provider interface digest does not satisfy node '" + node.id + "'");
     }
   }
   std::ranges::sort(providers, {}, &ResolvedProvider::alias);
@@ -751,12 +470,11 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
     return Status::ValidationError("PipelineDefinition must not contain scan-specific runtime field '" +
                                    forbidden_path + "'");
   }
-  const auto root_status =
-    validate_object_keys(root, "$",
-                         {"schema_version", "kind", "pipeline", "allowed_profiles", "parameters",
-                          "provider_requirements", "nodes", "edges", "bindings", "annotations"},
-                         {"$schema", "schema_version", "kind", "pipeline", "allowed_profiles", "parameters",
-                          "provider_requirements", "nodes", "edges", "bindings", "annotations"});
+  const auto root_status = validate_object_keys(root, "$",
+                                                {"kind", "pipeline", "allowed_profiles", "parameters",
+                                                 "provider_requirements", "nodes", "edges", "bindings", "annotations"},
+                                                {"$schema", "kind", "pipeline", "allowed_profiles", "parameters",
+                                                 "provider_requirements", "nodes", "edges", "bindings", "annotations"});
   if (!root_status.ok())
     return root_status;
   if (const auto schema = root.find("$schema");
@@ -764,27 +482,17 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
                                                          "https://json-schema.org/draft/2020-12/schema")) {
     return validation_error("$.$schema", "must equal 'https://json-schema.org/draft/2020-12/schema' when present");
   }
-  if (!root.at("schema_version").is_string() ||
-      root.at("schema_version").get<std::string>() != kPipelineDefinitionSchemaVersion) {
-    return validation_error("$.schema_version", "must equal 'kspacejet.pipeline/v1'");
-  }
   if (!root.at("kind").is_string() || root.at("kind").get<std::string>() != "PipelineDefinition") {
     return validation_error("$.kind", "must equal 'PipelineDefinition'");
   }
-  const auto pipeline_status = validate_object_keys(
-    root.at("pipeline"), "$.pipeline", {"id", "revision", "display_name"}, {"id", "revision", "display_name"});
+  const auto pipeline_status =
+    validate_object_keys(root.at("pipeline"), "$.pipeline", {"id", "display_name"}, {"id", "display_name"});
   if (!pipeline_status.ok())
     return pipeline_status;
   auto pipeline_id = require_qualified_identifier(root.at("pipeline"), "id", "$.pipeline");
-  auto revision = require_string(root.at("pipeline"), "revision", "$.pipeline");
   auto display_name = require_bounded_string(root.at("pipeline"), "display_name", "$.pipeline", 256U);
   if (!pipeline_id.ok())
     return pipeline_id.status();
-  if (!revision.ok())
-    return revision.status();
-  if (!is_strict_semver(revision.value())) {
-    return validation_error("$.pipeline.revision", "must be a strict Semantic Version 2.0.0 value");
-  }
   if (!display_name.ok())
     return display_name.status();
   const auto parameters_status = require_object(root.at("parameters"), "$.parameters");
@@ -915,12 +623,8 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
       return to.status();
     if (!ingress_ids.insert(id.value()).second)
       return validation_error(path, "ingress id is duplicated");
-    if (type.value() == "ksj.kspace-frame/v1") {
-      return validation_error(path, "ksj.kspace-frame is an internal completed FrameSlotContext and must not be a "
-                                    "public ingress; it must arrive through a resolved internal typed graph edge");
-    }
-    if (type.value() != "ismrmrd.acquisition/v1" && type.value() != "ismrmrd.waveform/v1") {
-      return validation_error(path, "ingress type must be public ISMRMRD acquisition or waveform");
+    if (!types::resolve(type.value()).ok()) {
+      return validation_error(path, "ingress type must name a checked-in TypeRef");
     }
     const auto node_status = validate_node_reference(nodes, to.value(), path + ".to");
     if (!node_status.ok())
@@ -956,8 +660,8 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
       return from.status();
     if (!egress_ids.insert(id.value()).second)
       return validation_error(path, "egress id is duplicated");
-    if (type.value() != "ismrmrd.image/v1" && type.value() != "ismrmrd.waveform/v1") {
-      return validation_error(path, "egress type must be public ISMRMRD image or waveform");
+    if (!types::resolve(type.value()).ok()) {
+      return validation_error(path, "egress type must name a checked-in TypeRef");
     }
     const auto node_status = validate_node_reference(nodes, from.value(), path + ".from");
     if (!node_status.ok())
@@ -994,21 +698,23 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
       return !consumers_status.ok() ? consumers_status : validation_error(path, "consumers must not be empty");
     }
     std::unordered_set<std::string> consumers_seen;
-    std::vector<std::string> consumers;
-    for (const auto& consumer : value.at("consumers")) {
-      const auto consumer_status = validate_object_keys(consumer, path + ".consumers", {"node"}, {"node"});
+    std::vector<NodePortReference> consumers;
+    for (std::size_t consumer_index = 0U; consumer_index < value.at("consumers").size(); ++consumer_index) {
+      const auto consumer_path = path + ".consumers[" + std::to_string(consumer_index) + "]";
+      auto consumer = parse_node_port_reference(value.at("consumers")[consumer_index], consumer_path);
+      if (!consumer.ok())
+        return consumer.status();
+      const auto consumer_status = validate_node_reference(nodes, consumer.value(), consumer_path);
       if (!consumer_status.ok())
         return consumer_status;
-      auto node = require_identifier(consumer, "node", path + ".consumers");
-      if (!node.ok())
-        return node.status();
-      if (find_node(nodes, node.value()) == nullptr || !consumers_seen.insert(node.value()).second) {
-        return validation_error(path, "calibration consumer is unknown or duplicated");
+      const auto endpoint_key = consumer.value().node + "\x1f" + consumer.value().port;
+      if (!consumers_seen.insert(endpoint_key).second) {
+        return validation_error(consumer_path, "calibration consumer endpoint is duplicated");
       }
-      consumers.push_back(std::move(node).value());
+      consumers.push_back(std::move(consumer).value());
     }
     calibration_bindings.push_back(CalibrationBinding{
-      .id = std::move(id).value(), .producer = std::move(producer).value(), .consumer_nodes = std::move(consumers)});
+      .id = std::move(id).value(), .producer = std::move(producer).value(), .consumers = std::move(consumers)});
   }
 
   const auto merge_array_status = require_array(root.at("bindings").at("merge"), "$.bindings.merge");
@@ -1019,7 +725,8 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
   }
   std::vector<MergeBinding> merge_bindings;
 
-  const auto graph_status = validate_dag_and_reachability(nodes, edges, ingress_ports, egress_ports);
+  const auto graph_status =
+    validate_dag_and_reachability(nodes, edges, ingress_ports, egress_ports, calibration_bindings);
   if (!graph_status.ok())
     return graph_status;
 
@@ -1032,16 +739,15 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
   auto semantic_document = canonicalize_json(semantic_root.dump());
   if (!semantic_document.ok())
     return semantic_document.status();
-  auto artifact = domain_separated_sha256_digest("kspacejet:artifact:pipeline-definition:1", canonical_document.value(),
+  auto artifact = domain_separated_sha256_digest("kspacejet:artifact:pipeline-definition", canonical_document.value(),
                                                  "PipelineDefinition artifact digest");
   if (!artifact.ok())
     return artifact.status();
-  auto semantic = domain_separated_sha256_digest("kspacejet:semantic:pipeline-definition:1", semantic_document.value(),
+  auto semantic = domain_separated_sha256_digest("kspacejet:semantic:pipeline-definition", semantic_document.value(),
                                                  "PipelineDefinition semantic digest");
   if (!semantic.ok())
     return semantic.status();
   return PipelineDefinition{std::move(pipeline_id).value(),
-                            std::move(revision).value(),
                             std::move(display_name).value(),
                             std::move(profiles),
                             std::move(providers),
@@ -1062,7 +768,6 @@ Result<ResolvedPipeline> ResolvedPipeline::resolve(const PipelineDefinition& def
   if (!normalized_providers.ok())
     return normalized_providers.status();
   Json resolved{
-    {"schema_version", kResolvedPipelineSchemaVersion},
     {"kind", "ResolvedPipeline"},
     {"pipeline_definition_artifact_digest", definition.artifact_digest().value()},
     {"pipeline_definition_semantic_digest", definition.semantic_digest().value()},
@@ -1071,21 +776,16 @@ Result<ResolvedPipeline> ResolvedPipeline::resolve(const PipelineDefinition& def
   for (const auto& provider : normalized_providers.value()) {
     Json provider_json{{"alias", provider.alias},
                        {"provider_id", provider.provider_id},
-                       {"version", provider.version},
-                       {"abi_major", provider.abi_major},
                        {"bundle_digest", provider.bundle_digest.value()},
                        {"operators", Json::array()}};
-    for (const auto& operator_value : provider.operators) {
-      provider_json["operators"].push_back({{"id", operator_value.id},
-                                            {"interface_revision", operator_value.interface_revision},
-                                            {"contract_digest", operator_value.contract_digest.value()}});
-    }
+    for (const auto& operator_value : provider.operators)
+      provider_json["operators"].push_back({{"id", operator_value.id}});
     resolved["providers"].push_back(std::move(provider_json));
   }
   auto canonical = canonicalize_json(resolved.dump());
   if (!canonical.ok())
     return canonical.status();
-  auto digest = domain_separated_sha256_digest("kspacejet:artifact:resolved-pipeline:1", canonical.value(),
+  auto digest = domain_separated_sha256_digest("kspacejet:artifact:resolved-pipeline", canonical.value(),
                                                "ResolvedPipeline artifact digest");
   if (!digest.ok())
     return digest.status();

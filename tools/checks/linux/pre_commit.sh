@@ -45,18 +45,24 @@ if [[ ${#cmake_files[@]} -gt 0 ]]; then
   ksj_run cmake --list-presets=all
 
   if [[ "${KSJ_PRE_COMMIT_CONFIGURE:-ON}" != "OFF" ]]; then
-    configure_dir="${repo_root}/out/checks/pre-commit-cmake"
-    generator_args=()
-    if ksj_has_command ninja; then
-      generator_args=(-G Ninja)
-    fi
+    toolchain_file="${KSJ_PRE_COMMIT_TOOLCHAIN_FILE:-${repo_root}/out/build/linux-release/conan_toolchain.cmake}"
+    if [[ -f "${toolchain_file}" ]]; then
+      configure_dir="${repo_root}/out/checks/pre-commit-cmake-conan"
+      generator_args=()
+      if ksj_has_command ninja; then
+        generator_args=(-G Ninja)
+      fi
 
-    ksj_note "running basic CMake configure for staged CMake changes"
-    ksj_run cmake -S "${repo_root}" -B "${configure_dir}" "${generator_args[@]}" \
-      -DBUILD_TESTING=OFF \
-      -DKSJ_BUILD_UNIT_TESTS=OFF \
-      -DKSJ_BUILD_BENCHMARKS=OFF \
-      -DKSJ_BUILD_RESEARCH=OFF \
+      ksj_note "running basic CMake configure for staged CMake changes"
+      ksj_run cmake -S "${repo_root}" -B "${configure_dir}" "${generator_args[@]}" \
+        -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
+        -DBUILD_TESTING=OFF \
+        -DKSJ_BUILD_UNIT_TESTS=OFF \
+        -DKSJ_BUILD_BENCHMARKS=OFF \
+        -DKSJ_BUILD_RESEARCH=OFF
+    else
+      ksj_note "skipping basic CMake configure: no generated Conan toolchain (set KSJ_PRE_COMMIT_TOOLCHAIN_FILE to enable it)"
+    fi
   fi
 fi
 

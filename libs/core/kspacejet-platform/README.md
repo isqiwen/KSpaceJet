@@ -13,6 +13,7 @@
 - 系统和进程内存状态。
 - CPU core 数量。
 - 目录压缩为 zip archive。
+- 同一文件系统内、绝不替换目标目录的原子目录发布。
 - 环境变量默认值设置。
 
 Linux 是完整测试和运行治理主平台。Windows VS2022 构建用于 `apps/` 下四个进程和 `tools/batch_recon_studio`；新增平台 API 时必须同时说明 Linux 语义和 Windows fallback 行为。
@@ -29,6 +30,7 @@ Linux 是完整测试和运行治理主平台。Windows VS2022 构建用于 `app
 | `dynamic_library.hpp` | `DynamicLibrary`、`LoadMode`、`shared_library_file_name()`。 |
 | `system.hpp` | 系统/进程内存状态、CPU core 数量、环境变量辅助。 |
 | `archive.hpp` | `archive_directory_to_zip()`。 |
+| `filesystem.hpp` | `publish_directory_no_replace()`：同一文件系统内原子发布一个新目录，目标已存在时返回 `already_exists`，绝不覆盖。 |
 
 ## 构建集成
 
@@ -40,6 +42,7 @@ Linux 是完整测试和运行治理主平台。Windows VS2022 构建用于 `app
 - `src/dynamic_library.cpp`
 - `src/system.cpp`
 - `src/archive.cpp`
+- `src/filesystem.cpp`
 
 该组件私有链接 `KSpaceJet::platform_runtime_libraries`，在 Windows 下包含 Winsock/PSAPI 等平台运行时库。
 
@@ -50,4 +53,5 @@ Linux 是完整测试和运行治理主平台。Windows VS2022 构建用于 `app
 - 新增平台 API 时应优先保持 Linux 语义明确；Windows fallback 必须服务于已支持的 VS2022 target 范围。
 - socket API 只提供低层 primitive；流式协议由使用它的开放 provider 定义。
 - dynamic library API 只负责加载和 symbol 查询；具体 provider 的符号契约由 provider 自己定义。
+- 文件系统发布 API 只负责平台级目录提交语义；调用者负责创建、填充和在失败时清理 staging 目录。它不复制目录或用非原子操作替代 no-replace 发布。
 - 系统状态接口用于诊断和容量估算，不应在性能关键路径中频繁调用。

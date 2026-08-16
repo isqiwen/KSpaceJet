@@ -32,9 +32,32 @@ void fft_2d(ksj::array::MatrixView<const std::complex<float>> input, ksj::array:
 void fft_2d(ksj::array::MatrixView<const std::complex<double>> input,
             ksj::array::MatrixView<std::complex<double>> output, Direction direction, Normalization normalization);
 
+// Fixed-workspace variant used by bounded callers that cannot permit the
+// Eigen fallback to obtain pooled temporary storage. `data` is transformed in
+// place, `intermediate` supplies one same-shaped complex matrix, and the two
+// vector workspaces each need at least max(rows, cols) elements.
+void fft_2d_inplace_with_workspace(ksj::array::MatrixView<std::complex<float>> data,
+                                   ksj::array::MatrixView<std::complex<float>> intermediate,
+                                   ksj::array::VectorView<std::complex<float>> source,
+                                   ksj::array::VectorView<std::complex<float>> destination, Direction direction,
+                                   Normalization normalization);
+void fft_2d_inplace_with_workspace(ksj::array::MatrixView<std::complex<double>> data,
+                                   ksj::array::MatrixView<std::complex<double>> intermediate,
+                                   ksj::array::VectorView<std::complex<double>> source,
+                                   ksj::array::VectorView<std::complex<double>> destination, Direction direction,
+                                   Normalization normalization);
+
 template <typename T>
 void fft_2d(ksj::array::MatrixView<const std::complex<T>>, ksj::array::MatrixView<std::complex<T>>, Direction,
             Normalization) {
+  static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>,
+                "Eigen FFT backend supports float and double complex data");
+}
+
+template <typename T>
+void fft_2d_inplace_with_workspace(ksj::array::MatrixView<std::complex<T>>, ksj::array::MatrixView<std::complex<T>>,
+                                   ksj::array::VectorView<std::complex<T>>, ksj::array::VectorView<std::complex<T>>,
+                                   Direction, Normalization) {
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>,
                 "Eigen FFT backend supports float and double complex data");
 }

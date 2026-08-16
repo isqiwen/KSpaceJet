@@ -1,0 +1,25 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.image-normalization",
+  "operator_id": "image_normalize",
+  "summary": "Normalize one real image according to an explicitly selected normalization method.",
+  "ports": [
+    {
+      "name": "image",
+      "direction": "input",
+      "semantic_type": "ksj.image-frame"
+    },
+    {
+      "name": "normalized_image",
+      "direction": "output",
+      "semantic_type": "ksj.image-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": ["method"],
+    "optional": ["target"]
+  },
+  "notes": "This Provider is separate from stateless image-ops because normalization may require an explicit statistics policy. Its statistics scope, numerical grammar, TypeDescriptor, resources, and terminal behavior are not implemented."
+}

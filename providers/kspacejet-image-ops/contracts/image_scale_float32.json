@@ -1,0 +1,16 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "image_scale_float32",
+  "ports": [
+    {
+      "name": "image",
+      "type_ref": "ksj.image-frame",
+      "direction": "input"
+    },
+    {
+      "name": "scaled_image",
+      "type_ref": "ksj.image-frame",
+      "direction": "output"
+    }
+  ]
+}

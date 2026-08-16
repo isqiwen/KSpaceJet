@@ -1,0 +1,21 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "coil_compress",
+  "ports": [
+    {
+      "name": "kspace",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "input"
+    },
+    {
+      "name": "coil_basis",
+      "type_ref": "ksj.coil-compression-basis",
+      "direction": "input"
+    },
+    {
+      "name": "compressed_kspace",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "output"
+    }
+  ]
+}

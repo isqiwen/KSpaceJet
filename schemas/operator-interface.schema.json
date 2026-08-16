@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/operator-interface.schema.json",
+  "title": "KSpaceJet planned OperatorInterface",
+  "description": "A planning-only reservation for one unimplemented Provider operator. It deliberately omits TypeDescriptor digests, rates, resources, terminal behavior, Provider bundle identity, and executable ABI callbacks. It is never an OperatorContract and cannot be resolved, loaded, or admitted by a runtime.",
+  "type": "object",
+  "required": [
+    "kind",
+    "availability",
+    "provider_id",
+    "operator_id",
+    "summary",
+    "ports",
+    "configuration",
+    "notes"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "OperatorInterface"
+    },
+    "availability": {
+      "const": "planned"
+    },
+    "provider_id": {
+      "$ref": "#/$defs/lowerIdentifier"
+    },
+    "operator_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "ports": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/port"
+      }
+    },
+    "configuration": {
+      "$ref": "#/$defs/configuration"
+    },
+    "notes": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "lowerIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[a-z](?:[a-z0-9._-]*[a-z0-9])?$"
+    },
+    "port": {
+      "type": "object",
+      "required": [
+        "name",
+        "direction",
+        "semantic_type"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "direction": {
+          "enum": [
+            "input",
+            "output"
+          ]
+        },
+        "semantic_type": {
+          "$ref": "#/$defs/lowerIdentifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "configuration": {
+      "description": "The required and optional arrays are the complete planned configuration-key boundary. Value syntax, defaults, and executable validation are deferred to a future OperatorContract and implementation.",
+      "type": "object",
+      "required": [
+        "kind",
+        "required",
+        "optional"
+      ],
+      "properties": {
+        "kind": {
+          "const": "object"
+        },
+        "required": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "optional": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

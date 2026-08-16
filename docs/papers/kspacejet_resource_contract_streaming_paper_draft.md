@@ -2,12 +2,12 @@
 
 > English title: **KSpaceJet: Scan-Specialized, Resource-Contracted Streaming for Predictable Online MRI Reconstruction**
 >
-> 稿件状态：v0.2，预结果论文初稿。
+> 稿件状态：预结果论文初稿。
 > 目标体裁：Magnetic Resonance in Medicine 风格 full paper。
 > 重要说明：本文当前描述的是研究设计和待实现方法。所有 `[待实验]`、`N`、`X%` 和图表占位必须由冻结协议产生的真实制品替换；不得把设计目标写成观察结果。
 > 公平对照协议：[KSpaceJet–Gadgetron 公平对照与复现实验协议](kspacejet_gadgetron_comparison_protocol.md)。
 > 产品架构基线：[KSpaceJet 流式重建框架实施规划](../architecture/streaming_reconstruction_framework_plan.md)。
-> Pipeline schema 基线：[PipelineDefinition v1 与重建流水线设计](../architecture/pipeline_definition_v1.md)。
+> Pipeline schema 基线：[PipelineDefinition 与重建流水线设计](../architecture/pipeline_definition.md)。
 > Pipeline 与证明基线：[MRI 流水线、并行模型与可证明执行理论](../architecture/streaming_pipeline_parallelism_theory.md)。论文只摘要 schema、定理及其假设；规范定义以两份架构基线、ADR、schema 和独立 checker 为准。
 
 作者：[待填写]
@@ -24,7 +24,7 @@
 
 ### 方法
 
-KSpaceJet 将 ISMRMRD scan descriptor、typed operator graph 和每个 Operator 的并发、scratch、retention、输出扩张、batch、ordering 与线程需求编译成 scan-specific execution plan。图编译器在准入前计算并预留 framework-managed resource bound。运行时通过不可变 host-owned BufferHandle、容量受限 edge、非阻塞 continuation、统一线程预算以及贯穿输入、算子图和输出交付的内部 byte/item reservation 维护同一资源账本；生产网络边界只使用公开 MRD/ISMRMRD session。部署上，独立站点 Connector 隔离专有 scanner/站点适配，`ksj-gateway` 监管/转发公开 session，`ksj-recon` 独占重建 runtime；这些边界之间不定义私有 wire protocol。第三方算法以独立动态库 Provider plugin 通过版本化 C ABI 和 C++ wrapper 接入，并由 conformance tests、host allocator 和 runtime checks 约束。评价采用分层证据框架：使用公开 ISMRMRD 数据，在相同硬件、数学算法、精度、数值后端和线程预算下对冻结版本 Gadgetron 完成主基线全矩阵；对 BART Streams 只执行 passthrough、公开 radial workload 和 slow-sink/burst 三类针对性次级实验；MRIReco.jl 默认仅用于相关工作定位。另执行机制消融、持续过载、多 scan 和 provider 违规实验。
+KSpaceJet 将 ISMRMRD scan descriptor、typed operator graph 和每个 Operator 的并发、scratch、retention、输出扩张、batch、ordering 与线程需求编译成 scan-specific execution plan。图编译器在准入前计算并预留 framework-managed resource bound。运行时通过不可变 host-owned BufferHandle、容量受限 edge、非阻塞 continuation、统一线程预算以及贯穿输入、算子图和输出交付的内部 byte/item reservation 维护同一资源账本；生产网络边界只使用公开 MRD/ISMRMRD session。部署上，独立站点 Connector 隔离专有 scanner/站点适配，`ksj-gateway` 监管/转发公开 session，`ksj-recon` 独占重建 runtime；这些边界之间不定义私有 wire protocol。第三方算法以独立动态库 Provider plugin 通过当前 C ABI 和 C++ wrapper 接入，并由 conformance tests、host allocator 和 runtime checks 约束。评价采用分层证据框架：使用公开 ISMRMRD 数据，在相同硬件、数学算法、精度、数值后端和线程预算下对冻结版本 Gadgetron 完成主基线全矩阵；对 BART Streams 只执行 passthrough、公开 radial workload 和 slow-sink/burst 三类针对性次级实验；MRIReco.jl 默认仅用于相关工作定位。另执行机制消融、持续过载、多 scan 和 provider 违规实验。
 
 ### 结果
 
@@ -84,7 +84,7 @@ Ning 等的实用框架在 Gadgetron 上支持长任务的异步 trigger/retriev
 
 ### 2.5 可部署 MRD 应用
 
-MRD Apps 已探索使用标准 MRD 通信和容器封装发布 Python、MATLAB 或 C++ 重建应用 [12]。因此，容器化算法分发、跨语言 server 和标准 MRD application 也不是本文主要新颖点。KSpaceJet 的 C ABI、Conan SDK 和独立动态库 Provider 分发只有在 ABI 兼容性、调用成本与资源强制得到定量验证后，才作为次级贡献；v1 不声称进程内 native plugin 的故障隔离。
+MRD Apps 已探索使用标准 MRD 通信和容器封装发布 Python、MATLAB 或 C++ 重建应用 [12]。因此，容器化算法分发、跨语言 server 和标准 MRD application 也不是本文主要新颖点。KSpaceJet 的 C ABI、Conan SDK 和独立动态库 Provider 分发只有在 ABI 边界正确性、调用成本与资源强制得到定量验证后，才作为次级贡献；当前进程内 native plugin 不声称故障隔离。
 
 ### 2.6 本文定位
 
@@ -366,15 +366,15 @@ NUMA placement 由 scan plan 根据 worker、NIC/source 和 memory topology 选�
 
 ### 3.9 Provider 扩展边界
 
-Provider 是包含一个或多个 MRI Algorithm Operator 的发布单元。外部 ABI 采用版本化 C ABI，C++20 SDK 提供 typed wrapper。ABI 只包含：
+Provider 是包含一个或多个 MRI Algorithm Operator 的发布单元。外部 ABI 采用当前唯一 C ABI，C++20 SDK 提供 typed wrapper。ABI 只包含：
 
 - 固定宽度 primitive、descriptor 和 opaque handles；
 - host buffer allocate/retain/release/make-writable；
 - batch input/output views；
 - plan resources、scan start/frame/end/cancel lifecycle；
-- structured status 和 capability/version negotiation。
+- structured status、`struct_size` 和 capability 检查。
 
-ABI 不暴露 Eigen、MKL、IPP、OpenCV、ITK、FFTW、STL container 或异常。每个第三方 Provider 是独立动态库 plugin，被视为受信任高性能代码；合约由 conformance、host allocator 和 runtime checks 验证，但 v1 无法隔离任意 crash、hang、hidden allocation 或额外线程。
+ABI 不暴露 Eigen、MKL、IPP、OpenCV、ITK、FFTW、STL container 或异常。每个第三方 Provider 是独立动态库 plugin，被视为受信任高性能代码；合约由 conformance、host allocator 和 runtime checks 验证，但当前进程内运行无法隔离任意 crash、hang、hidden allocation 或额外线程。
 
 ### 3.10 错误、取消和过载
 
@@ -399,7 +399,7 @@ ABI 不暴露 Eigen、MKL、IPP、OpenCV、ITK、FFTW、STL container 或异常�
 - **H2 资源界限**：在合约受执行的 workload 中，KSpaceJet observed framework-managed resident capacity 不超过 compiled/reserved bound；取消、异常、slow sink 和 burst 不产生增长性泄漏。
 - **H3 框架效率**：在 framework-isolation 和 matched MRI workload 中，KSpaceJet 降低 allocation/copy、TTFI 或 p99 latency，或提高固定延迟下吞吐；效应方向和大小由实验决定。
 - **H4 过载行为**：超出 service envelope 时，KSpaceJet 通过节流/拒绝保持资源平台，并在解除过载后有限恢复；不发生 OOM、死锁或跨 scan 永久饥饿。
-- **H5 扩展开销**：合理 batch 下，独立动态库中的 C ABI Operator 相对等价 builtin Operator 的额外开销处于预注册 practical-equivalence margin 内。v1 不提供跨进程 worker 隔离；Provider 必须遵守同一进程内的资源和协作取消合约。
+- **H5 扩展开销**：合理 batch 下，独立动态库中的 C ABI Operator 相对等价 builtin Operator 的额外开销处于预注册 practical-equivalence margin 内。当前实现不提供跨进程 worker 隔离；Provider 必须遵守同一进程内的资源和协作取消合约。
 
 H2 不蕴含 H3：内存有界的系统仍可能因 head-of-line blocking、不可抢占长 kernel、join 等待或慢 sink 产生高尾延迟。每个假设分别检验。
 
@@ -535,7 +535,7 @@ BART Streams 结果作为预注册次级分析，BS-00 至 BS-02 各自至少 10
 
 `[待冻结]` 表 2 固定所有系统、构建和测量边界；任何正式 run 与表中 digest 不一致时不得进入统计聚合。
 
-| System | Revision/container | Build/dependency lock | Hardware/thread/NUMA policy | Input/transport/timed boundary | Status |
+| System | Identity/container | Build/dependency lock | Hardware/thread/NUMA policy | Input/transport/timed boundary | Status |
 | --- | --- | --- | --- | --- | --- |
 | KSpaceJet | 待填 | 待填 | 待填 | 待填 | 待冻结 |
 | Gadgetron | 待填 | 待填 | 待填 | 待填 | 待冻结 |
@@ -633,7 +633,7 @@ BART Streams 结果作为预注册次级分析，BS-00 至 BS-02 各自至少 10
 
 ### 6.3 第三方扩展的信任边界
 
-进程内 C ABI 可以隔离编译 ABI，却不能隔离任意内存分配、崩溃和 hang。受管内存命题只适用于遵守 host allocation/retention contract 的 Provider。不完全受信任的 native Provider 不属于 v1 的在线 registry；需要独立故障域时部署到单独的 reconstruction service 实例。
+进程内 C ABI 可以隔离编译 ABI，却不能隔离任意内存分配、崩溃和 hang。受管内存命题只适用于遵守 host allocation/retention contract 的 Provider。不完全受信任的 native Provider 不属于当前在线 registry；需要独立故障域时部署到单独的 reconstruction service 实例。
 
 ### 6.4 与 Gadgetron 比较的解释边界
 
@@ -693,7 +693,7 @@ MRIReco.jl 的主要定位是高性能、灵活的离线算法开发。本文不
 
 ## 10. 开放科学、伦理与数据
 
-KSpaceJet 源码、Provider SDK、matched kernels、pipeline、benchmark runner、统计脚本和非受限制 artifacts 计划在 `[待填写仓库/版本/DOI]` 发布。公开数据通过 DOI/URL 和 SHA-256 引用；受许可限制的数据只发布 manifest、原始获取说明和不含受限 payload 的转换/校验脚本。BART Streams 实验明确记录 code tag `v0.1`、解析 commit 和数据 DOI `10.5281/zenodo.17671124`；只有 license 明确允许时才再分发原始或派生数据。所有日志、trace、metrics 和 support bundle 默认删除患者标识和高基数敏感字段。
+KSpaceJet 源码、Provider SDK、matched kernels、pipeline、benchmark runner、统计脚本和非受限制 artifacts 计划在 `[待填写仓库/发布标识/DOI]` 发布。公开数据通过 DOI/URL 和 SHA-256 引用；受许可限制的数据只发布 manifest、原始获取说明和不含受限 payload 的转换/校验脚本。BART Streams 实验明确记录 code tag `v0.1`、解析 commit 和数据 DOI `10.5281/zenodo.17671124`；只有 license 明确允许时才再分发原始或派生数据。所有日志、trace、metrics 和 support bundle 默认删除患者标识和高基数敏感字段。
 
 phantom 和纯公开离线数据通常不涉及人体伦理；任何 prospective volunteer 或 patient 数据必须填写机构伦理批准编号、知情同意、匿名化流程和共享限制：`[待填写]`。
 

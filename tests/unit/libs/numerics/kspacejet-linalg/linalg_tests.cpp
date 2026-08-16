@@ -1282,6 +1282,77 @@ TEST(KSpaceJetLinalg, SupportsComplexDecompositions) {
   EXPECT_NEAR(-2.0F, (as_eigen(hermitian) * as_eigen(least_squares))(1).imag(), kCf32Tolerance);
 }
 
+TEST(KSpaceJetLinalg, UsesOnlyCallerWorkspaceForBoundedHermitianCalibrationPrimitives) {
+  using Complex = ksj::base::cf32;
+  std::array<Complex, 4U> hermitian{
+    Complex{2.0F, 0.0F},
+    Complex{0.0F, -1.0F},
+    Complex{0.0F, 1.0F},
+    Complex{2.0F, 0.0F},
+  };
+  std::array<float, 2U> eigenvalues{};
+  std::array<Complex, 4U> eigenvectors{};
+  std::array<Complex, 4U> eigensolver_workspace{};
+  const auto matrix = ksj::array::MatrixView<const Complex>{hermitian.data(), 2U, 2U};
+  const auto values = ksj::array::VectorView<float>{eigenvalues.data(), eigenvalues.size()};
+  const auto vectors = ksj::array::MatrixView<Complex>{eigenvectors.data(), 2U, 2U};
+  const auto workspace = ksj::array::MatrixView<Complex>{eigensolver_workspace.data(), 2U, 2U};
+
+  ASSERT_TRUE(ksj::linalg::self_adjoint_eigen_decomposition_with_workspace(matrix, values, vectors, workspace));
+  EXPECT_NEAR(1.0F, eigenvalues[0U], kCf32Tolerance);
+  EXPECT_NEAR(3.0F, eigenvalues[1U], kCf32Tolerance);
+  for (std::size_t row = 0U; row < 2U; ++row) {
+    for (std::size_t column = 0U; column < 2U; ++column) {
+      Complex reconstructed{};
+      for (std::size_t eigenvector = 0U; eigenvector < 2U; ++eigenvector) {
+        reconstructed += eigenvectors[row * 2U + eigenvector] * eigenvalues[eigenvector] *
+                         std::conj(eigenvectors[column * 2U + eigenvector]);
+      }
+      EXPECT_NEAR(hermitian[row * 2U + column].real(), reconstructed.real(), kCf32Tolerance);
+      EXPECT_NEAR(hermitian[row * 2U + column].imag(), reconstructed.imag(), kCf32Tolerance);
+    }
+  }
+
+  std::array<Complex, 4U> whitening{};
+  const auto whitening_view = ksj::array::MatrixView<Complex>{whitening.data(), 2U, 2U};
+  ksj::linalg::whitening_matrix_from_self_adjoint_eigen_with_workspace(
+    ksj::array::VectorView<const float>{eigenvalues.data(), eigenvalues.size()},
+    ksj::array::MatrixView<const Complex>{eigenvectors.data(), 2U, 2U}, whitening_view, 1.0e-6F);
+  Complex whitened_covariance[4U]{};
+  for (std::size_t row = 0U; row < 2U; ++row) {
+    for (std::size_t column = 0U; column < 2U; ++column) {
+      for (std::size_t left = 0U; left < 2U; ++left) {
+        for (std::size_t right = 0U; right < 2U; ++right) {
+          whitened_covariance[row * 2U + column] +=
+            std::conj(whitening[left * 2U + row]) * hermitian[left * 2U + right] * whitening[right * 2U + column];
+        }
+      }
+    }
+  }
+  EXPECT_NEAR(1.0F, whitened_covariance[0U].real(), 2.0e-4F);
+  EXPECT_NEAR(1.0F, whitened_covariance[3U].real(), 2.0e-4F);
+  EXPECT_NEAR(0.0F, std::abs(whitened_covariance[1U]), 2.0e-4F);
+  EXPECT_NEAR(0.0F, std::abs(whitened_covariance[2U]), 2.0e-4F);
+
+  std::array<Complex, 12U> channel_major_samples{
+    Complex{1.0F, 0.0F}, Complex{2.0F, 0.0F}, Complex{3.0F, 0.0F},  Complex{4.0F, 0.0F},
+    Complex{5.0F, 0.0F}, Complex{6.0F, 0.0F}, Complex{2.0F, 0.0F},  Complex{4.0F, 0.0F},
+    Complex{6.0F, 0.0F}, Complex{8.0F, 0.0F}, Complex{10.0F, 0.0F}, Complex{12.0F, 0.0F},
+  };
+  std::array<Complex, 4U> covariance{};
+  std::array<Complex, 2U> means{};
+  ksj::stats::covariance_channel_major_with_workspace(
+    ksj::array::MatrixView<const Complex>{channel_major_samples.data(), 2U, 6U},
+    ksj::array::MatrixView<Complex>{covariance.data(), 2U, 2U},
+    ksj::array::VectorView<Complex>{means.data(), means.size()}, ksj::stats::VarianceNormalization::population);
+  EXPECT_NEAR(3.5F, means[0U].real(), kCf32Tolerance);
+  EXPECT_NEAR(7.0F, means[1U].real(), kCf32Tolerance);
+  EXPECT_NEAR(35.0F / 12.0F, covariance[0U].real(), kCf32Tolerance);
+  EXPECT_NEAR(35.0F / 6.0F, covariance[1U].real(), kCf32Tolerance);
+  EXPECT_NEAR(35.0F / 6.0F, covariance[2U].real(), kCf32Tolerance);
+  EXPECT_NEAR(35.0F / 3.0F, covariance[3U].real(), kCf32Tolerance);
+}
+
 TEST(KSpaceJetLinalg, IntelComplexDecompositionCandidatesMatchReferenceSemantics) {
   auto diagonal = ksj::array::make_pooled_matrix<ksj::base::cf32>(2, 2);
   as_eigen(diagonal).setZero();

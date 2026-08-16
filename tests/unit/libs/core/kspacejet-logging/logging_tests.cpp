@@ -5,6 +5,8 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <ostream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -26,7 +28,57 @@ namespace fs = std::filesystem;
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
+struct ThrowingLogValue {};
+
+std::ostream& operator<<(std::ostream&, const ThrowingLogValue&) {
+  throw std::runtime_error("deliberate formatting failure");
+}
+
 } // namespace
+
+TEST(KSpaceJetLogging, ConfiguresDefaultConsoleIdempotently) {
+  ksj::logging::Shutdown();
+
+  std::string error_message{"stale error"};
+  ASSERT_TRUE(ksj::logging::ConfigureDefaultConsole("ksj_logging_default_console_test", &error_message))
+    << error_message;
+  EXPECT_TRUE(error_message.empty());
+  EXPECT_TRUE(ksj::logging::IsConfigured());
+
+  error_message = "stale error";
+  EXPECT_TRUE(ksj::logging::ConfigureDefaultConsole("another_logger_name", &error_message)) << error_message;
+  EXPECT_TRUE(error_message.empty());
+
+  ksj::logging::Shutdown();
+}
+
+TEST(KSpaceJetLogging, ExplicitConfigurationReplacesDefaultConsoleFallback) {
+  ksj::logging::Shutdown();
+
+  std::string error_message;
+  ASSERT_TRUE(ksj::logging::ConfigureDefaultConsole("ksj_logging_fallback_test", &error_message)) << error_message;
+
+  ksj::config::LoggingConfig config;
+  config.logger_name = "ksj_logging_explicit_test";
+  config.async = false;
+  ASSERT_TRUE(ksj::logging::Configure(config, ".", nullptr, nullptr, &error_message)) << error_message;
+
+  EXPECT_FALSE(ksj::logging::Configure(config, ".", nullptr, nullptr, &error_message));
+  EXPECT_FALSE(error_message.empty());
+
+  ksj::logging::Shutdown();
+}
+
+TEST(KSpaceJetLogging, FormattedLoggingNeverThrows) {
+  ksj::logging::Shutdown();
+
+  std::string error_message;
+  ASSERT_TRUE(ksj::logging::ConfigureDefaultConsole("ksj_logging_noexcept_test", &error_message)) << error_message;
+
+  EXPECT_NO_THROW(KSJ_LOG_INFO(ThrowingLogValue{}));
+
+  ksj::logging::Shutdown();
+}
 
 TEST(KSpaceJetLogging, RecreatesDailyLogFileAfterDeletion) {
   const fs::path log_dir = fs::temp_directory_path() / "ksj_logging_recreate_file_test";

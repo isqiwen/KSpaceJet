@@ -8,6 +8,7 @@
 #include "kspacejet/stats/detail/stats_policy.hpp"
 
 #include <cstddef>
+#include <complex>
 #include <stdexcept>
 #include <type_traits>
 
@@ -86,6 +87,56 @@ void covariance(ksj::array::MatrixView<T> samples,
   }
 
   detail::eigen::covariance(ksj::array::as_const_view(samples), output, normalization);
+}
+
+// Computes a channel covariance directly from a channel-major sample matrix.
+// The caller owns the mean workspace, so this overload has no pooled or Eigen
+// temporary allocation and is suitable for a bounded Provider callback.  The
+// output convention matches covariance(MatrixView,...):
+// output[row,column] = mean(conj(x_row - mean_row) * (x_column - mean_column)).
+template <typename T>
+  requires(detail::eigen::supported_scalar_v<T>)
+void covariance_channel_major_with_workspace(
+  const ksj::array::MatrixView<const T> channels,
+  const ksj::array::MatrixView<ksj::array::reduction_result_t<T>> output, const ksj::array::VectorView<T> means,
+  const VarianceNormalization normalization = VarianceNormalization::sample) {
+  using value_type = T;
+  using result_type = ksj::array::reduction_result_t<value_type>;
+  using real_type = ksj::array::real_scalar_t<value_type>;
+  if (channels.empty() || means.size() != channels.rows() || output.rows() != channels.rows() ||
+      output.cols() != channels.rows()) {
+    throw std::invalid_argument("channel-major covariance workspace dimension mismatch");
+  }
+  const auto sample_count = channels.cols();
+  if (sample_count == 0U || (normalization == VarianceNormalization::sample && sample_count < 2U)) {
+    throw std::invalid_argument("channel-major covariance requires sufficient samples");
+  }
+  if (channels.data() == nullptr) {
+    throw std::invalid_argument("channel-major covariance requires channel samples");
+  }
+  for (std::size_t channel = 0U; channel < channels.rows(); ++channel) {
+    value_type sum{};
+    for (std::size_t sample = 0U; sample < sample_count; ++sample) {
+      sum += channels(channel, sample);
+    }
+    means(channel) = sum / static_cast<real_type>(sample_count);
+  }
+  const auto denominator = normalization == VarianceNormalization::sample ? sample_count - 1U : sample_count;
+  for (std::size_t row = 0U; row < channels.rows(); ++row) {
+    for (std::size_t column = 0U; column < channels.rows(); ++column) {
+      result_type sum{};
+      for (std::size_t sample = 0U; sample < sample_count; ++sample) {
+        const auto left = channels(row, sample) - means(row);
+        const auto right = channels(column, sample) - means(column);
+        if constexpr (ksj::array::is_complex_v<value_type>) {
+          sum += std::conj(left) * right;
+        } else {
+          sum += left * right;
+        }
+      }
+      output(row, column) = sum / static_cast<real_type>(denominator);
+    }
+  }
 }
 
 template <typename T>

@@ -1,0 +1,16 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "readout_oversampling_remove",
+  "ports": [
+    {
+      "name": "kspace",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "input"
+    },
+    {
+      "name": "cropped_kspace",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "output"
+    }
+  ]
+}

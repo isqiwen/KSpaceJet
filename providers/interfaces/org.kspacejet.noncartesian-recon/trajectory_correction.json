@@ -1,0 +1,25 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.noncartesian-recon",
+  "operator_id": "trajectory_correction",
+  "summary": "Correct the trajectory carried with a non-Cartesian k-space frame before reconstruction.",
+  "ports": [
+    {
+      "name": "noncartesian_kspace",
+      "direction": "input",
+      "semantic_type": "ksj.noncartesian-kspace-frame"
+    },
+    {
+      "name": "corrected_noncartesian_kspace",
+      "direction": "output",
+      "semantic_type": "ksj.noncartesian-kspace-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": ["model"],
+    "optional": []
+  },
+  "notes": "The concrete correction model, trajectory representation, numerical precision, resource bounds, and terminal semantics are intentionally not frozen by this planned interface."
+}

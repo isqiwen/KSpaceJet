@@ -11,7 +11,7 @@ namespace ksj::recon::runtime {
 // The classifier consumes a normalized, public-MRD view.  Adapters may decode
 // an ISMRMRD header into this type, but public runtime headers deliberately do
 // not expose an ISMRMRD C++ type or a transport-specific message wrapper.
-inline constexpr std::string_view kAcquisitionClassificationRuleVersion = "kspacejet.acquisition-classification/v1";
+inline constexpr std::string_view kAcquisitionClassificationRuleIdentity = "kspacejet.acquisition-classification";
 
 enum class PublicMrdMessageKind : std::uint8_t {
   acquisition,
@@ -92,13 +92,13 @@ struct AcquisitionClassification {
 };
 
 struct AcquisitionClassifierConfig {
-  std::string rule_version{std::string{kAcquisitionClassificationRuleVersion}};
+  std::string rule_identity{std::string{kAcquisitionClassificationRuleIdentity}};
 
   // This is an explicit frozen predicate, not an implicit source-edge drop.
   bool ignore_dummy_scans{true};
 };
 
-// A stateless classifier whose construction validates the rule revision.  The
+// A stateless classifier whose construction validates the rule identity.  The
 // source router must route waveform/image/other messages before calling it;
 // classify() rejects non-acquisition inputs to make that boundary enforceable.
 class AcquisitionClassifier final {

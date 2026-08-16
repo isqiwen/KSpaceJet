@@ -2,7 +2,7 @@
 
 #include "kspacejet/base/result.hpp"
 #include "kspacejet/base/span.hpp"
-#include "kspacejet/recon/resource_contracts.hpp"
+#include "kspacejet/recon/planning_inputs.hpp"
 #include "kspacejet/recon/runtime/acquisition_classification.hpp"
 #include "kspacejet/recon/runtime/cartesian_frame_slot.hpp"
 #include "kspacejet/recon/runtime/scan_lifecycle.hpp"
@@ -106,10 +106,10 @@ struct SerialCartesianPipelineConfig {
   // have the same Cartesian assembly contract except for slot_id, because an
   // input frame does not select a slot implementation.
   //
-  // M1 admits new frame contexts only in nondecreasing first-seen order_key
-  // order.  This keeps synchronous output ordering provable without an
-  // unbounded "future frame" set.  A later compiled ReorderSpec/ExecutionPlan
-  // replaces this baseline restriction for deliberately interleaved scans.
+  // This baseline admits new frame contexts only in nondecreasing first-seen
+  // order_key order. It keeps synchronous output ordering provable without an
+  // unbounded "future frame" set. Deliberately interleaved scans require an
+  // explicit graph-level ordering Operator.
   std::vector<CartesianFrameSlotConfig> frame_slots;
 
   // Both limits are plan-time finite resource bounds.  completed frame

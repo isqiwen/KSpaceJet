@@ -1,0 +1,30 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.calibration",
+  "operator_id": "cartesian_grappa_kernel_calibrate",
+  "summary": "Calibrate one scan-bound Cartesian GRAPPA kernel from calibration k-space.",
+  "ports": [
+    {
+      "name": "calibration_kspace",
+      "direction": "input",
+      "semantic_type": "ksj.kspace-frame"
+    },
+    {
+      "name": "grappa_kernel",
+      "direction": "output",
+      "semantic_type": "ksj.grappa-kernel"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [
+      "kernel_shape"
+    ],
+    "optional": [
+      "calibration_region",
+      "regularization"
+    ]
+  },
+  "notes": "The future exact contract must define Cartesian calibration-region semantics, kernel orientation, key/epoch projection, completion, finite retention, resource bounds, and terminal behavior. Its immutable grappa-kernel output is consumed by org.kspacejet.cartesian-recon/cartesian_grappa_reconstruct only through a future explicit calibration binding; it is never implicit shared Provider state."
+}

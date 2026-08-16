@@ -1,0 +1,600 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "kind": "TypeRegistry",
+  "identity_hash_domain": "kspacejet.type-identity",
+  "semantic_change_policy": "A semantic change requires a distinct type_ref. Semantic documentation never mutates an existing type identity.",
+  "types": [
+    {
+      "type_ref": "ksj.kspace-frame",
+      "summary": "One complete multi-channel Cartesian k-space frame for reconstruction and k-space conditioning operators.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 3,
+          "dimensions": [
+            "channel",
+            "ky",
+            "kx"
+          ],
+          "layout": "channel_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "complete_cartesian_kspace_frame",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "channel": "receive_channel",
+          "ky": "cartesian_phase_encode_line",
+          "kx": "cartesian_readout_sample"
+        },
+        "completion": "All declared ky lines for the logical frame are present before publication."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; scan and plan metadata remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.noise-calibration-frame",
+      "summary": "One multi-channel complex noise-only calibration sample frame used to estimate a noise model.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 2,
+          "dimensions": [
+            "channel",
+            "sample"
+          ],
+          "layout": "channel_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "noise_calibration_samples",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "channel": "physical_receive_channel",
+          "sample": "noise_only_readout_sample"
+        },
+        "completion": "All samples belonging to one noise-calibration frame are present before publication."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; calibration keying and scan metadata remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.noise-model",
+      "summary": "One complex channel-domain noise whitening model produced from noise calibration data.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 2,
+          "dimensions": [
+            "output_channel",
+            "input_channel"
+          ],
+          "layout": "row_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "noise_whitening_matrix",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "output_channel": "whitened_receive_channel",
+          "input_channel": "physical_receive_channel"
+        },
+        "completion": "The matrix completely defines the immutable whitening transform for its calibration key."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; calibration keying and model provenance remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.phase-reference-frame",
+      "summary": "One multi-channel complex Cartesian phase-reference frame used to estimate phase correction.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 3,
+          "dimensions": [
+            "channel",
+            "reference_line",
+            "kx"
+          ],
+          "layout": "channel_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "phase_reference_kspace_frame",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "channel": "physical_receive_channel",
+          "reference_line": "phase_reference_line",
+          "kx": "cartesian_readout_sample"
+        },
+        "completion": "All declared phase-reference lines for the logical frame are present before publication."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; phase-reference classification and keying remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.phase-model",
+      "summary": "One complex channel-by-readout phase correction model produced from phase-reference data.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 2,
+          "dimensions": [
+            "channel",
+            "kx"
+          ],
+          "layout": "channel_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "phase_correction_phasor",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "channel": "physical_receive_channel",
+          "kx": "cartesian_readout_sample"
+        },
+        "completion": "The phasor covers every receive channel and readout sample required by its calibration key."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; calibration keying and model provenance remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.coil-compression-basis",
+      "summary": "One complex basis mapping physical receive channels to virtual channels for coil compression.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 2,
+          "dimensions": [
+            "virtual_channel",
+            "physical_channel"
+          ],
+          "layout": "row_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "coil_compression_basis_matrix",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "virtual_channel": "compressed_receive_channel",
+          "physical_channel": "physical_receive_channel"
+        },
+        "completion": "The matrix completely defines the immutable compression transform for its calibration key."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; calibration keying and basis provenance remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.coil-image-frame",
+      "summary": "One complex reconstructed Cartesian image frame retaining one value per receive channel at every pixel.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 3,
+          "dimensions": [
+            "ky",
+            "kx",
+            "channel"
+          ],
+          "layout": "row_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "complex_coil_image_frame",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "ky": "image_row_from_cartesian_phase_encode_axis",
+          "kx": "image_column_from_cartesian_readout_axis",
+          "channel": "receive_channel_at_pixel"
+        },
+        "completion": "Every image pixel and receive channel for the logical frame is present before publication."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; scan and image-frame metadata remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.complex-image-frame",
+      "summary": "One complex reconstructed two-dimensional image plane after channel combination or model-based reconstruction.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 2,
+          "dimensions": [
+            "ky",
+            "kx"
+          ],
+          "layout": "row_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "reconstructed_complex_image_plane",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "ky": "image_row_from_cartesian_phase_encode_axis",
+          "kx": "image_column_from_cartesian_readout_axis"
+        },
+        "completion": "Every complex output pixel for the logical frame is present before publication."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; scan and image-frame metadata remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.sensitivity-map",
+      "summary": "One complex spatial coil sensitivity map used by sensitivity-encoded reconstruction or adaptive coil combination.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 3,
+          "dimensions": [
+            "ky",
+            "kx",
+            "channel"
+          ],
+          "layout": "row_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "coil_sensitivity_map",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "ky": "image_row_from_cartesian_phase_encode_axis",
+          "kx": "image_column_from_cartesian_readout_axis",
+          "channel": "receive_channel_at_pixel"
+        },
+        "completion": "Every image pixel and channel sensitivity required by the calibration key is present before publication."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; calibration keying and sensitivity-map provenance remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.noncartesian-kspace-frame",
+      "summary": "One complete multi-channel non-Cartesian k-space sample frame with its trajectory carried on a separate typed port.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "complex_float32",
+          "rank": 2,
+          "dimensions": [
+            "channel",
+            "sample"
+          ],
+          "layout": "channel_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "noncartesian_kspace_samples",
+        "numeric_encoding": "little_endian_interleaved_ieee754_binary32_real_imaginary",
+        "dimension_meanings": {
+          "channel": "receive_channel",
+          "sample": "noncartesian_kspace_sample"
+        },
+        "completion": "All non-Cartesian samples for the logical frame are present before publication."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; trajectory association and scan metadata remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.trajectory-frame",
+      "summary": "One float32 non-Cartesian trajectory frame aligned sample-for-sample with a non-Cartesian k-space frame.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "float32",
+          "rank": 2,
+          "dimensions": [
+            "sample",
+            "coordinate"
+          ],
+          "layout": "row_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "noncartesian_sampling_trajectory",
+        "numeric_encoding": "little_endian_ieee754_binary32",
+        "dimension_meanings": {
+          "sample": "noncartesian_kspace_sample",
+          "coordinate": "trajectory_coordinate"
+        },
+        "completion": "Every trajectory coordinate for the logical frame's non-Cartesian samples is present before publication."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; trajectory units and scan metadata remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.image-frame",
+      "summary": "One reconstructed two-dimensional float32 scalar image plane used by the implemented Cartesian reconstruction and image-ops operators.",
+      "identity": {
+        "payload": {
+          "kind": "buffer_handle",
+          "element_type": "float32",
+          "rank": 2,
+          "dimensions": [
+            "ky",
+            "kx"
+          ],
+          "layout": "row_major_contiguous",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 64
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "reconstructed_scalar_image_plane",
+        "numeric_encoding": "little_endian_ieee754_binary32",
+        "dimension_meanings": {
+          "ky": "image_row_from_cartesian_phase_encode_axis",
+          "kx": "image_column_from_cartesian_readout_axis"
+        },
+        "intensity": "One float32 scalar per output pixel. The Cartesian reconstruction emits finite non-negative magnitudes; later image Operators own any range or non-finite transformation semantics."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No per-item metadata bytes are defined; scan and plan metadata remain control-plane artifacts."
+      }
+    },
+    {
+      "type_ref": "ksj.control-message",
+      "summary": "One immutable host-resident opaque control or diagnostic message envelope for generic public-adapter and control-plane graph ports.",
+      "identity": {
+        "payload": {
+          "kind": "message_handle",
+          "element_type": "none",
+          "rank": 0,
+          "dimensions": [],
+          "layout": "opaque",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 8
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "opaque_control_or_diagnostic_message_envelope",
+        "numeric_encoding": "opaque_provider_defined_message_handle",
+        "dimension_meanings": {},
+        "message_contract": "The handle denotes one complete immutable host-resident control or diagnostic envelope. Its payload representation, ownership details, and internal fields are opaque to generic graph adapters; only this TypeRef establishes compatibility."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No separately-addressable metadata bytes are defined. Any message details travel inside the opaque handle under its owning component's contract."
+      }
+    },
+    {
+      "type_ref": "ismrmrd.acquisition",
+      "summary": "One immutable host-resident opaque ISMRMRD acquisition message envelope accepted at a public PipelineDefinition ingress.",
+      "identity": {
+        "payload": {
+          "kind": "message_handle",
+          "element_type": "none",
+          "rank": 0,
+          "dimensions": [],
+          "layout": "opaque",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 8
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "ismrmrd_acquisition_message_envelope",
+        "numeric_encoding": "opaque_ismrmrd_acquisition_message_handle",
+        "dimension_meanings": {},
+        "message_contract": "The handle denotes one complete ISMRMRD acquisition envelope, including its acquisition header and any sample or trajectory payload owned by the ISMRMRD binding. Generic graph code neither decodes nor retains internal fields outside the owning message-handle contract."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No separately-addressable metadata bytes are defined. ISMRMRD acquisition header and attribute semantics remain inside the opaque message handle."
+      }
+    },
+    {
+      "type_ref": "ismrmrd.waveform",
+      "summary": "One immutable host-resident opaque ISMRMRD waveform message envelope accepted at a public PipelineDefinition ingress.",
+      "identity": {
+        "payload": {
+          "kind": "message_handle",
+          "element_type": "none",
+          "rank": 0,
+          "dimensions": [],
+          "layout": "opaque",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 8
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "ismrmrd_waveform_message_envelope",
+        "numeric_encoding": "opaque_ismrmrd_waveform_message_handle",
+        "dimension_meanings": {},
+        "message_contract": "The handle denotes one complete ISMRMRD waveform envelope, including its waveform header and waveform data owned by the ISMRMRD binding. Generic graph code neither decodes nor retains internal fields outside the owning message-handle contract."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No separately-addressable metadata bytes are defined. ISMRMRD waveform header and sample semantics remain inside the opaque message handle."
+      }
+    },
+    {
+      "type_ref": "ismrmrd.image",
+      "summary": "One immutable host-resident opaque ISMRMRD image message envelope accepted at a public PipelineDefinition egress.",
+      "identity": {
+        "payload": {
+          "kind": "message_handle",
+          "element_type": "none",
+          "rank": 0,
+          "dimensions": [],
+          "layout": "opaque",
+          "strides": "canonical",
+          "explicit_byte_strides": []
+        },
+        "memory": {
+          "allowed_domains": [
+            "host_normal"
+          ],
+          "min_alignment_bytes": 8
+        },
+        "mutability": "immutable_after_publish"
+      },
+      "payload_semantics": {
+        "payload_role": "ismrmrd_image_message_envelope",
+        "numeric_encoding": "opaque_ismrmrd_image_message_handle",
+        "dimension_meanings": {},
+        "message_contract": "The handle denotes one complete ISMRMRD image envelope, including its image header, pixels, and attributes owned by the ISMRMRD binding. Generic graph code neither decodes nor retains internal fields outside the owning message-handle contract."
+      },
+      "metadata_semantics": {
+        "kind": "none",
+        "meaning": "No separately-addressable metadata bytes are defined. ISMRMRD image header, pixel, and attribute semantics remain inside the opaque message handle."
+      }
+    }
+  ]
+}

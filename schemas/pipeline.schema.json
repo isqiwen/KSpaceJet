@@ -1,0 +1,468 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/pipeline.schema.json",
+  "title": "KSpaceJet PipelineDefinition",
+  "description": "Authored, scan-independent reconstruction graph. Nodes select a Provider operator and configuration only; ports are owned exclusively by the resolved Provider contract.",
+  "type": "object",
+  "required": [
+    "kind",
+    "pipeline",
+    "allowed_profiles",
+    "parameters",
+    "provider_requirements",
+    "nodes",
+    "edges",
+    "bindings",
+    "annotations"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "PipelineDefinition"
+    },
+    "pipeline": {
+      "$ref": "#/$defs/pipelineIdentity"
+    },
+    "allowed_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/executionProfile"
+      }
+    },
+    "parameters": {
+      "$ref": "#/$defs/authoredObject"
+    },
+    "provider_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/providerRequirement"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "bindings": {
+      "$ref": "#/$defs/bindings"
+    },
+    "annotations": {
+      "$ref": "#/$defs/annotations"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "qualifiedIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "executionProfile": {
+      "type": "string",
+      "enum": [
+        "offline",
+        "bounded-online",
+        "isolated-strict-online",
+        "deadline-qualified-online",
+        "research-unbounded"
+      ]
+    },
+    "pipelineIdentity": {
+      "type": "object",
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/qualifiedIdentifier"
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "additionalProperties": false
+    },
+    "providerRequirement": {
+      "type": "object",
+      "required": [
+        "alias",
+        "provider_id"
+      ],
+      "properties": {
+        "alias": {
+          "$ref": "#/$defs/identifier"
+        },
+        "provider_id": {
+          "$ref": "#/$defs/qualifiedIdentifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "operatorReference": {
+      "type": "object",
+      "required": [
+        "provider",
+        "id"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/identifier"
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "id",
+        "operator",
+        "config"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "operator": {
+          "$ref": "#/$defs/operatorReference"
+        },
+        "config": {
+          "$ref": "#/$defs/authoredObject"
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodePortReference": {
+      "type": "object",
+      "required": [
+        "node",
+        "port"
+      ],
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/identifier"
+        },
+        "port": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": [
+        "id",
+        "from",
+        "to"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "from": {
+          "$ref": "#/$defs/nodePortReference"
+        },
+        "to": {
+          "$ref": "#/$defs/nodePortReference"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ingressBinding": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "to"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "to": {
+          "$ref": "#/$defs/nodePortReference"
+        }
+      },
+      "additionalProperties": false
+    },
+    "egressBinding": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "from"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "from": {
+          "$ref": "#/$defs/nodePortReference"
+        }
+      },
+      "additionalProperties": false
+    },
+    "calibrationBinding": {
+      "type": "object",
+      "required": [
+        "id",
+        "producer",
+        "consumers"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "producer": {
+          "$ref": "#/$defs/nodePortReference"
+        },
+        "consumers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nodePortReference"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "object",
+      "required": [
+        "ingress",
+        "egress",
+        "calibration",
+        "merge"
+      ],
+      "properties": {
+        "ingress": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/ingressBinding"
+          }
+        },
+        "egress": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/egressBinding"
+          }
+        },
+        "calibration": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/calibrationBinding"
+          }
+        },
+        "merge": {
+          "type": "array",
+          "maxItems": 0,
+          "description": "Generic merging is deliberately deferred from the M0/M1 runtime."
+        }
+      },
+      "additionalProperties": false
+    },
+    "authoredValue": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": " canonical artifacts permit only exact IEEE-754-safe JSON integers. Decimal quantities must use a schema-defined string representation until a canonical decimal format is introduced."
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/authoredValue"
+          }
+        },
+        {
+          "$ref": "#/$defs/authoredObject"
+        }
+      ]
+    },
+    "authoredObject": {
+      "type": "object",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "task_count"
+            ]
+          },
+          {
+            "required": [
+              "tasks"
+            ]
+          },
+          {
+            "required": [
+              "key_shards"
+            ]
+          },
+          {
+            "required": [
+              "dense_dimensions"
+            ]
+          },
+          {
+            "required": [
+              "slot_count"
+            ]
+          },
+          {
+            "required": [
+              "max_live_keys"
+            ]
+          },
+          {
+            "required": [
+              "key_domain_bound"
+            ]
+          },
+          {
+            "required": [
+              "host_metadata_charged_bytes"
+            ]
+          },
+          {
+            "required": [
+              "shard_count"
+            ]
+          },
+          {
+            "required": [
+              "queue_capacity"
+            ]
+          },
+          {
+            "required": [
+              "queue_bytes"
+            ]
+          },
+          {
+            "required": [
+              "edge_capacity"
+            ]
+          },
+          {
+            "required": [
+              "worker_count"
+            ]
+          },
+          {
+            "required": [
+              "num_workers"
+            ]
+          },
+          {
+            "required": [
+              "threads"
+            ]
+          },
+          {
+            "required": [
+              "num_threads"
+            ]
+          },
+          {
+            "required": [
+              "numa_home"
+            ]
+          },
+          {
+            "required": [
+              "runtime_queue"
+            ]
+          },
+          {
+            "required": [
+              "runtime_threads"
+            ]
+          },
+          {
+            "required": [
+              "gpu_stream_count"
+            ]
+          },
+          {
+            "required": [
+              "batch_size"
+            ]
+          },
+          {
+            "required": [
+              "memory_reservation"
+            ]
+          }
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/authoredValue"
+      }
+    },
+    "annotations": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/authoredValue"
+      }
+    }
+  }
+}

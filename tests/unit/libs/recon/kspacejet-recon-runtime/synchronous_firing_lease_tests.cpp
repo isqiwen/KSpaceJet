@@ -17,6 +17,33 @@
 #include <string_view>
 #include <utility>
 
+namespace ksj::recon::runtime {
+
+// The preaccounted path is deliberately not a public raw-span host API. This
+// narrow test friend exercises the same private graph capability that the
+// executor uses, including its frozen staging proof.
+class SynchronousFiringLeaseHostTestAccess final {
+public:
+  [[nodiscard]] static ksj::base::Result<SynchronousFiringLeaseHost>
+  create_preaccounted(SynchronousFiringLeaseConfig config) {
+    return SynchronousFiringLeaseHost::create_preaccounted_staging(std::move(config));
+  }
+
+  [[nodiscard]] static ksj::base::Result<SynchronousFiringResult>
+  process(SynchronousFiringLeaseHost& host, const SynchronousProviderInvocation& invocation,
+          const SynchronousFiringRequest& request) {
+    return host.process_preaccounted_output(invocation, request);
+  }
+
+  [[nodiscard]] static ksj::base::Result<SynchronousFiringResult>
+  on_scan_end(SynchronousFiringLeaseHost& host, const SynchronousProviderInvocation& invocation,
+              const SynchronousFiringRequest& request, const std::uint64_t completed_input_item_count) {
+    return host.on_scan_end_preaccounted_output(invocation, request, completed_input_item_count);
+  }
+};
+
+} // namespace ksj::recon::runtime
+
 namespace {
 
 using ksj::base::Status;
@@ -30,6 +57,7 @@ using ksj::recon::runtime::ResourceVectorLedger;
 using ksj::recon::runtime::ResourceVectorLedgerUsage;
 using ksj::recon::runtime::SynchronousFiringLeaseConfig;
 using ksj::recon::runtime::SynchronousFiringLeaseHost;
+using ksj::recon::runtime::SynchronousFiringLeaseHostTestAccess;
 using ksj::recon::runtime::SynchronousFiringOutcome;
 using ksj::recon::runtime::SynchronousFiringRequest;
 using ksj::recon::runtime::SynchronousInputBatch;
@@ -38,7 +66,7 @@ using ksj::recon::runtime::SynchronousOutputGrantSpec;
 using ksj::recon::runtime::SynchronousProviderInvocation;
 
 constexpr char kTestOperatorId[] = "synchronous_firing_lease_test_operator";
-constexpr char kReferenceOperatorId[] = "cartesian_reference_sink";
+constexpr char kNoOutputTestOperatorId[] = "synchronous_firing_lease_no_output_test_operator";
 
 [[nodiscard]] ksj_provider_abi_header header(const std::uint32_t size, const std::uint64_t capabilities = 0U) noexcept {
   return ksj_provider_abi_header_make(size, capabilities);
@@ -71,18 +99,16 @@ constexpr char kReferenceOperatorId[] = "cartesian_reference_sink";
 struct TestPayloadType {
   TestPayloadType() {
     value.abi = header(sizeof(value));
-    value.type_id = text("org.kspacejet.tests.host-pageable-bytes", 39U);
-    value.revision = 1U;
+    value.type_ref =
+      text("org.kspacejet.tests.host-pageable-bytes", sizeof("org.kspacejet.tests.host-pageable-bytes") - 1U);
+    value.type_identity_digest = digest(0x21U);
     value.payload_kind = 1U;
-    value.payload_schema_digest = digest(0x11U);
-    value.descriptor_digest = digest(0x21U);
     value.element_type = 1U;
     value.rank = 0U;
     value.dimension_names = nullptr;
     value.allowed_memory_domains = KSJ_PROVIDER_MEMORY_HOST_PAGEABLE;
     value.minimum_alignment = 1U;
     value.mutability = 0U;
-    value.metadata_schema_digest = digest(0x31U);
   }
 
   ksj_type_descriptor_view value{};
@@ -213,21 +239,16 @@ struct ProviderInstance {
   if (api == nullptr || instance.lease.descriptor() == nullptr) {
     return Status::InternalError("loaded test Provider has no ABI table");
   }
-  const auto descriptor =
-    std::find_if(instance.lease.descriptor()->operators.begin(), instance.lease.descriptor()->operators.end(),
-                 [operator_id](const auto& candidate) {
-                   return candidate.operator_id == operator_id;
-                 });
-  if (descriptor == instance.lease.descriptor()->operators.end()) {
+  if (std::find_if(instance.lease.descriptor()->operators.begin(), instance.lease.descriptor()->operators.end(),
+                   [operator_id](const auto& candidate) {
+                     return candidate.operator_id == operator_id;
+                   }) == instance.lease.descriptor()->operators.end()) {
     return Status::NotFound("loaded test Provider does not expose the requested operator");
   }
 
   ksj_operator_create_request create{};
   create.abi = header(sizeof(create));
   create.operator_id = text(operator_id.data(), operator_id.size());
-  create.required_contract_digest.abi = header(sizeof(create.required_contract_digest));
-  std::copy(descriptor->contract_digest.begin(), descriptor->contract_digest.end(),
-            create.required_contract_digest.bytes);
   create.canonical_config.abi = header(sizeof(create.canonical_config));
   create.canonical_config.data = canonical_config.data();
   create.canonical_config.size = canonical_config.size();
@@ -276,10 +297,6 @@ struct ProviderInstance {
 
 [[nodiscard]] std::filesystem::path test_provider_path() {
   return std::filesystem::path(KSJ_SYNCHRONOUS_FIRING_LEASE_TEST_PROVIDER_MODULE);
-}
-
-[[nodiscard]] std::filesystem::path reference_provider_path() {
-  return std::filesystem::path(KSJ_REFERENCE_CARTESIAN_PROVIDER_MODULE);
 }
 
 struct RequestStorage {
@@ -383,7 +400,8 @@ TEST(SynchronousFiringLease, PersistentStagingConsumesSharedLedgerUntilHostDestr
 
 TEST(SynchronousFiringLease, PersistentStagingRemainsAfterDynamicFiringIsReleased) {
   ProviderInstance provider;
-  ASSERT_TRUE(initialize_provider(provider, reference_provider_path(), kReferenceOperatorId, "{}").ok());
+  ASSERT_TRUE(
+    initialize_provider(provider, test_provider_path(), kNoOutputTestOperatorId, "{\"mode\":\"done-no-output\"}").ok());
   auto ledger = make_ledger(64U * 1024U, 64U);
   {
     auto host = make_host(ledger, 0U, 0U, 0U);
@@ -392,7 +410,7 @@ TEST(SynchronousFiringLease, PersistentStagingRemainsAfterDynamicFiringIsRelease
     EXPECT_EQ(0U, persistent.cpu_leaf_permits);
 
     RequestStorage storage;
-    auto result = host.process(provider.invocation(kReferenceOperatorId), ordinary_request(storage, false));
+    auto result = host.process(provider.invocation(kNoOutputTestOperatorId), ordinary_request(storage, false));
     ASSERT_TRUE(result.ok()) << result.status();
     EXPECT_EQ(SynchronousFiringOutcome::done, result.value().outcome);
     expect_only_persistent_usage(ledger, persistent);
@@ -437,6 +455,86 @@ TEST(SynchronousFiringLease, CommitsBoundedOutputAndNormalTerminalThroughOneHost
   EXPECT_EQ(SynchronousFiringOutcome::done, terminal_result.value().outcome);
   EXPECT_EQ(1U, terminal_result.value().committed_output_count);
   EXPECT_EQ(1U, terminal_commits);
+}
+
+TEST(SynchronousFiringLease, PreaccountedGraphPathSupportsTwoBatchesTwoOutputsAndTerminal) {
+  ProviderInstance provider;
+  ASSERT_TRUE(
+    initialize_provider(provider, test_provider_path(), kTestOperatorId, "{\"mode\":\"done-two-output\"}").ok());
+
+  // The graph has already committed its pool and ABI staging charge. The
+  // shared ledger contains only the dynamic CPU firing reservation, proving
+  // that the host does not recharge either of the two output pool slots.
+  auto ledger = make_ledger(0U, 0U);
+  SynchronousFiringLeaseConfig config{ledger, resource_vector(0U, 0U)};
+  config.maximum_input_batches = 2U;
+  config.maximum_input_items = 2U;
+  config.maximum_output_grants = 2U;
+  config.maximum_input_payload_bytes = 8U;
+  config.maximum_scratch_bytes = 0U;
+  config.maximum_metadata_bytes = 64U;
+  config.frozen_staging_charged_bytes = 64U * 1024U;
+  config.frozen_staging_descriptor_count = 32U;
+  auto host = SynchronousFiringLeaseHostTestAccess::create_preaccounted(std::move(config));
+  ASSERT_TRUE(host.ok()) << host.status();
+
+  TestPayloadType type;
+  std::array<std::byte, 4U> first_input{{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}, std::byte{0x04}}};
+  std::array<std::byte, 4U> second_input{{std::byte{0x05}, std::byte{0x06}, std::byte{0x07}, std::byte{0x08}}};
+  std::array<SynchronousInputItem, 1U> first_items{
+    {{.payload = first_input, .type = type.value, .semantic_key_hash = 11U, .order_key = 12U, .item_ordinal = 13U}}};
+  std::array<SynchronousInputItem, 1U> second_items{
+    {{.payload = second_input, .type = type.value, .semantic_key_hash = 11U, .order_key = 12U, .item_ordinal = 13U}}};
+  std::array<SynchronousInputBatch, 2U> batches{{
+    {.items = first_items, .input_port = 0U, .batch_id = 13U, .order_domain = 0U},
+    {.items = second_items, .input_port = 1U, .batch_id = 13U, .order_domain = 0U},
+  }};
+  std::array<std::byte, 16U> first_output{};
+  std::array<std::byte, 16U> second_output{};
+  std::array<SynchronousOutputGrantSpec, 2U> outputs{{
+    {.storage = first_output, .output_port = 0U, .maximum_item_count = 1U, .required_type = type.value},
+    {.storage = second_output, .output_port = 1U, .maximum_item_count = 1U, .required_type = type.value},
+  }};
+  std::uint32_t commits = 0U;
+  SynchronousFiringRequest request{
+    .resource_occurrence_id = 1U,
+    .slot_generation = 2U,
+    .terminal_epoch = 7U,
+    .input_batches = batches,
+    .output_grants = outputs,
+    .commit_outputs =
+      [&commits](const std::span<const ksj::recon::runtime::SynchronousSealedOutput> sealed) {
+        ++commits;
+        return sealed.size() == 2U && sealed[0].output_slot == 0U && sealed[1].output_slot == 1U
+                 ? Status::Ok()
+                 : Status::InternalError("unexpected graph output set");
+      },
+  };
+  auto ordinary =
+    SynchronousFiringLeaseHostTestAccess::process(host.value(), provider.invocation(kTestOperatorId), request);
+  ASSERT_TRUE(ordinary.ok()) << ordinary.status();
+  EXPECT_EQ(SynchronousFiringOutcome::done, ordinary.value().outcome);
+  EXPECT_EQ(2U, ordinary.value().consumed_input_item_count);
+  EXPECT_EQ(2U, ordinary.value().committed_output_count);
+  EXPECT_EQ(1U, commits);
+  EXPECT_EQ(std::byte{0x5A}, first_output.front());
+  EXPECT_EQ(std::byte{0x5A}, second_output.front());
+
+  std::uint32_t terminal_commits = 0U;
+  auto terminal = request;
+  terminal.input_batches = {};
+  terminal.commit_outputs =
+    [&terminal_commits](const std::span<const ksj::recon::runtime::SynchronousSealedOutput> sealed) {
+      ++terminal_commits;
+      return sealed.size() == 2U ? Status::Ok() : Status::InternalError("unexpected terminal graph output set");
+    };
+  auto ended =
+    SynchronousFiringLeaseHostTestAccess::on_scan_end(host.value(), provider.invocation(kTestOperatorId), terminal, 2U);
+  ASSERT_TRUE(ended.ok()) << ended.status();
+  EXPECT_EQ(SynchronousFiringOutcome::done, ended.value().outcome);
+  EXPECT_EQ(2U, ended.value().committed_output_count);
+  EXPECT_EQ(1U, terminal_commits);
+  expect_ledger_idle(ledger);
 }
 
 TEST(SynchronousFiringLease, RejectsMappedButUnsettledGrantAndReleasesReservation) {
@@ -629,6 +727,21 @@ TEST(SynchronousFiringLease, MapsThrownOrDirectAbiContractViolationToContractOut
   expect_only_persistent_usage(ledger, persistent);
 }
 
+TEST(SynchronousFiringLease, PreservesBoundedProviderFailureStatusAndMessage) {
+  ProviderInstance provider;
+  ASSERT_TRUE(
+    initialize_provider(provider, test_provider_path(), kTestOperatorId, "{\"mode\":\"failed-with-error\"}").ok());
+  auto host = make_host(16U, 3U);
+  RequestStorage storage;
+  auto result = host.process(provider.invocation(kTestOperatorId), ordinary_request(storage, false));
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(SynchronousFiringOutcome::structured_failure, result.value().outcome);
+  EXPECT_EQ(KSJ_STATUS_FAILED_PRECONDITION, result.value().provider_status);
+  EXPECT_EQ(KSJ_STATUS_FAILED_PRECONDITION, result.value().provider_failure.status);
+  EXPECT_EQ("test Provider rejected ABI input", result.value().provider_failure.message());
+  EXPECT_FALSE(result.value().provider_failure.message_truncated);
+}
+
 TEST(SynchronousFiringLease, RejectsConcurrentEntryWithoutMutatingTheLiveLease) {
   ProviderInstance provider;
   ASSERT_TRUE(initialize_provider(provider, test_provider_path(), kTestOperatorId, "{\"mode\":\"done-output\"}").ok());
@@ -788,17 +901,19 @@ TEST(SynchronousFiringLease, SharedLedgerRejectsCompetingHostBundleAndAdmitsAfte
   expect_ledger_idle(ledger);
 }
 
-TEST(SynchronousFiringLease, RunsTheRealReferenceProviderProcessAndNormalEndWithoutOutput) {
+TEST(SynchronousFiringLease, RunsZeroOutputProviderProcessAndNormalEnd) {
   ProviderInstance provider;
-  ASSERT_TRUE(initialize_provider(provider, reference_provider_path(), kReferenceOperatorId, "{}").ok());
+  ASSERT_TRUE(
+    initialize_provider(provider, test_provider_path(), kNoOutputTestOperatorId, "{\"mode\":\"done-no-output\"}").ok());
   auto host = make_host(0U, 2U, 0U);
   RequestStorage storage;
   auto request = ordinary_request(storage, false);
 
-  auto result = host.process(provider.invocation(kReferenceOperatorId), request);
+  auto result = host.process(provider.invocation(kNoOutputTestOperatorId), request);
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(SynchronousFiringOutcome::done, result.value().outcome);
   EXPECT_EQ(1U, result.value().consumed_input_item_count);
+  EXPECT_EQ(0U, result.value().sealed_output_count);
   EXPECT_EQ(0U, result.value().committed_output_count);
 
   SynchronousFiringRequest terminal{
@@ -806,9 +921,10 @@ TEST(SynchronousFiringLease, RunsTheRealReferenceProviderProcessAndNormalEndWith
     .slot_generation = 2U,
     .terminal_epoch = 7U,
   };
-  auto terminal_result = host.on_scan_end(provider.invocation(kReferenceOperatorId), terminal, 1U);
+  auto terminal_result = host.on_scan_end(provider.invocation(kNoOutputTestOperatorId), terminal, 1U);
   ASSERT_TRUE(terminal_result.ok()) << terminal_result.status();
   EXPECT_EQ(SynchronousFiringOutcome::done, terminal_result.value().outcome);
+  EXPECT_EQ(0U, terminal_result.value().sealed_output_count);
   EXPECT_EQ(0U, terminal_result.value().committed_output_count);
   EXPECT_FALSE(host.snapshot().callback_active);
 
@@ -817,7 +933,7 @@ TEST(SynchronousFiringLease, RunsTheRealReferenceProviderProcessAndNormalEndWith
   unsupported_terminal.commit_outputs = [](std::span<const ksj::recon::runtime::SynchronousSealedOutput>) {
     return Status::Ok();
   };
-  auto rejected = host.on_scan_end(provider.invocation(kReferenceOperatorId), unsupported_terminal, 1U);
+  auto rejected = host.on_scan_end(provider.invocation(kNoOutputTestOperatorId), unsupported_terminal, 1U);
   ASSERT_FALSE(rejected.ok());
   EXPECT_EQ(ksj::base::StatusCode::validation_error, rejected.status().code());
 }

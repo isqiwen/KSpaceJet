@@ -1,4 +1,4 @@
-#include "kspacejet/provider/v1/provider.h"
+#include "kspacejet/provider/provider.h"
 
 #include <cstdint>
 
@@ -45,14 +45,14 @@ ksj_status KSJ_PROVIDER_CALL operator_on_start(ksj_provider_operator*, ksj_execu
 }
 
 ksj_status KSJ_PROVIDER_CALL operator_process_batch(ksj_provider_operator*, ksj_execution_context*, ksj_key_state*,
-                                                    ksj_firing_lease*, const ksj_firing_lease_callbacks_v1*,
+                                                    ksj_firing_lease*, const ksj_firing_lease_callbacks*,
                                                     ksj_process_result*, ksj_error_view*) {
   return KSJ_STATUS_OK;
 }
 
 ksj_status KSJ_PROVIDER_CALL operator_on_scan_end(ksj_provider_operator*, ksj_execution_context*, ksj_key_state*,
                                                   const ksj_scan_end_descriptor*, ksj_firing_lease*,
-                                                  const ksj_firing_lease_callbacks_v1*, ksj_process_result*,
+                                                  const ksj_firing_lease_callbacks*, ksj_process_result*,
                                                   ksj_error_view*) {
   return KSJ_STATUS_OK;
 }
@@ -72,7 +72,7 @@ void KSJ_PROVIDER_CALL operator_destroy(ksj_provider_operator*) {}
 
 KSJ_PROVIDER_ENTRY ksj_status KSJ_PROVIDER_CALL ksj_provider_query(const ksj_provider_query_request*,
                                                                    ksj_provider_descriptor* out_descriptor,
-                                                                   ksj_provider_api_v1* out_api, ksj_error_view*) {
+                                                                   ksj_provider_api* out_api, ksj_error_view*) {
   if (out_descriptor == nullptr || out_api == nullptr) {
     return KSJ_STATUS_INVALID_ARGUMENT;
   }
@@ -80,10 +80,7 @@ KSJ_PROVIDER_ENTRY ksj_status KSJ_PROVIDER_CALL ksj_provider_query(const ksj_pro
   static ksj_operator_descriptor operator_descriptor{};
   operator_descriptor.abi = ksj_provider_abi_header_make(sizeof(operator_descriptor), 0U);
   operator_descriptor.operator_id = utf8_view(kOperatorId, sizeof(kOperatorId) - 1U);
-  operator_descriptor.interface_revision = 1U;
   operator_descriptor.max_in_flight = 1U;
-  operator_descriptor.interface_digest = digest(0x10U);
-  operator_descriptor.contract_digest = digest(0x40U);
   operator_descriptor.thread_safety = KSJ_PROVIDER_SERIAL_INSTANCE;
   operator_descriptor.max_private_threads = 0U;
   operator_descriptor.max_input_items_per_firing = 1U;
@@ -95,17 +92,9 @@ KSJ_PROVIDER_ENTRY ksj_status KSJ_PROVIDER_CALL ksj_provider_query(const ksj_pro
 
   out_descriptor->abi = ksj_provider_abi_header_make(sizeof(*out_descriptor), KSJ_PROVIDER_CAP_SYNC_PROCESS);
   out_descriptor->provider_id = utf8_view(kProviderId, sizeof(kProviderId) - 1U);
-  out_descriptor->version.abi = ksj_provider_abi_header_make(sizeof(out_descriptor->version), 0U);
-  out_descriptor->version.major = 1U;
-  out_descriptor->version.minor = 0U;
-  out_descriptor->version.patch = 0U;
-  out_descriptor->version.prerelease = 0U;
-#if defined(KSJ_PROVIDER_LOADER_TEST_BAD_ABI)
-  out_descriptor->provider_abi_major = 99U;
-#else
-  out_descriptor->provider_abi_major = KSJ_PROVIDER_ABI_MAJOR;
+#if defined(KSJ_PROVIDER_LOADER_TEST_BAD_HEADER)
+  out_descriptor->abi.reserved0 = 99U;
 #endif
-  out_descriptor->provider_abi_minor = KSJ_PROVIDER_ABI_MINOR;
   out_descriptor->bundle_digest = digest(0x80U);
   out_descriptor->operator_count = 1U;
   out_descriptor->reserved0 = 0U;

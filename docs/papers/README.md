@@ -4,7 +4,7 @@
 
 ## 架构与理论基线
 
-- [PipelineDefinition v1 与重建流水线设计](../architecture/pipeline_definition_v1.md)：定义版本化声明图、OperatorContract、ISMRMRD scan 编译、CalibrationReady、join/reorder、EndOfInput 与终态语义。
+- [PipelineDefinition 与重建流水线设计](../architecture/pipeline_definition.md)：定义声明图、OperatorContract、ISMRMRD scan 编译、CalibrationReady、join/reorder、EndOfInput 与终态语义。
 - [MRI 流水线、并行模型与可证明执行理论](../architecture/streaming_pipeline_parallelism_theory.md)：定义 scan-specific `ExecutionPlan`、OperatorInstance 内部 `KeyShard`、校准进展条件、资源/并行模型、条件性定理、机器可验证证书和实现轨迹精化边界。
 
 ## 当前稿件
@@ -60,7 +60,7 @@ Markdown 中的架构、流程、时序、状态和依赖关系图统一使用 M
 
 稿件进入投稿候选状态前必须同时满足：
 
-1. 所有核心方法都有实现、测试、版本化配置和公开 commit。
+1. 所有核心方法都有实现、测试、canonical 配置和公开 commit。
 2. Gadgetron 对照遵守冻结的公平比较协议，且没有仅对 KSpaceJet 有利的后端、线程或输入差异。
 3. BART Streams 次级矩阵已完成，或以可审计的正式 waiver 关闭；完成时每个 case 都有独立 `comparison_class` 与 `evidence_role`，waiver 时包含阻断证据、已完成步骤和删除/收缩的 claim。
 4. MRIReco.jl claim gate 已执行：没有对应证据的算法速度、工具箱完整度或开发便利性主张已删除。

@@ -1,0 +1,25 @@
+#pragma once
+
+#include "kspacejet/provider/provider.h"
+
+// Concrete definitions for the Provider-owned opaque ABI handles. Keep only
+// state genuinely shared by this Provider here. Do not declare an Operator's
+// descriptor or lifecycle callbacks in this file.
+struct ksj_provider_operator;
+
+struct ksj_execution_context {
+  ksj_provider_operator* owner{nullptr};
+};
+
+struct ksj_key_state {
+  ksj_provider_operator* owner{nullptr};
+};
+
+struct ksj_provider_operator {
+  ksj_execution_context context{};
+  ksj_key_state key_state{};
+  bool context_active{false};
+  bool key_state_active{false};
+  // TODO: add the selected Operator's configuration/state here only when it
+  // is truly Provider-shared. Otherwise keep it private to that Operator.
+};

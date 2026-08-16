@@ -42,6 +42,26 @@ include(CTest)
 include(KSpaceJetBuildSupport)
 include(KSpaceJetStaticAnalysis)
 
+# The type registry is authored once and its public C++/C headers are checked in.  Builds deliberately validate rather
+# than regenerate them: a stale generated API must fail the build instead of silently changing an artifact under the
+# developer's feet.
+find_package(
+  Python3
+  COMPONENTS Interpreter
+  REQUIRED)
+add_custom_target(
+  ksj_type_registry_check ALL
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/type_registry/generate.py" --project-root
+          "${CMAKE_CURRENT_SOURCE_DIR}" --check
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/types/registry.json"
+          "${CMAKE_CURRENT_SOURCE_DIR}/schemas/type-registry.schema.json"
+          "${CMAKE_CURRENT_SOURCE_DIR}/tools/type_registry/generate.py"
+          "${CMAKE_CURRENT_SOURCE_DIR}/libs/recon/kspacejet-recon-model/include/kspacejet/recon/type_registry.hpp"
+          "${CMAKE_CURRENT_SOURCE_DIR}/libs/recon/kspacejet-provider-sdk/include/kspacejet/provider/type_registry.h"
+  COMMENT "Validating checked-in KSpaceJet type-registry headers"
+  VERBATIM)
+
 if(NOT DEFINED KSJ_DEPENDENCY_PROVIDER OR NOT KSJ_DEPENDENCY_PROVIDER STREQUAL "conan")
   message(
     FATAL_ERROR
@@ -120,7 +140,8 @@ if(KSJ_BUILD_TEST_PROJECTS)
   if(KSJ_BUILD_APPLICATIONS)
     message(
       FATAL_ERROR
-        "KSJ_BUILD_UNIT_TESTS, KSJ_BUILD_BENCHMARKS, and KSJ_BUILD_RESEARCH use a dedicated test configuration and cannot be combined with KSJ_BUILD_APPLICATIONS. Configure product applications and tests in separate build trees.")
+        "KSJ_BUILD_UNIT_TESTS, KSJ_BUILD_BENCHMARKS, and KSJ_BUILD_RESEARCH use a dedicated test configuration and cannot be combined with KSJ_BUILD_APPLICATIONS. Configure product applications and tests in separate build trees."
+    )
   endif()
 
   include(KSpaceJetBuildTargets)
@@ -194,6 +215,9 @@ add_subdirectory(providers)
 
 if(KSJ_BUILD_APPLICATIONS)
   add_subdirectory(apps)
+  if(BUILD_TESTING)
+    add_subdirectory(tests/apps)
+  endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

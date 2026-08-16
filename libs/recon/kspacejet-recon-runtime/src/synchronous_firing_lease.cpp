@@ -40,12 +40,31 @@ constexpr std::uint64_t kMaximumTypeStringBytes = 4U * 1024U;
 
 [[nodiscard]] bool has_compatible_header(const ksj_provider_abi_header* header,
                                          const std::size_t required_size) noexcept {
-  return header != nullptr && header->struct_size >= required_size && header->abi_major == KSJ_PROVIDER_ABI_MAJOR &&
-         header->abi_minor <= KSJ_PROVIDER_ABI_MINOR && header->reserved[0] == 0U && header->reserved[1] == 0U;
+  return header != nullptr && header->struct_size >= required_size && header->reserved0 == 0U &&
+         header->reserved[0] == 0U && header->reserved[1] == 0U;
 }
 
 template <typename T> [[nodiscard]] bool has_full_compatible_header(const T* value) noexcept {
   return value != nullptr && has_compatible_header(&value->abi, sizeof(T));
+}
+
+[[nodiscard]] SynchronousProviderFailureDetail
+capture_provider_failure_detail(const ksj_error_view& raw_error) noexcept {
+  SynchronousProviderFailureDetail result;
+  if (!has_full_compatible_header(&raw_error)) {
+    return result;
+  }
+  result.status = raw_error.status;
+  const auto& message = raw_error.message;
+  if (!has_full_compatible_header(&message) || message.size == 0U || message.data == nullptr) {
+    return result;
+  }
+  const auto capacity = static_cast<std::uint64_t>(result.message_storage.size());
+  const auto copied = std::min(message.size, capacity);
+  std::memcpy(result.message_storage.data(), message.data, static_cast<std::size_t>(copied));
+  result.message_bytes = static_cast<std::uint32_t>(copied);
+  result.message_truncated = message.size > copied;
+  return result;
 }
 
 [[nodiscard]] bool is_power_of_two(const std::uint32_t value) noexcept {
@@ -100,9 +119,8 @@ template <typename T> [[nodiscard]] bool has_full_compatible_header(const T* val
 }
 
 [[nodiscard]] bool valid_host_type(const ksj_type_descriptor_view& type) noexcept {
-  if (!has_full_compatible_header(&type) || !valid_borrowed_utf8_view(type.type_id, kMaximumTypeStringBytes, false) ||
-      !valid_digest(type.payload_schema_digest) || !valid_digest(type.descriptor_digest) ||
-      !valid_digest(type.metadata_schema_digest) || type.rank > std::size(type.stride_bytes) ||
+  if (!has_full_compatible_header(&type) || !valid_borrowed_utf8_view(type.type_ref, kMaximumTypeStringBytes, false) ||
+      !valid_digest(type.type_identity_digest) || type.rank > std::size(type.stride_bytes) ||
       type.minimum_alignment == 0U || !is_power_of_two(type.minimum_alignment) ||
       (type.allowed_memory_domains & KSJ_PROVIDER_MEMORY_HOST_PAGEABLE) == 0U) {
     return false;
@@ -120,17 +138,14 @@ template <typename T> [[nodiscard]] bool has_full_compatible_header(const T* val
 
 [[nodiscard]] bool type_descriptors_match(const ksj_type_descriptor_view& lhs,
                                           const ksj_type_descriptor_view& rhs) noexcept {
-  if (!valid_host_type(lhs) || !valid_host_type(rhs) || lhs.type_id.size != rhs.type_id.size ||
-      std::memcmp(lhs.type_id.data, rhs.type_id.data, static_cast<std::size_t>(lhs.type_id.size)) != 0 ||
-      lhs.revision != rhs.revision || lhs.payload_kind != rhs.payload_kind ||
-      std::memcmp(lhs.payload_schema_digest.bytes, rhs.payload_schema_digest.bytes, KSJ_PROVIDER_DIGEST256_SIZE) != 0 ||
-      std::memcmp(lhs.descriptor_digest.bytes, rhs.descriptor_digest.bytes, KSJ_PROVIDER_DIGEST256_SIZE) != 0 ||
+  if (!valid_host_type(lhs) || !valid_host_type(rhs) || lhs.type_ref.size != rhs.type_ref.size ||
+      std::memcmp(lhs.type_ref.data, rhs.type_ref.data, static_cast<std::size_t>(lhs.type_ref.size)) != 0 ||
+      lhs.payload_kind != rhs.payload_kind ||
+      std::memcmp(lhs.type_identity_digest.bytes, rhs.type_identity_digest.bytes, KSJ_PROVIDER_DIGEST256_SIZE) != 0 ||
       lhs.element_type != rhs.element_type || lhs.rank != rhs.rank || lhs.layout_flags != rhs.layout_flags ||
       lhs.allowed_memory_domains != rhs.allowed_memory_domains || lhs.minimum_alignment != rhs.minimum_alignment ||
       lhs.mutability != rhs.mutability ||
-      std::memcmp(lhs.stride_bytes, rhs.stride_bytes, sizeof(lhs.stride_bytes)) != 0 ||
-      std::memcmp(lhs.metadata_schema_digest.bytes, rhs.metadata_schema_digest.bytes, KSJ_PROVIDER_DIGEST256_SIZE) !=
-        0) {
+      std::memcmp(lhs.stride_bytes, rhs.stride_bytes, sizeof(lhs.stride_bytes)) != 0) {
     return false;
   }
   for (std::uint32_t index = 0U; index < lhs.rank; ++index) {
@@ -207,11 +222,20 @@ struct SynchronousFiringLeaseHost::Impl {
     // The public SynchronousFiringLeaseHost API receives arbitrary caller
     // spans, so its firing ResourceVector must include every output byte.
     externally_supplied,
-    // Only the private plan-bound bridge may select this path.  Its output
+    // Only the private graph executor may select this path. Its output
     // spans are aliases of a BufferPool slot whose physical charge is already
     // held by the admitted data plane; dynamic firing accounting covers
     // scratch/CPU work but deliberately not the same payload a second time.
     preaccounted_pool_slot,
+  };
+
+  enum class ScratchAccounting : std::uint8_t {
+    // The public raw-span API receives caller-owned scratch and therefore
+    // reserves it for the callback duration.
+    externally_supplied,
+    // The graph executor supplies an exact frozen node scratch slab whose
+    // lifetime credit is already held by the admitted graph.
+    preaccounted_graph_slab,
   };
 
   enum class GrantStateKind : std::uint8_t {
@@ -235,8 +259,8 @@ struct SynchronousFiringLeaseHost::Impl {
     const SynchronousFiringRequest* request{nullptr};
     const ksj::provider::loader::OperatorDescriptor* operator_descriptor{nullptr};
     ksj_firing_lease abi_lease{};
-    ksj_output_grant_callbacks_v1 output_callbacks{};
-    ksj_firing_lease_callbacks_v1 callbacks{};
+    ksj_output_grant_callbacks output_callbacks{};
+    ksj_firing_lease_callbacks callbacks{};
     std::uint64_t total_input_items{0U};
     std::uint64_t total_output_capacity_bytes{0U};
     std::uint64_t sealed_output_items{0U};
@@ -245,27 +269,18 @@ struct SynchronousFiringLeaseHost::Impl {
     bool unsupported_capability_requested{false};
   };
 
-  // The narrow M3.7 product host is statically limited to one input batch,
-  // one input item, and one output grant. Its concrete ABI-view backing fits
-  // inside the frozen artifact staging allowance; the runtime check in the
-  // preaccounted factory then enforces those exact cardinalities.
-  static constexpr std::uint64_t kM37OneOutputStagingBytes = sizeof(ksj_firing_lease) + sizeof(ksj_input_batch_view) +
-                                                             sizeof(ksj_input_item_view) + sizeof(GrantState) +
-                                                             sizeof(SynchronousSealedOutput);
-  static constexpr std::uint64_t kM37OneOutputStagingDescriptorCount = 5U;
-  static_assert(kM37OneOutputStagingBytes <= ksj::recon::kM37FiringLeaseHostStagingChargedBytes);
-  static_assert(kM37OneOutputStagingDescriptorCount <= ksj::recon::kM37FiringLeaseHostStagingDescriptorCount);
-
   explicit Impl(SynchronousFiringLeaseConfig configuration)
       : config(std::move(configuration)), resource_ledger(config.resource_ledger),
         firing_reservation(std::move(config.firing_reservation)) {}
 
   [[nodiscard]] ksj::base::Status prepare(const SynchronousProviderInvocation& invocation,
                                           const SynchronousFiringRequest& request, const bool terminal,
-                                          OutputGrantAccounting output_accounting, LeaseState& state);
+                                          OutputGrantAccounting output_accounting, ScratchAccounting scratch_accounting,
+                                          LeaseState& state);
   [[nodiscard]] ksj::base::Result<SynchronousFiringResult>
   invoke(const SynchronousProviderInvocation& invocation, const SynchronousFiringRequest& request, bool terminal,
-         std::uint64_t completed_input_item_count, OutputGrantAccounting output_accounting);
+         std::uint64_t completed_input_item_count, OutputGrantAccounting output_accounting,
+         ScratchAccounting scratch_accounting);
 
   [[nodiscard]] ksj::base::Status begin_callback();
   void finish_callback() noexcept;
@@ -368,7 +383,7 @@ SynchronousFiringLeaseHost::create_impl(SynchronousFiringLeaseConfig config,
   }
   if (!is_host_only_reservation(config.firing_reservation)) {
     return ksj::base::Status::ValidationError(
-      "SynchronousFiringLeaseHost M3-A supports only host-pageable synchronous resource reservations");
+      "SynchronousFiringLeaseHost supports only host-pageable synchronous resource reservations");
   }
   if (config.firing_reservation.cpu_leaf_permits() == 0U) {
     return ksj::base::Status::ValidationError(
@@ -414,18 +429,19 @@ SynchronousFiringLeaseHost::create_impl(SynchronousFiringLeaseConfig config,
       }
       implementation->persistent_staging_reservation.emplace(std::move(persistent_reservation).value());
     } else {
-      // Public raw-span hosts historically charge only their persistent
-      // vector-backed workspace. The plan-bound M3.7 formula additionally
-      // carries the callback-local ABI lease control object, so prove it here
-      // without changing that public accounting contract.
-      constexpr auto kLeaseControlBytes = static_cast<std::uint64_t>(sizeof(ksj_firing_lease));
-      if (implementation->config.maximum_input_batches != 1U || implementation->config.maximum_input_items != 1U ||
-          implementation->config.maximum_output_grants != 1U ||
-          implementation->static_workspace_host_bytes >
-            ksj::recon::kM37FiringLeaseHostStagingChargedBytes - kLeaseControlBytes ||
-          implementation->static_workspace_descriptor_count > ksj::recon::kM37FiringLeaseHostStagingDescriptorCount) {
+      // The graph owns the plan-wide persistent staging charge. Prove the
+      // concrete ABI workspace (including the opaque lease control) fits the
+      // exact frozen per-node allowance, without imposing any old one-batch
+      // or one-output cardinality restriction.
+      std::uint64_t concrete_staging_bytes = 0U;
+      if (implementation->config.frozen_staging_charged_bytes == 0U ||
+          implementation->config.frozen_staging_descriptor_count == 0U ||
+          !checked_add(implementation->static_workspace_host_bytes,
+                       static_cast<std::uint64_t>(sizeof(ksj_firing_lease)), concrete_staging_bytes) ||
+          concrete_staging_bytes > implementation->config.frozen_staging_charged_bytes ||
+          implementation->static_workspace_descriptor_count > implementation->config.frozen_staging_descriptor_count) {
         return ksj::base::Status::ValidationError(
-          "SynchronousFiringLeaseHost preaccounted staging requires the frozen M3.7 one-input/one-output bound");
+          "SynchronousFiringLeaseHost concrete ABI workspace exceeds the frozen preaccounted staging bound");
       }
       if (!implementation->resource_ledger->capacity().can_admit(implementation->firing_reservation)) {
         return ksj::base::Status::ValidationError(
@@ -483,7 +499,8 @@ SynchronousFiringLeaseHost::process(const SynchronousProviderInvocation& invocat
   if (implementation_ == nullptr) {
     return ksj::base::Status::StateError("SynchronousFiringLeaseHost has been moved from");
   }
-  return implementation_->invoke(invocation, request, false, 0U, Impl::OutputGrantAccounting::externally_supplied);
+  return implementation_->invoke(invocation, request, false, 0U, Impl::OutputGrantAccounting::externally_supplied,
+                                 Impl::ScratchAccounting::externally_supplied);
 }
 
 ksj::base::Result<SynchronousFiringResult>
@@ -492,7 +509,20 @@ SynchronousFiringLeaseHost::process_preaccounted_output(const SynchronousProvide
   if (implementation_ == nullptr) {
     return ksj::base::Status::StateError("SynchronousFiringLeaseHost has been moved from");
   }
-  return implementation_->invoke(invocation, request, false, 0U, Impl::OutputGrantAccounting::preaccounted_pool_slot);
+  return implementation_->invoke(invocation, request, false, 0U, Impl::OutputGrantAccounting::preaccounted_pool_slot,
+                                 Impl::ScratchAccounting::preaccounted_graph_slab);
+}
+
+ksj::base::Result<SynchronousFiringResult>
+SynchronousFiringLeaseHost::on_scan_end_preaccounted_output(const SynchronousProviderInvocation& invocation,
+                                                            const SynchronousFiringRequest& request,
+                                                            const std::uint64_t completed_input_item_count) {
+  if (implementation_ == nullptr) {
+    return ksj::base::Status::StateError("SynchronousFiringLeaseHost has been moved from");
+  }
+  return implementation_->invoke(invocation, request, true, completed_input_item_count,
+                                 Impl::OutputGrantAccounting::preaccounted_pool_slot,
+                                 Impl::ScratchAccounting::preaccounted_graph_slab);
 }
 
 ksj::base::Result<SynchronousFiringResult>
@@ -503,7 +533,8 @@ SynchronousFiringLeaseHost::on_scan_end(const SynchronousProviderInvocation& inv
     return ksj::base::Status::StateError("SynchronousFiringLeaseHost has been moved from");
   }
   return implementation_->invoke(invocation, request, true, completed_input_item_count,
-                                 Impl::OutputGrantAccounting::externally_supplied);
+                                 Impl::OutputGrantAccounting::externally_supplied,
+                                 Impl::ScratchAccounting::externally_supplied);
 }
 
 SynchronousFiringLeaseSnapshot SynchronousFiringLeaseHost::snapshot() const {
@@ -545,9 +576,9 @@ SynchronousFiringLeaseSnapshot SynchronousFiringLeaseHost::Impl::snapshot() cons
 bool SynchronousFiringLeaseHost::Impl::static_workspace_requirements(std::uint64_t& host_bytes,
                                                                      std::uint64_t& descriptor_count) const noexcept {
   // The public raw-span host charges its fixed vector-backed workspace here.
-  // Preaccounted M3.7 construction separately adds its callback-local ABI
-  // lease control to the frozen 4096B proof, preserving the public host's
-  // established persistent-accounting behavior.
+  // Preaccounted graph construction separately adds its callback-local ABI
+  // lease control to the frozen staging allowance, preserving the public
+  // host's established persistent-accounting behavior.
   host_bytes = 0U;
   descriptor_count = 1U; // The FiringLease itself.
   const auto add_storage = [&host_bytes](const std::uint64_t count, const std::uint64_t element_size) {
@@ -568,11 +599,9 @@ bool SynchronousFiringLeaseHost::Impl::static_workspace_requirements(std::uint64
          add_descriptors(output_grants_count);
 }
 
-ksj::base::Status SynchronousFiringLeaseHost::Impl::prepare(const SynchronousProviderInvocation& invocation,
-                                                            const SynchronousFiringRequest& request,
-                                                            const bool terminal,
-                                                            const OutputGrantAccounting output_accounting,
-                                                            LeaseState& state) {
+ksj::base::Status SynchronousFiringLeaseHost::Impl::prepare(
+  const SynchronousProviderInvocation& invocation, const SynchronousFiringRequest& request, const bool terminal,
+  const OutputGrantAccounting output_accounting, const ScratchAccounting scratch_accounting, LeaseState& state) {
   if (!invocation.provider.valid() || invocation.provider.api() == nullptr ||
       invocation.provider.descriptor() == nullptr || invocation.operator_id.empty() ||
       invocation.operator_handle == nullptr || invocation.execution_context == nullptr ||
@@ -593,16 +622,15 @@ ksj::base::Status SynchronousFiringLeaseHost::Impl::prepare(const SynchronousPro
       (invocation.provider.descriptor()->capability_bits &
        (KSJ_PROVIDER_CAP_ASYNC_PROCESS | KSJ_PROVIDER_CAP_INPUT_RETENTION)) != 0U) {
     return ksj::base::Status::ValidationError(
-      "SynchronousFiringLeaseHost M3-A requires a sync-only Provider without declared async or retention capability");
+      "SynchronousFiringLeaseHost requires a sync-only Provider without declared async or retention capability");
   }
   if ((operator_descriptor->capability_bits &
        (KSJ_OPERATOR_CAP_MAY_ASYNC | KSJ_OPERATOR_CAP_MAY_RETAIN_INPUT | KSJ_OPERATOR_CAP_MAY_YIELD)) != 0U) {
     return ksj::base::Status::ValidationError(
-      "SynchronousFiringLeaseHost M3-A rejects Operators declaring async, retention, or yield capability");
+      "SynchronousFiringLeaseHost rejects Operators declaring async, retention, or yield capability");
   }
   if (operator_descriptor->max_private_threads != 0U) {
-    return ksj::base::Status::ValidationError(
-      "SynchronousFiringLeaseHost M3-A rejects Providers declaring private threads");
+    return ksj::base::Status::ValidationError("SynchronousFiringLeaseHost rejects Providers declaring private threads");
   }
 
   if (terminal && !request.input_batches.empty()) {
@@ -721,8 +749,15 @@ ksj::base::Status SynchronousFiringLeaseHost::Impl::prepare(const SynchronousPro
 
   const auto dynamically_charged_output_bytes =
     output_accounting == OutputGrantAccounting::externally_supplied ? total_output_capacity_bytes : 0U;
+  const auto dynamically_charged_scratch_bytes =
+    scratch_accounting == ScratchAccounting::externally_supplied ? request.scratch.size() : 0U;
+  if (scratch_accounting == ScratchAccounting::preaccounted_graph_slab &&
+      request.scratch.size() != config.maximum_scratch_bytes) {
+    return ksj::base::Status::ValidationError(
+      "SynchronousFiringLeaseHost graph scratch must exactly match the frozen node scratch bound");
+  }
   std::uint64_t minimum_host_bytes = 0U;
-  if (!checked_add(dynamically_charged_output_bytes, request.scratch.size(), minimum_host_bytes) ||
+  if (!checked_add(dynamically_charged_output_bytes, dynamically_charged_scratch_bytes, minimum_host_bytes) ||
       firing_reservation.host_normal_bytes() < minimum_host_bytes) {
     return ksj::base::Status::ValidationError(
       "SynchronousFiringLeaseHost firing ResourceVector host_normal_bytes does not cover its dynamic output/scratch "
@@ -769,14 +804,15 @@ ksj::base::Status SynchronousFiringLeaseHost::Impl::prepare(const SynchronousPro
 
 ksj::base::Result<SynchronousFiringResult> SynchronousFiringLeaseHost::Impl::invoke(
   const SynchronousProviderInvocation& invocation, const SynchronousFiringRequest& request, const bool terminal,
-  const std::uint64_t completed_input_item_count, const OutputGrantAccounting output_accounting) {
+  const std::uint64_t completed_input_item_count, const OutputGrantAccounting output_accounting,
+  const ScratchAccounting scratch_accounting) {
   std::unique_lock invocation_lock(invocation_mutex, std::try_to_lock);
   if (!invocation_lock.owns_lock()) {
     return ksj::base::Status::Unavailable(
       "SynchronousFiringLeaseHost has an active callback and cannot be re-entered or run concurrently");
   }
   LeaseState state{};
-  const auto prepared = prepare(invocation, request, terminal, output_accounting, state);
+  const auto prepared = prepare(invocation, request, terminal, output_accounting, scratch_accounting, state);
   if (!prepared.ok()) {
     return prepared;
   }
@@ -838,19 +874,22 @@ ksj::base::Result<SynchronousFiringResult> SynchronousFiringLeaseHost::Impl::inv
     };
   }
 
-  const auto contract_failure = [&state, &request, provider_status]() {
+  const auto provider_failure = capture_provider_failure_detail(raw_error);
+  const auto contract_failure = [&state, &request, provider_status, &provider_failure]() {
     return SynchronousFiringResult{
       .outcome = SynchronousFiringOutcome::contract_violation,
       .provider_status = provider_status,
+      .provider_failure = provider_failure,
       .sealed_output_count = static_cast<std::uint32_t>(state.owner->sealed_outputs.size()),
       .sealed_output_bytes = state.sealed_output_bytes,
       .terminal_epoch = request.terminal_epoch,
     };
   };
-  const auto structured_failure = [&state, &request, provider_status]() {
+  const auto structured_failure = [&state, &request, provider_status, &provider_failure]() {
     return SynchronousFiringResult{
       .outcome = SynchronousFiringOutcome::structured_failure,
       .provider_status = provider_status,
+      .provider_failure = provider_failure,
       .sealed_output_count = static_cast<std::uint32_t>(state.owner->sealed_outputs.size()),
       .sealed_output_bytes = state.sealed_output_bytes,
       .terminal_epoch = request.terminal_epoch,
@@ -875,7 +914,7 @@ ksj::base::Result<SynchronousFiringResult> SynchronousFiringLeaseHost::Impl::inv
   }
 
   if (raw_result.outcome == KSJ_PROVIDER_PROCESS_YIELD) {
-    // M3-A has no transactional key-state API or scheduler resume protocol.
+    // This synchronous host has no transactional key-state API or scheduler resume protocol.
     // A raw ABI YIELD is therefore never safe to retry in this slice.
     return contract_failure();
   }
@@ -909,6 +948,7 @@ ksj::base::Result<SynchronousFiringResult> SynchronousFiringLeaseHost::Impl::inv
   return SynchronousFiringResult{
     .outcome = SynchronousFiringOutcome::done,
     .provider_status = provider_status,
+    .provider_failure = provider_failure,
     .consumed_input_item_count = raw_result.consumed_input_item_count,
     .sealed_output_count = static_cast<std::uint32_t>(sealed_outputs.size()),
     .committed_output_count = static_cast<std::uint32_t>(sealed_outputs.size()),
@@ -1043,7 +1083,8 @@ ksj_status KSJ_PROVIDER_CALL SynchronousFiringLeaseHost::Impl::get_key_state(voi
     return KSJ_STATUS_CONTRACT_VIOLATION;
   }
   mark_unsupported(state);
-  write_error(out_error, KSJ_STATUS_UNSUPPORTED, "M3-A does not expose mutable key-state bytes through a firing lease");
+  write_error(out_error, KSJ_STATUS_UNSUPPORTED,
+              "SynchronousFiringLeaseHost does not expose mutable key-state bytes through a firing lease");
   return KSJ_STATUS_UNSUPPORTED;
 }
 
@@ -1079,7 +1120,7 @@ ksj_status KSJ_PROVIDER_CALL SynchronousFiringLeaseHost::Impl::retain_input(
     *out_retention = nullptr;
   }
   mark_unsupported(state);
-  write_error(out_error, KSJ_STATUS_UNSUPPORTED, "M3-A does not support input retention");
+  write_error(out_error, KSJ_STATUS_UNSUPPORTED, "SynchronousFiringLeaseHost does not support input retention");
   return KSJ_STATUS_UNSUPPORTED;
 }
 
@@ -1087,7 +1128,7 @@ ksj_status KSJ_PROVIDER_CALL SynchronousFiringLeaseHost::Impl::release_retention
   void* const host_context, ksj_retention_handle*, ksj_error_view* const out_error) noexcept {
   auto* state = static_cast<LeaseState*>(host_context);
   mark_unsupported(state);
-  write_error(out_error, KSJ_STATUS_UNSUPPORTED, "M3-A does not support input retention");
+  write_error(out_error, KSJ_STATUS_UNSUPPORTED, "SynchronousFiringLeaseHost does not support input retention");
   return KSJ_STATUS_UNSUPPORTED;
 }
 
@@ -1103,7 +1144,8 @@ ksj_status KSJ_PROVIDER_CALL SynchronousFiringLeaseHost::Impl::register_async(
     *out_token = nullptr;
   }
   mark_unsupported(state);
-  write_error(out_error, KSJ_STATUS_UNSUPPORTED, "M3-A does not support asynchronous Provider work");
+  write_error(out_error, KSJ_STATUS_UNSUPPORTED,
+              "SynchronousFiringLeaseHost does not support asynchronous Provider work");
   return KSJ_STATUS_UNSUPPORTED;
 }
 
@@ -1111,7 +1153,8 @@ ksj_status KSJ_PROVIDER_CALL SynchronousFiringLeaseHost::Impl::complete_async(
   void* const host_context, ksj_async_token*, const ksj_async_completion*, ksj_error_view* const out_error) noexcept {
   auto* state = static_cast<LeaseState*>(host_context);
   mark_unsupported(state);
-  write_error(out_error, KSJ_STATUS_UNSUPPORTED, "M3-A does not support asynchronous Provider work");
+  write_error(out_error, KSJ_STATUS_UNSUPPORTED,
+              "SynchronousFiringLeaseHost does not support asynchronous Provider work");
   return KSJ_STATUS_UNSUPPORTED;
 }
 
@@ -1119,7 +1162,8 @@ ksj_status KSJ_PROVIDER_CALL SynchronousFiringLeaseHost::Impl::release_async(voi
                                                                              ksj_error_view* const out_error) noexcept {
   auto* state = static_cast<LeaseState*>(host_context);
   mark_unsupported(state);
-  write_error(out_error, KSJ_STATUS_UNSUPPORTED, "M3-A does not support asynchronous Provider work");
+  write_error(out_error, KSJ_STATUS_UNSUPPORTED,
+              "SynchronousFiringLeaseHost does not support asynchronous Provider work");
   return KSJ_STATUS_UNSUPPORTED;
 }
 

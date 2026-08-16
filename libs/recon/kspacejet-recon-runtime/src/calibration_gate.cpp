@@ -8,7 +8,7 @@ namespace ksj::recon::runtime {
 CalibrationGate::CalibrationGate(const CalibrationGateLimits limits) : limits_(limits) {}
 
 ksj::base::Result<CalibrationDisposition> CalibrationGate::await_or_pass(std::string key,
-                                                                           const PendingCalibrationFrame frame) {
+                                                                         const PendingCalibrationFrame frame) {
   std::lock_guard lock(mutex_);
   if (key.empty()) {
     return ksj::base::Status::InvalidArgument("calibration key must not be empty");
@@ -37,13 +37,13 @@ ksj::base::Result<CalibrationDisposition> CalibrationGate::await_or_pass(std::st
 }
 
 ksj::base::Result<std::vector<PendingCalibrationFrame>> CalibrationGate::publish_ready(std::string key,
-                                                                                           CalibrationToken token) {
+                                                                                       CalibrationToken token) {
   std::lock_guard lock(mutex_);
   if (key.empty()) {
     return ksj::base::Status::InvalidArgument("calibration key must not be empty");
   }
   if (token.epoch != 0U) {
-    return ksj::base::Status::ValidationError("v1 calibration tokens require epoch zero");
+    return ksj::base::Status::ValidationError("calibration tokens require epoch zero");
   }
   if (token.digest.empty()) {
     return ksj::base::Status::InvalidArgument("calibration token digest must not be empty");

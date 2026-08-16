@@ -30,9 +30,9 @@ AcquisitionClassifier::AcquisitionClassifier(AcquisitionClassifierConfig config)
     : config_(std::move(config)) {}
 
 ksj::base::Result<AcquisitionClassifier> AcquisitionClassifier::create(AcquisitionClassifierConfig config) {
-  if (config.rule_version != kAcquisitionClassificationRuleVersion) {
-    return ksj::base::Status::ValidationError("unsupported acquisition classification rule version: " +
-                                              config.rule_version);
+  if (config.rule_identity != kAcquisitionClassificationRuleIdentity) {
+    return ksj::base::Status::ValidationError("unsupported acquisition classification rule identity: " +
+                                              config.rule_identity);
   }
   return AcquisitionClassifier{std::move(config)};
 }

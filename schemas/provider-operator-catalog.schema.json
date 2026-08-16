@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/provider-operator-catalog.schema.json",
+  "title": "KSpaceJet Provider and Operator catalog",
+  "description": "The in-tree Provider and Operator planning catalog. It reserves canonical identities and connects every planned operator to one non-executable OperatorInterface. The catalog is not a Provider bundle manifest, is not runtime-resolvable, and cannot make a planned Provider loadable.",
+  "type": "object",
+  "required": [
+    "kind",
+    "runtime_resolution_policy",
+    "scope",
+    "providers"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "ProviderOperatorCatalog"
+    },
+    "runtime_resolution_policy": {
+      "const": "catalog-is-not-runtime-resolvable"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "providers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/provider"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "lowerIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[a-z](?:[a-z0-9._-]*[a-z0-9])?$"
+    },
+    "providerSlug": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96,
+      "pattern": "^[a-z](?:[a-z0-9-]*[a-z0-9])?$"
+    },
+    "artifactPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*\\.json$"
+    },
+    "implementation": {
+      "type": "object",
+      "required": [
+        "source_directory",
+        "artifact_basename"
+      ],
+      "properties": {
+        "source_directory": {
+          "type": "string",
+          "pattern": "^providers/kspacejet-[a-z](?:[a-z0-9-]*[a-z0-9])?$"
+        },
+        "artifact_basename": {
+          "type": "string",
+          "pattern": "^ksj-[a-z](?:[a-z0-9-]*[a-z0-9])?$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "operator": {
+      "type": "object",
+      "required": [
+        "operator_id",
+        "availability",
+        "summary"
+      ],
+      "properties": {
+        "operator_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "availability": {
+          "enum": [
+            "implemented-development",
+            "planned"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "contract_path": {
+          "$ref": "#/$defs/artifactPath"
+        },
+        "interface_path": {
+          "$ref": "#/$defs/artifactPath"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "const": "implemented-development"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "contract_path"
+            ],
+            "not": {
+              "required": [
+                "interface_path"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "const": "planned"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "interface_path"
+            ],
+            "not": {
+              "required": [
+                "contract_path"
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "required": [
+        "provider_id",
+        "provider_slug",
+        "availability",
+        "responsibility",
+        "lifecycle_boundary",
+        "operators"
+      ],
+      "properties": {
+        "provider_id": {
+          "$ref": "#/$defs/lowerIdentifier"
+        },
+        "provider_slug": {
+          "$ref": "#/$defs/providerSlug"
+        },
+        "availability": {
+          "enum": [
+            "implemented-development",
+            "planned"
+          ]
+        },
+        "responsibility": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "lifecycle_boundary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "implementation": {
+          "$ref": "#/$defs/implementation"
+        },
+        "operators": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operator"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "const": "implemented-development"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "implementation"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "const": "planned"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "implementation"
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

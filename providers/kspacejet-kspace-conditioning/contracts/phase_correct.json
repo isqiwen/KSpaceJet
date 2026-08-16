@@ -1,0 +1,21 @@
+{
+  "kind": "OperatorContract",
+  "operator_id": "phase_correct",
+  "ports": [
+    {
+      "name": "kspace",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "input"
+    },
+    {
+      "name": "phase_model",
+      "type_ref": "ksj.phase-model",
+      "direction": "input"
+    },
+    {
+      "name": "phase_corrected_kspace",
+      "type_ref": "ksj.kspace-frame",
+      "direction": "output"
+    }
+  ]
+}

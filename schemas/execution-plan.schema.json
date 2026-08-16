@@ -1,0 +1,753 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/execution-plan.schema.json",
+  "title": "KSpaceJet ExecutionPlan",
+  "description": "Frozen scan-specific generic synchronous graph plan. It records explicit ingress/node/egress data edges, static calibration artifacts, bounded transactional firing capacity, resolved TypeDescriptors, resources, and finite terminal bounds.",
+  "type": "object",
+  "required": [
+    "kind",
+    "input_digests",
+    "operator_plan_bindings",
+    "execution_profile",
+    "synchronous_nodes",
+    "synchronous_buffer_pools",
+    "synchronous_data_edges",
+    "calibration_artifact_bindings",
+    "resource_vector",
+    "terminal_occurrences",
+    "proof_obligations"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "ExecutionPlan"
+    },
+    "input_digests": {
+      "$ref": "#/$defs/inputDigests"
+    },
+    "operator_plan_bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/operatorPlanBinding"
+      },
+      "description": "One canonical configuration identity for every authored pipeline node."
+    },
+    "execution_profile": {
+      "$ref": "#/$defs/executionProfile"
+    },
+    "synchronous_nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/synchronousNode"
+      }
+    },
+    "synchronous_buffer_pools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/synchronousBufferPool"
+      }
+    },
+    "synchronous_data_edges": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/synchronousDataEdge"
+      }
+    },
+    "calibration_artifact_bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/calibrationArtifactBinding"
+      },
+      "description": "Static values published once by a producer output and read by named consumer inputs."
+    },
+    "resource_vector": {
+      "$ref": "#/$defs/resourceVector"
+    },
+    "terminal_occurrences": {
+      "$ref": "#/$defs/positiveSafeInteger"
+    },
+    "proof_obligations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "abiPort": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "typeRef": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 255,
+      "pattern": "^[a-z](?:[a-z0-9._-]*[a-z0-9])?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "executionProfile": {
+      "type": "string",
+      "enum": [
+        "offline",
+        "bounded-online",
+        "isolated-strict-online",
+        "deadline-qualified-online",
+        "research-unbounded"
+      ]
+    },
+    "inputDigests": {
+      "type": "object",
+      "required": [
+        "resolved_pipeline",
+        "scan_descriptor",
+        "target_envelope",
+        "machine_policy"
+      ],
+      "properties": {
+        "resolved_pipeline": {
+          "$ref": "#/$defs/digest"
+        },
+        "scan_descriptor": {
+          "$ref": "#/$defs/digest"
+        },
+        "target_envelope": {
+          "$ref": "#/$defs/digest"
+        },
+        "machine_policy": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "operatorPlanBinding": {
+      "type": "object",
+      "required": [
+        "node_id",
+        "canonical_config_digest"
+      ],
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "canonical_config_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "typeDescriptor": {
+      "type": "object",
+      "required": [
+        "type_ref",
+        "type_identity_digest",
+        "payload_kind",
+        "element_type",
+        "rank",
+        "dimensions",
+        "layout",
+        "strides",
+        "explicit_byte_strides",
+        "allowed_memory_domains",
+        "min_alignment_bytes",
+        "mutability"
+      ],
+      "properties": {
+        "type_ref": {
+          "$ref": "#/$defs/typeRef"
+        },
+        "type_identity_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "payload_kind": {
+          "const": "buffer_handle"
+        },
+        "element_type": {
+          "enum": [
+            "none",
+            "uint8",
+            "int16",
+            "uint16",
+            "int32",
+            "uint32",
+            "float32",
+            "float64",
+            "complex_int16",
+            "complex_float32",
+            "complex_float64"
+          ]
+        },
+        "rank": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "dimensions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "layout": {
+          "enum": [
+            "canonical_contiguous",
+            "channel_major_contiguous",
+            "row_major_contiguous",
+            "column_major_contiguous",
+            "opaque"
+          ]
+        },
+        "strides": {
+          "enum": [
+            "canonical",
+            "explicit_byte_strides"
+          ]
+        },
+        "explicit_byte_strides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/positiveSafeInteger"
+          }
+        },
+        "allowed_memory_domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "host_normal",
+              "host_pinned",
+              "host_hugepage",
+              "shared_host",
+              "cuda_device"
+            ]
+          }
+        },
+        "min_alignment_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "mutability": {
+          "const": "immutable_after_publish"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "strides": {
+                "const": "canonical"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "explicit_byte_strides": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "deviceResourceSlot": {
+      "type": "object",
+      "required": [
+        "device_id",
+        "device_bytes",
+        "gpu_stream_slots",
+        "copy_engine_slots"
+      ],
+      "properties": {
+        "device_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "device_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "gpu_stream_slots": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "copy_engine_slots": {
+          "$ref": "#/$defs/safeInteger"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resourceVector": {
+      "type": "object",
+      "required": [
+        "host_normal_bytes",
+        "host_pinned_bytes",
+        "host_hugepage_bytes",
+        "shared_host_bytes",
+        "spool_bytes",
+        "transport_bytes",
+        "descriptor_count",
+        "async_token_count",
+        "cpu_leaf_permits",
+        "backend_gang_permits",
+        "provider_private_permits",
+        "io_slots",
+        "devices"
+      ],
+      "properties": {
+        "host_normal_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "host_pinned_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "host_hugepage_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "shared_host_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "spool_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "transport_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "descriptor_count": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "async_token_count": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "cpu_leaf_permits": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "backend_gang_permits": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "provider_private_permits": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "io_slots": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deviceResourceSlot"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "synchronousInput": {
+      "type": "object",
+      "required": [
+        "port_name",
+        "abi_port",
+        "source_kind",
+        "source_id",
+        "type_descriptor",
+        "maximum_item_count"
+      ],
+      "properties": {
+        "port_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "abi_port": {
+          "$ref": "#/$defs/abiPort"
+        },
+        "source_kind": {
+          "enum": [
+            "data-edge",
+            "calibration-artifact"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "type_descriptor": {
+          "$ref": "#/$defs/typeDescriptor"
+        },
+        "maximum_item_count": {
+          "const": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "synchronousOutput": {
+      "type": "object",
+      "required": [
+        "port_name",
+        "abi_port",
+        "destination_kind",
+        "destination_id",
+        "pool_id",
+        "type_descriptor",
+        "maximum_item_count"
+      ],
+      "properties": {
+        "port_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "abi_port": {
+          "$ref": "#/$defs/abiPort"
+        },
+        "destination_kind": {
+          "enum": [
+            "data-edge",
+            "calibration-artifact"
+          ]
+        },
+        "destination_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "pool_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "type_descriptor": {
+          "$ref": "#/$defs/typeDescriptor"
+        },
+        "maximum_item_count": {
+          "const": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "synchronousFiring": {
+      "type": "object",
+      "required": [
+        "maximum_input_batches",
+        "maximum_input_items",
+        "maximum_output_grants",
+        "maximum_input_payload_bytes",
+        "maximum_scratch_bytes",
+        "maximum_metadata_bytes",
+        "staging_charged_bytes",
+        "staging_descriptor_count",
+        "firing_reservation"
+      ],
+      "properties": {
+        "maximum_input_batches": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "maximum_input_items": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "maximum_output_grants": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "maximum_input_payload_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "maximum_scratch_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "maximum_metadata_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "staging_charged_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "staging_descriptor_count": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "firing_reservation": {
+          "$ref": "#/$defs/resourceVector"
+        }
+      },
+      "additionalProperties": false
+    },
+    "synchronousTerminal": {
+      "type": "object",
+      "required": [
+        "normal_max_output_items",
+        "normal_max_output_charged_bytes",
+        "normal_max_async_tokens",
+        "cancel_max_async_tokens"
+      ],
+      "properties": {
+        "normal_max_output_items": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "normal_max_output_charged_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "normal_max_async_tokens": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "cancel_max_async_tokens": {
+          "$ref": "#/$defs/safeInteger"
+        }
+      },
+      "additionalProperties": false
+    },
+    "synchronousNode": {
+      "type": "object",
+      "required": [
+        "node_id",
+        "provider_id",
+        "provider_bundle_digest",
+        "operator_id",
+        "dynamic_input_join_policy",
+        "inputs",
+        "outputs",
+        "firing",
+        "terminal"
+      ],
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "provider_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "provider_bundle_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "operator_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "dynamic_input_join_policy": {
+          "const": "exact-item-identity"
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/synchronousInput"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/synchronousOutput"
+          }
+        },
+        "firing": {
+          "$ref": "#/$defs/synchronousFiring"
+        },
+        "terminal": {
+          "$ref": "#/$defs/synchronousTerminal"
+        }
+      },
+      "additionalProperties": false
+    },
+    "synchronousBufferPool": {
+      "type": "object",
+      "required": [
+        "pool_id",
+        "owner_kind",
+        "owner_id",
+        "owner_port_name",
+        "type_descriptor",
+        "memory_domain",
+        "slot_count",
+        "payload_capacity_bytes",
+        "metadata_capacity_bytes",
+        "payload_alignment_bytes",
+        "storage_accounting_id",
+        "host_metadata_charged_bytes",
+        "descriptor_charged_count",
+        "physical_charge_bytes"
+      ],
+      "properties": {
+        "pool_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "owner_kind": {
+          "enum": [
+            "ingress",
+            "node",
+            "egress"
+          ]
+        },
+        "owner_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "owner_port_name": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "type_descriptor": {
+          "$ref": "#/$defs/typeDescriptor"
+        },
+        "memory_domain": {
+          "const": "host_normal"
+        },
+        "slot_count": {
+          "const": 1
+        },
+        "payload_capacity_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "metadata_capacity_bytes": {
+          "const": 0
+        },
+        "payload_alignment_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "storage_accounting_id": {
+          "const": "kspacejet.buffer-pool-storage/host-normal"
+        },
+        "host_metadata_charged_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "descriptor_charged_count": {
+          "const": 1
+        },
+        "physical_charge_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      },
+      "additionalProperties": false
+    },
+    "synchronousDataEdge": {
+      "type": "object",
+      "required": [
+        "edge_id",
+        "source_pool_id",
+        "producer_kind",
+        "producer_id",
+        "producer_port_name",
+        "producer_abi_port",
+        "consumer_kind",
+        "consumer_id",
+        "consumer_port_name",
+        "consumer_abi_port",
+        "type_descriptor",
+        "max_items",
+        "max_logical_bytes",
+        "storage_accounting_id",
+        "host_metadata_charged_bytes",
+        "descriptor_charged_count",
+        "terminal_policy"
+      ],
+      "properties": {
+        "edge_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "source_pool_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "producer_kind": {
+          "enum": [
+            "ingress",
+            "node"
+          ]
+        },
+        "producer_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "producer_port_name": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "producer_abi_port": {
+          "$ref": "#/$defs/abiPort"
+        },
+        "consumer_kind": {
+          "enum": [
+            "node",
+            "egress"
+          ]
+        },
+        "consumer_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "consumer_port_name": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "consumer_abi_port": {
+          "$ref": "#/$defs/abiPort"
+        },
+        "type_descriptor": {
+          "$ref": "#/$defs/typeDescriptor"
+        },
+        "max_items": {
+          "const": 1
+        },
+        "max_logical_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "storage_accounting_id": {
+          "const": "kspacejet.data-edge-storage/fixed-fifo"
+        },
+        "host_metadata_charged_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "descriptor_charged_count": {
+          "const": 1
+        },
+        "terminal_policy": {
+          "const": "normal-eoi-drain-cancellation-fail"
+        }
+      },
+      "additionalProperties": false
+    },
+    "calibrationArtifactBinding": {
+      "type": "object",
+      "required": [
+        "binding_id",
+        "producer_node_id",
+        "producer_port_name",
+        "producer_abi_port",
+        "producer_pool_id",
+        "type_descriptor",
+        "host_metadata_charged_bytes",
+        "descriptor_charged_count"
+      ],
+      "properties": {
+        "binding_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "producer_node_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "producer_port_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "producer_abi_port": {
+          "$ref": "#/$defs/abiPort"
+        },
+        "producer_pool_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "type_descriptor": {
+          "$ref": "#/$defs/typeDescriptor"
+        },
+        "host_metadata_charged_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "descriptor_charged_count": {
+          "const": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

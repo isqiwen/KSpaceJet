@@ -1,0 +1,30 @@
+{
+  "kind": "OperatorInterface",
+  "availability": "planned",
+  "provider_id": "org.kspacejet.noncartesian-recon",
+  "operator_id": "noncartesian_sense_reconstruct",
+  "summary": "Reconstruct one non-Cartesian image from multi-coil k-space and sensitivity maps.",
+  "ports": [
+    {
+      "name": "noncartesian_kspace",
+      "direction": "input",
+      "semantic_type": "ksj.noncartesian-kspace-frame"
+    },
+    {
+      "name": "sensitivity_maps",
+      "direction": "input",
+      "semantic_type": "ksj.sensitivity-map"
+    },
+    {
+      "name": "image",
+      "direction": "output",
+      "semantic_type": "ksj.complex-image-frame"
+    }
+  ],
+  "configuration": {
+    "kind": "object",
+    "required": [],
+    "optional": ["iterations", "regularization"]
+  },
+  "notes": "Sensitivity-map estimation belongs to the planned org.kspacejet.calibration/sensitivity_map_estimate Operator. This consumer must receive its immutable sensitivity maps through a future explicit calibration binding, never by inferring or retaining hidden shared Provider state. Solver, trajectory, device, finite resource, cancellation, and EndOfInput behavior are deferred to an executable contract."
+}

@@ -106,6 +106,14 @@
       }
     },
     {
+      "name": "linux-release-app-tests",
+      "inherits": "linux-release",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "KSJ_ENABLE_INSTALL_RULES": "OFF"
+      }
+    },
+    {
       "name": "linux-release-benchmark",
       "inherits": "linux-base",
       "cacheVariables": {
@@ -166,6 +174,11 @@
     {
       "name": "linux-release-unit-tests",
       "configurePreset": "linux-release-unit-tests",
+      "jobs": 0
+    },
+    {
+      "name": "linux-release-app-tests",
+      "configurePreset": "linux-release-app-tests",
       "jobs": 0
     },
     {
@@ -279,6 +292,13 @@
     {
       "name": "linux-release-unit-tests",
       "configurePreset": "linux-release-unit-tests",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-release-app-tests",
+      "configurePreset": "linux-release-app-tests",
       "output": {
         "outputOnFailure": true
       }

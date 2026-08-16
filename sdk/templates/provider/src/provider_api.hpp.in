@@ -1,0 +1,13 @@
+#pragma once
+
+#include "kspacejet/provider/provider.h"
+
+namespace ksj::@PROVIDER_TARGET@::api {
+
+// Provider-level declaration used only by provider_entry.cpp and
+// provider_api.cpp. Operator declarations belong in src/operators/*.hpp.
+[[nodiscard]] ksj_status query_provider(const ksj_provider_query_request* request,
+                                        ksj_provider_descriptor* out_descriptor, ksj_provider_api* out_api,
+                                        ksj_error_view* out_error) noexcept;
+
+} // namespace ksj::@PROVIDER_TARGET@::api

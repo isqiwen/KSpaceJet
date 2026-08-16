@@ -1,0 +1,24 @@
+#include "provider_api.hpp"
+#include "provider_state.hpp"
+#include "operators/@OPERATOR_SLUG@.hpp"
+
+#include "kspacejet/provider/detail/provider_support.hpp"
+
+namespace ksj::@PROVIDER_TARGET@::api {
+
+ksj_status query_provider(const ksj_provider_query_request* const request,
+                          ksj_provider_descriptor* const out_descriptor, ksj_provider_api* const out_api,
+                          ksj_error_view* const out_error) noexcept {
+  // TODO: validate every ABI header and pointer, populate immutable
+  // Provider/Operator descriptors, and install only supported lifecycle
+  // callbacks. Bind a one-Operator Provider directly to the declarations in
+  // src/operators/@OPERATOR_SLUG@.hpp; add only the Provider-level dispatch
+  // that several Operators require.
+  (void)request;
+  (void)out_descriptor;
+  (void)out_api;
+  (void)out_error;
+  return KSJ_STATUS_UNSUPPORTED;
+}
+
+} // namespace ksj::@PROVIDER_TARGET@::api

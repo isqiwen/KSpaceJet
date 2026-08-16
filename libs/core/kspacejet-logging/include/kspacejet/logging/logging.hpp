@@ -37,15 +37,20 @@ enum class Level {
                              const char* default_logger_name, const char* default_file_path,
                              std::string* error_message = nullptr);
 [[nodiscard]] bool Configure(const char* config_path, const char* base_dir, std::string* error_message = nullptr);
-[[nodiscard]] bool EnsureConfigured();
+// Configure a process-entry logger when no runtime logging configuration is
+// available. Diagnostics are written synchronously to stderr so stdout stays
+// available for a command's machine-readable protocol. Repeated fallback
+// calls keep the existing global logger and succeed; a later explicit
+// Configure(...) replaces this fallback.
+[[nodiscard]] bool ConfigureDefaultConsole(std::string_view logger_name = {}, std::string* error_message = nullptr);
 [[nodiscard]] bool IsConfigured();
 [[nodiscard]] bool ShouldLog(Level level);
 void Log(Level level, const char* message, const char* file_name = nullptr, int line = 0,
-         const char* function_name = nullptr);
+         const char* function_name = nullptr) noexcept;
 void Log(Level level, const std::string& message, const char* file_name = nullptr, int line = 0,
-         const char* function_name = nullptr);
-void Flush();
-void Shutdown();
+         const char* function_name = nullptr) noexcept;
+void Flush() noexcept;
+void Shutdown() noexcept;
 
 namespace detail {
 
@@ -103,17 +108,21 @@ template <typename Format, typename... Args> inline std::string FormatMessage(Fo
 
 template <typename Format, typename... Args>
 inline void LogFormatted(Level level, const char* file_name, int line, const char* function_name, Format&& format,
-                         Args&&... args) {
-  if (!ShouldLog(level)) {
-    return;
-  }
+                         Args&&... args) noexcept {
+  // Diagnostics must never turn an error-reporting or ABI-noexcept path into
+  // std::terminate. This also contains formatting and allocation failures.
+  try {
+    if (!ShouldLog(level)) {
+      return;
+    }
 
-  if constexpr (sizeof...(Args) == 0) {
-    Log(level, detail::ToMessageString(std::forward<Format>(format)), file_name, line, function_name);
-  } else {
-    Log(level, detail::FormatMessage(std::forward<Format>(format), std::forward<Args>(args)...), file_name, line,
-        function_name);
-  }
+    if constexpr (sizeof...(Args) == 0) {
+      Log(level, detail::ToMessageString(std::forward<Format>(format)), file_name, line, function_name);
+    } else {
+      Log(level, detail::FormatMessage(std::forward<Format>(format), std::forward<Args>(args)...), file_name, line,
+          function_name);
+    }
+  } catch (...) {}
 }
 
 [[nodiscard]] inline bool ShouldLogOccurrence(std::size_t occurrence, std::size_t interval) noexcept {

@@ -990,6 +990,25 @@ template <typename T>
   return ifft2(ksj::array::as_const_view(input), normalization);
 }
 
+// Transforms `data` in place using only caller-owned workspace. This route is
+// for bounded execution paths (such as a Provider firing) where a numerical
+// backend must not obtain pooled temporary matrices behind the caller's
+// resource plan. `intermediate` must match `data`; `source` and `destination`
+// must each contain at least max(rows, cols) complex elements. All four views
+// must be contiguous and must not alias.
+//
+// The explicit workspaces select the portable Eigen implementation so its
+// temporary matrix/vector storage is entirely supplied by the caller.
+template <typename T>
+void fft2_inplace_with_workspace(ksj::array::MatrixView<std::complex<T>> data,
+                                 ksj::array::MatrixView<std::complex<T>> intermediate,
+                                 ksj::array::VectorView<std::complex<T>> source,
+                                 ksj::array::VectorView<std::complex<T>> destination,
+                                 const Direction direction = Direction::forward,
+                                 const Normalization normalization = Normalization::none) {
+  detail::eigen::fft_2d_inplace_with_workspace(data, intermediate, source, destination, direction, normalization);
+}
+
 template <typename T> class Fft2Executor {
 public:
   void execute(ksj::array::MatrixView<const std::complex<T>> input, ksj::array::MatrixView<std::complex<T>> output,

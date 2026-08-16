@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/type-registry.schema.json",
+  "title": "KSpaceJet Type Registry",
+  "description": "The checked-in source of exact executable TypeDescriptor identities. A generator hashes only the canonical structural descriptor under the fixed kspacejet.type-identity domain. Human-readable payload and metadata semantics are documentation: a semantic change must allocate a distinct type_ref rather than edit an existing entry.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "kind",
+    "identity_hash_domain",
+    "semantic_change_policy",
+    "types"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "TypeRegistry"
+    },
+    "identity_hash_domain": {
+      "const": "kspacejet.type-identity"
+    },
+    "semantic_change_policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "types": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/type"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "typeRef": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 255,
+      "pattern": "^[a-z](?:[a-z0-9._-]*[a-z0-9])?$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[a-z](?:[a-z0-9._-]*[a-z0-9])?$"
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "type": {
+      "type": "object",
+      "required": [
+        "type_ref",
+        "summary",
+        "identity",
+        "payload_semantics",
+        "metadata_semantics"
+      ],
+      "properties": {
+        "type_ref": {
+          "$ref": "#/$defs/typeRef"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "payload_semantics": {
+          "$ref": "#/$defs/payloadSemantics"
+        },
+        "metadata_semantics": {
+          "$ref": "#/$defs/metadataSemantics"
+        }
+      },
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "payload",
+        "memory",
+        "mutability"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/payload"
+        },
+        "memory": {
+          "$ref": "#/$defs/memory"
+        },
+        "mutability": {
+          "enum": [
+            "immutable_after_publish",
+            "mutable_exclusive"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "kind",
+        "element_type",
+        "rank",
+        "dimensions",
+        "layout",
+        "strides",
+        "explicit_byte_strides"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "buffer_handle",
+            "message_handle",
+            "control_token",
+            "opaque_handle"
+          ]
+        },
+        "element_type": {
+          "enum": [
+            "none",
+            "uint8",
+            "int16",
+            "uint16",
+            "int32",
+            "uint32",
+            "float32",
+            "float64",
+            "complex_int16",
+            "complex_float32",
+            "complex_float64"
+          ]
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8,
+          "description": "The generated Provider C ABI has eight stride slots."
+        },
+        "dimensions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "layout": {
+          "enum": [
+            "canonical_contiguous",
+            "channel_major_contiguous",
+            "row_major_contiguous",
+            "column_major_contiguous",
+            "opaque"
+          ]
+        },
+        "strides": {
+          "enum": [
+            "canonical",
+            "explicit_byte_strides"
+          ]
+        },
+        "explicit_byte_strides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/positiveSafeInteger"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "buffer_handle"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "element_type": {
+                "not": {
+                  "const": "none"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "control_token"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "element_type": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strides": {
+                "const": "canonical"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "explicit_byte_strides": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "memory": {
+      "type": "object",
+      "required": [
+        "allowed_domains",
+        "min_alignment_bytes"
+      ],
+      "properties": {
+        "allowed_domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "host_normal",
+              "host_pinned",
+              "host_hugepage",
+              "shared_host",
+              "cuda_device"
+            ]
+          }
+        },
+        "min_alignment_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger",
+          "description": "Must be a power of two; the generator enforces that arithmetic predicate."
+        }
+      },
+      "additionalProperties": false
+    },
+    "payloadSemantics": {
+      "type": "object",
+      "required": [
+        "payload_role",
+        "numeric_encoding",
+        "dimension_meanings"
+      ],
+      "properties": {
+        "payload_role": {
+          "$ref": "#/$defs/identifier"
+        },
+        "numeric_encoding": {
+          "$ref": "#/$defs/identifier"
+        },
+        "dimension_meanings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "completion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "intensity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "message_contract": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadataSemantics": {
+      "type": "object",
+      "required": [
+        "kind",
+        "meaning"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "none"
+          ]
+        },
+        "meaning": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
