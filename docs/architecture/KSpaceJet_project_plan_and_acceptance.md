@@ -92,16 +92,15 @@ next_task: null
 ready_items: []
 blocked_items:
   - P0-002
-  - P0-003
   - P0-006
-accepted: 4
+accepted: 5
 applicable: 54
-coverage: 7.4%
+coverage: 9.3%
 ```
 
 | 阶段 | 目标 | 已接受 | 适用项 | 覆盖度 | 状态分布 |
 | --- | --- | ---: | ---: | ---: | --- |
-| P0 | 规范、基线和工程治理 | 4 | 8 | 50% | ACCEPTED: 4 · BLOCKED: 3 · PLANNED: 1 |
+| P0 | 规范、基线和工程治理 | 5 | 8 | 62.5% | ACCEPTED: 5 · BLOCKED: 2 · PLANNED: 1 |
 | P1 | 可信离线 reference 基线 | 0 | 7 | 0% | PLANNED: 7 |
 | P2 | 图、artifact、compiler、verifier 和 CLI 计划工具 | 0 | 6 | 0% | PLANNED: 6 |
 | P3 | 有界 generic CPU runtime | 0 | 6 | 0% | PLANNED: 6 |
@@ -114,9 +113,9 @@ coverage: 7.4%
 
 | 工作项 | 证据记录 |
 | --- | --- |
+| P0-003 | [13.10 P0-003 ACCEPTED 证据](#1310-p0-003-accepted-证据) |
 | P0-008 | [13.9 P0-008 ACCEPTED 证据](#139-p0-008-accepted-证据) |
 | P0-005 | [13.7 P0-005 ACCEPTED 证据](#137-p0-005-accepted-证据) |
-| P0-004 | [13.6 P0-004 ACCEPTED 证据](#136-p0-004-accepted-证据) |
 
 #### 当前阻塞项（自动生成）
 
@@ -125,7 +124,6 @@ coverage: 7.4%
 | 工作项 | 解锁后动作 |
 | --- | --- |
 | P0-002 | 在实际 Windows x64 + VS 2022 v143 + Windows SDK 主机/runner 上执行 debug/release bootstrap、build、install、installed help smoke 与 DLL depende… |
-| P0-003 | 将交付的 `AGENTS.md` 与本文件放入实际仓库，提交并记录 commit/tree 后置 ACCEPTED。 |
 | P0-006 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture owner 的 source/scope/review inputs；收到… |
 
 <!-- KSJ-PLAN-DASHBOARD:END -->
@@ -821,7 +819,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 
 ## 12. 唯一执行台账
 
-**更新时间**：2026-08-20，P0-004、P0-005、P0-008 已 ACCEPTED；P0-002 仍等待 Windows 主机、P0-003 仍等待远程交付权限/commit、P0-006 仍等待产品参数 authority
+**更新时间**：2026-08-20，P0-003、P0-004、P0-005、P0-008 已 ACCEPTED；P0-002 仍等待 Windows 主机，P0-006 仍等待产品参数 authority
 **当前可执行任务**：无；第 12 节没有 READY、IN_PROGRESS 或 VERIFYING 项。不得伪造下一项；只在外部阻塞解除后按本节状态机恢复。
 **状态权威**：本节是本文件中唯一允许修改任务状态的位置。任务目录第 10 节不维护重复状态。
 
@@ -831,12 +829,12 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | --- | --- | --- | --- | --- | --- |
 | P0-001 | ACCEPTED | 无 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`；同一未提交 code/test/fixture diff 在独立本地 clone 的新 `.venv`/unit build tree 上完成 bootstrap、321-step build、35/35 CTest。主工作树复验也通过；完整证据见第 13.1 节。 | P0-002：验证 Linux/Windows toolchain、Conan、LFS、preset、install 与 check scripts。 | 仅 Linux component evidence；Windows、install、app/system、性能和 qualification 尚未由本项验证。 |
 | P0-002 | BLOCKED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含已接受但未提交的 P0-001 code/test/fixture/docs diff。Linux LFS、bootstrap、unit、application build/install、clean-prefix help 与 check scripts 全部通过；完整命令和 Windows 阻塞见第 13.2 节。 | 在实际 Windows x64 + VS 2022 v143 + Windows SDK 主机/runner 上执行 debug/release bootstrap、build、install、installed help smoke 与 DLL dependency closure 记录。 | `AC-BLD-002` 未满足：当前仅有 Linux kernel，且无 PowerShell、MSVC/VS 或 Windows runner；Linux evidence 不能替代 Windows acceptance。 |
-| P0-003 | BLOCKED | 无 | 本执行总规范已位于目标相对路径 `docs/architecture/KSpaceJet_project_plan_and_acceptance.md`，AGENTS 自主协议已写入交付文件；Markdown 结构和 whitespace 检查通过。GitHub branch creation 被 integration 拒绝。 | 将交付的 `AGENTS.md` 与本文件放入实际仓库，提交并记录 commit/tree 后置 ACCEPTED。 | GitHub connector 创建 agent/kspacejet-execution-plan 返回 403 Resource not accessible by integration；本次没有远程仓库写入。 |
+| P0-003 | ACCEPTED | 无 | `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` / tree `01c12fcd1b52fe45a86a3a26691bcfbf264e6589` 已将 `AGENTS.md`、唯一 execution ledger、检查器和交付文件提交到当前实际仓库；完整证据见第 13.10 节。 | 无 READY 项；维持唯一台账并在后续状态变更后运行 `check_execution_plan.py --write --check`。 | 当前只有本地 commit，未推送/创建远程 branch；但 P0-003 的本地仓库交付/commit 验收已满足。 |
 | P0-004 | ACCEPTED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含未提交的 P0-001/P0-002 evidence diff。已修复五个真实本地 Markdown 断链、过时路径/命令和应用角色说明；新增离线 link/path gate，最终扫描为 75 个 Markdown 文件、151 个本地 link，零错误；完整证据见第 13.6 节。 | P0-005：列出冲突原文，并同一变更更新全部主规范、help 和测试。 | 外部 URL 不联网验证；当前 Linux 主机不能执行 Windows PowerShell hook。remote merge enforcement 仍属于 P0-007。 |
 | P0-005 | ACCEPTED | P0-001, P0-004 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含未提交的 P0-001/P0-004 diffs。五个 canonical profile、schema/fixture/test、active help、artifact authority、plain-text diagnostics 和历史文档边界已原子收口；完整证据见第 13.7 节。 | P0-006：只收集真实 TargetEnvelope/MachinePolicy 参数或精确记录缺失输入。 | P4/P5/P7 mode 仍未接受；P0-002 的 Windows evidence 仍 BLOCKED，不能扩大任何能力宣称。 |
 | P0-006 | BLOCKED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含 P0-001/P0-004/P0-005 的未提交改动。第 6.3.1/13.8 节证明没有 committed、deployment-owned TargetEnvelope 或 MachinePolicy；fixture、reference defaults、research case 和本机硬件均已明确降级为非产品证据。 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture owner 的 source/scope/review inputs；收到后重新打开 P0-006 并按每项复核。 | 不得猜测 channel 上限、SLO 或 GPU 配置；不把 test fixture、reference-route value 或当前 Linux host 自动提升为产品 envelope。 |
 | P0-007 | PLANNED | P0-002 | main 无 GitHub Actions/.gitlab CI 文件和 required status evidence。 | 先制定最小 CI matrix；外部 repo settings 改动仅在被授权时执行。 | remote workflow/branch protection 尚未配置。 |
-| P0-008 | ACCEPTED | P0-001 | 用户要求的 Master Plan 视图已在第 0.4 节作为受控派生总览落地：显示阶段覆盖度、当前/READY/阻塞项、最近验收证据和阻塞恢复动作；完整证据见第 13.9 节。第 12 节仍是唯一状态权威。 | 后续状态变更只改第 12 节，然后运行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；无 READY 时保持无下一项。 | 总览不能直接改变状态。P0-002 的 Windows、P0-003 的远程交付和 P0-006 的参数 authority BLOCKED 均不因本项解除；当前 Linux 主机无法执行 Windows hook。 |
+| P0-008 | ACCEPTED | P0-001 | 用户要求的 Master Plan 视图已在第 0.4 节作为受控派生总览落地：显示阶段覆盖度、当前/READY/阻塞项、最近验收证据和阻塞恢复动作；完整证据见第 13.9 节。第 12 节仍是唯一状态权威。 | 后续状态变更只改第 12 节，然后运行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；无 READY 时保持无下一项。 | 总览不能直接改变状态。P0-002 的 Windows 与 P0-006 的参数 authority BLOCKED 均不因本项解除；当前 Linux 主机无法执行 Windows hook。 |
 
 ### 12.1.1 P0-001 基线能力矩阵（2026-08-20，ACCEPTED）
 
@@ -950,6 +948,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | 2026-08-20 | 完成可重复 Linux 基线与 schema/semantic negative evidence。 | P0-001 | 独立本地 clone、全新 `.venv`/unit build tree、321-step build、35/35 CTest；`recon` label 4/4；两个 schema-valid fixture 与 compiler focused test 均通过。 | P0-001 ACCEPTED；P0-002 成为唯一 READY 项。 |
 | 2026-08-20 | 完成 Linux toolchain、LFS、application install 与 check-script 验证。 | P0-002 | Linux/Windows Intel manifest 全量 hash、Git LFS pointer/object fsck、Linux bootstrap、35/35 unit、application build/install、clean-prefix four-app help、format/configure check 全部通过；Windows host probe 失败。 | P0-002 BLOCKED，等待真实 Windows MSVC 2022 runner；P0-004 READY。 |
 | 2026-08-20 | 将唯一执行台账升级为可校验的 Master Plan 视图。 | P0-008 | 第 0.4 节从第 12 节生成阶段覆盖度、当前/READY/阻塞项、最近验收证据和恢复动作；离线 checker 与本地 document gates 已接入。 | P0-008 ACCEPTED；当前无 READY/IN_PROGRESS 项，P0-002、P0-003、P0-006 保持独立 BLOCKED。 |
+| 2026-08-20 | 将 canonical governance/contract 交付提交到当前实际仓库。 | P0-003 | commit `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` / tree `01c12fcd1b52fe45a86a3a26691bcfbf264e6589`，pre-commit gate 通过。 | P0-003 ACCEPTED；P0-002 与 P0-006 保持 BLOCKED，当前无 READY 项。 |
 
 ### 13.1 P0-001 ACCEPTED 证据
 
@@ -1051,7 +1050,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 - Host observation (not policy): `uname -srm` 为 `Linux 6.12.101+deb13-amd64 x86_64`；`nproc` 为 `28`；`lscpu` 显示 i7-14700K、1 socket、1 NUMA node；`free -b` 总内存为 `67077595136` B；`nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader` 为 `NVIDIA GeForce RTX 4060 Ti, 550.163.01, 16380 MiB`。这些是本次 Linux build host 的可重复观察，不是经批准的 target topology；P6-004 仍明确没有 GPU DevicePlan/runtime acceptance。
 - Classification: `org.example` envelope/policy fixtures、reference-route per-input calculations、Gadgetron research manifest 和 native-endian f32 + JSON sidecar 输出均已在第 6.3.1 节归类为 test/reference/research/developer evidence。research case 虽有 pinned source/hash 和 access date，但 license 为 `not stated by source`、redistribution 为 `unclear`，不能提升为产品 case。loader 的 path/root/digest controls 仍只是 trusted in-process ABI boundary，不能替代 release/security policy。
 - Blocking inputs: 必须由具名 case、deployment、performance、data-governance、output、security/release 和 architecture owner 分别提供第 6.3.1 节所列 immutable source、适用范围和 review date。最低需要 approved case manifest（实际 shape/channel/algorithm/concurrency）、target MachinePolicy/topology、SLO measurement protocol/raw artifacts、privacy/retention/access、output/partial/ordering/durability 规则、Provider signing/SBOM/trust tier，以及 JSON/C++ parameter authority 的收口决定。
-- Impact: P1-001、P1-005、P1-007、P2-003、P4-005、P5-001、P6-003/004/006/007 等依赖 P0-006 的工作项不能启动。P0-002 Windows 和 P0-003 remote-branch 阻塞仍独立存在。
+- Impact: P1-001、P1-005、P1-007、P2-003、P4-005、P5-001、P6-003/004/006/007 等依赖 P0-006 的工作项不能启动。P0-002 的 Windows 阻塞仍独立存在。
 - Unblock and next action: 收到所有必填参数的 source/owner/scope/review inputs 后，将 P0-006 改为 `READY`；重新选中时先改为 `IN_PROGRESS`，再复核其不可变来源及是否误把 channel cap、采集链路或本机观察写入产品 policy。未齐全时保持 `BLOCKED`。
 - Validation: `git diff --check` exit 0；`tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .` exit 0（`75 file(s), 160 local link(s)`）；`rg -n '[[:blank:]]+$' docs/architecture/KSpaceJet_project_plan_and_acceptance.md` exit 1 且无输出（无尾部空白）。这些命令只验证文档完整性，不会把该阻塞转为 acceptance。
 
@@ -1063,8 +1062,17 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 - Focused validation: `tools/devenv/linux/run.sh python -m py_compile tools/checks/check_execution_plan.py` exit 0；`tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --self-test` exit 0（13/13，覆盖 stale-dashboard、ID drift、入口丢失、unsupported status、duplicate ID、multiple active/READY、unsatisfied READY dependency、evidence/blocker projection、write/check 和百分比）；`tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --project-root . --write` 与同命令 `--check` 均 exit 0（54 work items）。
 - Complete validation: `tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .` exit 0（`75 file(s), 165 local link(s)`）；`bash -n tools/checks/linux/ci_check.sh tools/checks/linux/pre_commit.sh` exit 0；`bash tools/checks/linux/ci_check.sh` exit 0（local Markdown links、execution-plan dashboard、172 C/C++ clang-format、32 CMake files 和 `linux-release` configure）；`git diff --check` exit 0；`! rg -n '( {3,}|[[:blank:]]+\\t)$' docs/architecture/KSpaceJet_project_plan_and_acceptance.md` exit 0（允许 Markdown 的两个空格 hard break，未发现意外尾部空白）。
 - Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, GCC/G++ 14.2.0, CMake 3.31.6, Python 3.13.5；checker 只使用 Python 标准库，CI configure 使用已准备的 repository-local developer environment。
-- Known limitations: dashboard 是同一 Markdown 文档中的离线投影，不是远程 issue tracker、CI service 或第二份计划；它不证明任何产品功能。当前 Linux 主机无 PowerShell/Windows host，未执行 Windows pre-commit；这不替代 P0-002 的 Windows acceptance。P0-002、P0-003、P0-006 的既有 BLOCKED 条件保持不变。
-- Next READY item: 无。下一位 Codex 必须先读取第 0.4/12 节；只有 P0-002 的 Windows 主机、P0-003 的远程交付权限/commit 或 P0-006 的必填 owner/source/review inputs 实际到位后，才能按记录的 predicate 恢复相应项。
+- Known limitations: dashboard 是同一 Markdown 文档中的离线投影，不是远程 issue tracker、CI service 或第二份计划；它不证明任何产品功能。当前 Linux 主机无 PowerShell/Windows host，未执行 Windows pre-commit；这不替代 P0-002 的 Windows acceptance。P0-002、P0-006 的既有 BLOCKED 条件保持不变。
+- Next READY item: 无。下一位 Codex 必须先读取第 0.4/12 节；只有 P0-002 的 Windows 主机或 P0-006 的必填 owner/source/review inputs 实际到位后，才能按记录的 predicate 恢复相应项。
+
+### 13.10 P0-003 ACCEPTED 证据
+
+- Work item: `P0-003`; requirements/acceptance: 固定本文件为唯一状态账本、建立恢复流程、禁止无同步机制的第二 TODO/工作项系统；`AC-BLD-004`。
+- Delivery commit/tree: `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` / `01c12fcd1b52fe45a86a3a26691bcfbf264e6589`，message 为 `feat: establish canonical execution governance and contracts`。该 commit 已将 `AGENTS.md`、本文件、相关 documentation、schema/fixture/test、offline Markdown/execution-plan checkers 和 hook wiring 写入当前实际仓库。
+- Acceptance evidence: commit hook 运行并通过 staged C/C++ clang-format、CMake format、local Markdown link check（75 files、165 local links）、execution-plan dashboard check、CMake preset listing 和 staged CMake configure；commit message gate 也通过。首次 hook 仅报告 `scan_lifecycle.cpp` 格式偏差，已使用 repository-local `clang-format` 格式化该精确文件、重新暂存并复跑通过；未回退任何用户改动。
+- State/recovery evidence: `AGENTS.md` 明确本文件是 canonical execution ledger；第 0/12/13 节完整，`tools/checks/check_execution_plan.py --check` 已验证 dashboard 与 54 项台账一致。第 10/12 节 ID 集合、状态、依赖、唯一 READY/活动项及入口链接均受离线检查器保护。
+- Known limitations: 未创建或推送远程 branch；此前 GitHub integration 403 仍是历史远程操作失败证据，但 P0-003 的明确本地 repository delivery/commit 条件已经满足。远程 CI、branch protection 和 release 仍属于 P0-007/P7。
+- Next READY item: 无。P0-002 需要 Windows host，P0-006 需要产品参数 authority；两者保持 BLOCKED。
 
 ---
 
@@ -1113,7 +1121,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 
 1. 每次有合法状态变更时，只修改第 12 节，然后执行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；若检查失败，先修复第 10/12 节 ID、依赖或入口漂移，不能手改总览。
 2. 保留第 13.2 节 P0-002 的 Windows BLOCKED 记录；只有实际 Windows x64 + VS 2022 v143 + SDK 主机/runner 的 build/install/help evidence 才能恢复它，不能用 Linux evidence 替代。
-3. P0-003 仍需将 `AGENTS.md` 和本文件放入实际仓库、提交并记录 commit/tree；P0-006 仍只能在收齐第 6.3.1/13.8 节的 owner/source/review inputs 后改为 READY。
+3. P0-003 已由本地 commit `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` 接受；P0-006 仍只能在收齐第 6.3.1/13.8 节的 owner/source/review inputs 后改为 READY。
 4. 以第 1.3、6.1/6.2、17.1 节与 ADR-002/004 为唯一 scope/mode/diagnostics 权威；P0-005 已 ACCEPTED，不回退其 profile、plain-text diagnostics 或 scope-closure 结论，也不得以 dashboard 扩张产品 capability。
 
 ---
