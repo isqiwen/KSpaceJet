@@ -1,9 +1,17 @@
 # KSpaceJet 流式重建框架实施规划
 
-> 状态：提案（架构与实施基线）
-> 适用范围：Linux x86_64、Windows x86_64/MSVC，C++20，Conan 2 依赖管理。
+> **历史 / 非规范性记录。** 本文保存已撤回或探索性的架构提案，而不定义当前产品能力、
+> 状态、接口、部署、验收或 artifact authority。尤其是其中关于公开 MRD/ISMRMRD
+> session、`ksj-gateway`、Connector、scanner/采集集成、网络 relay/transport 或结构化
+> core logging 的主张均已撤回。当前产品边界、artifact authority 与执行状态的唯一权威为
+> [KSpaceJet project plan and acceptance](KSpaceJet_project_plan_and_acceptance.md)。
+>
+> 状态：历史提案（保留以供技术考察，不是架构或实施基线）。
+> 历史适用范围：Linux x86_64、Windows x86_64/MSVC，C++20，Conan 2 依赖管理。
 > 本文不恢复 DPC、BRF、ComQ、私有协议或专有重建算法。
-> 可执行工程：`ksj`、`ksj-gateway`、`ksj-recon`、`ksj-research`；四者均默认构建并安装。`ksj-research` 是外层实验工具，不进入在线 reconstruction runtime 或数据面依赖。每个扩展重建算法模块以独立动态库 Provider plugin 交付，由 `ksj-recon` 在进程内通过稳定 C ABI 加载。
+> 历史执行拓扑曾列出 `ksj`、`ksj-gateway`、`ksj-recon` 与 `ksj-research`；该描述不规定
+> 这些程序当前的角色或能力。当前可执行行为和边界只以 canonical execution ledger 及其
+> 对应源码、测试为准。
 
 ## 1. 愿景与完成定义
 
@@ -1197,7 +1205,10 @@ flowchart LR
 
 ### 11.1 执行封装与依赖供应链
 
-`KSJ-GOV-001` 是除纯文档评审外所有实现工作单的全局前置。它把本章每个 ID 物化为 `docs/work-items/<ID>.yaml`，并由 `schemas/work-item.schema.json` 校验；AI 只能在 manifest 完整且依赖已关闭后开始对应任务。
+`KSJ-GOV-001` 是本历史规划中的设计 ID，不是已实施的全局前置。当前唯一的执行台账是
+[KSpaceJet project plan and acceptance](KSpaceJet_project_plan_and_acceptance.md)，它决定工作是否可以开始。
+以下 YAML 只是当时设想的 manifest 形状；`docs/work-items/<ID>.yaml` 和
+`schemas/work-item.schema.json` 并不存在，不能据此假定仓库有对应的校验或授权机制。
 
 ```yaml
 kind: WorkItem
@@ -1216,7 +1227,7 @@ out_of_scope: []
 risk_and_rollback: ""
 ```
 
-`allowed_paths` 必须是具体仓库相对路径；`outputs` 必须列出目标文件/schema/target；`commands` 和 `acceptance_tests` 必须区分 Linux、Windows 与无需本机执行但由 CI 验证的项目；`blocked_by` 与 `conditional_blocked_by[].ids` 必须使用完整 `KSJ-*` ID。下表“前置”列为便于阅读可省略共同 `KSJ-` 或重复 category 前缀，但 `KSJ-GOV-001` 物化的 manifest 不得省略。graph validator 拒绝未知 ID、循环依赖、空验收、越界输出和一个 manifest 同时修改多个产品面的任务。
+在这个历史设想中，`allowed_paths`、`outputs`、`commands`、`acceptance_tests` 和依赖字段会记录可审计元数据。当前仓库没有该 manifest 或 graph validator；实际允许路径、输出、验证命令和依赖由 canonical execution ledger 记录。
 
 条件工作不得使用自然语言或任意表达式。`activation.kind` 只允许 `always` 或 `json_predicate`；后者必须给出已列入 `inputs` 的 `artifact_id`、`json_pointer` 和 `operator ∈ {equals, not_null, in}`，其中 `equals`/`in` 还必须提供类型匹配的 `value`。条件依赖使用相同 predicate 结构：
 

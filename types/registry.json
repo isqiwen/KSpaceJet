@@ -502,7 +502,7 @@
     },
     {
       "type_ref": "ismrmrd.acquisition",
-      "summary": "One immutable host-resident opaque ISMRMRD acquisition message envelope accepted at a public PipelineDefinition ingress.",
+      "summary": "One immutable host-resident opaque ISMRMRD acquisition message envelope accepted at a declared PipelineDefinition ingress.",
       "identity": {
         "payload": {
           "kind": "message_handle",
@@ -534,7 +534,7 @@
     },
     {
       "type_ref": "ismrmrd.waveform",
-      "summary": "One immutable host-resident opaque ISMRMRD waveform message envelope accepted at a public PipelineDefinition ingress.",
+      "summary": "One immutable host-resident opaque ISMRMRD waveform message envelope accepted at a declared PipelineDefinition ingress.",
       "identity": {
         "payload": {
           "kind": "message_handle",
@@ -566,7 +566,7 @@
     },
     {
       "type_ref": "ismrmrd.image",
-      "summary": "One immutable host-resident opaque ISMRMRD image message envelope accepted at a public PipelineDefinition egress.",
+      "summary": "One immutable host-resident opaque ISMRMRD image message envelope accepted at a declared PipelineDefinition egress.",
       "identity": {
         "payload": {
           "kind": "message_handle",

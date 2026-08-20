@@ -12,15 +12,15 @@ namespace ksj::recon {
 // snapshot can be compiled for more than one admissible deployment profile.
 //
 // Names describe claims, not implementation switches.  In particular,
-// isolated_strict_online and deadline_qualified_online require a separately
-// qualified worker/fault boundary.  The current in-process Provider runtime
-// must reject them rather than silently weakening their guarantees.
+// isolated_provider_runtime requires a separately qualified worker/fault
+// boundary.  The current in-process Provider runtime must reject it rather
+// than silently weakening its guarantees.
 enum class ExecutionProfile {
-  offline,
-  bounded_online,
-  isolated_strict_online,
-  deadline_qualified_online,
-  research_unbounded,
+  offline_reference,
+  bounded_reconstruction_graph,
+  provider_development,
+  embedded_incremental,
+  isolated_provider_runtime,
 };
 
 [[nodiscard]] std::string_view to_string(ExecutionProfile profile) noexcept;

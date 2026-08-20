@@ -4,7 +4,7 @@
     "id": "org.example.dev-host"
   },
   "allowed_profiles": [
-    "bounded-online"
+    "bounded-reconstruction-graph"
   ],
   "resource_capacity": {
     "domains": {

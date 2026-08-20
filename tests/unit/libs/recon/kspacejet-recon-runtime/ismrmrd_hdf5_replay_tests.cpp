@@ -265,7 +265,7 @@ TEST(KSpaceJetIsmrmrdHdf5Replay, ReaderOpenFailureOccursBeforePipelineAdmission)
 
   EXPECT_FALSE(replay.ok());
   EXPECT_EQ(ksj::base::StatusCode::io_error, replay.status().code());
-  EXPECT_EQ(ScanState::session_candidate, pipeline.value().snapshot().state);
+  EXPECT_EQ(ScanState::input_candidate, pipeline.value().snapshot().state);
   EXPECT_EQ(TerminalCause::none, pipeline.value().snapshot().terminal_cause);
   EXPECT_TRUE(observed.empty());
 }

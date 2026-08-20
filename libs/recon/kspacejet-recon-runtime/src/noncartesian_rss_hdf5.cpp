@@ -428,7 +428,7 @@ struct AcquisitionFacts final {
     "{"
     "\"kind\":\"PipelineDefinition\","
     "\"pipeline\":{\"id\":\"org.kspacejet.noncartesian-rss\",\"display_name\":\"Non-Cartesian RSS reconstruction\"},"
-    "\"allowed_profiles\":[\"offline\"],"
+    "\"allowed_profiles\":[\"offline-reference\"],"
     "\"parameters\":{},"
     "\"provider_requirements\":["
     "{\"alias\":\"noncartesian\",\"provider_id\":\"org.kspacejet.noncartesian-recon\"},"
@@ -591,7 +591,7 @@ struct AcquisitionFacts final {
                                                              .host_total_cap_bytes = host_budget.value()},
                                        .numa_domain_count = 1U,
                                        .allowed_memory_domains = {MemoryDomain::host},
-                                       .allowed_profiles = {ExecutionProfile::offline},
+                                       .allowed_profiles = {ExecutionProfile::offline_reference},
                                        .scheduler_policy = SchedulerPolicy::fifo});
   if (!policy.ok())
     return policy.status();
@@ -618,7 +618,7 @@ struct AcquisitionFacts final {
   if (!target_digest.ok())
     return target_digest.status();
   const auto machine_document =
-    "{\"allowed_memory_domains\":[\"host\"],\"allowed_profiles\":[\"offline\"],\"host_total_cap_bytes\":" +
+    "{\"allowed_memory_domains\":[\"host\"],\"allowed_profiles\":[\"offline-reference\"],\"host_total_cap_bytes\":" +
     std::to_string(host_budget.value()) +
     ",\"numa_domain_count\":1,\"resources\":{\"async_token_count\":0,\"backend_gang_permits\":0,"
     "\"cpu_leaf_permits\":2,\"descriptor_count\":1024,\"host_hugepage_bytes\":0,\"host_normal_bytes\":" +
@@ -1053,7 +1053,7 @@ reconstruct_noncartesian_rss_hdf5(const NoncartesianRssHdf5ReconstructionConfig&
 
     const graph::PlanBuildRequest request{
       .resolved_pipeline = graph_inputs.value().pipeline,
-      .requested_profile = ExecutionProfile::offline,
+      .requested_profile = ExecutionProfile::offline_reference,
       .scan_descriptor = preflight.value().scan_descriptor,
       .target_envelope = planning.value().target_envelope,
       .machine_policy = planning.value().machine_policy,

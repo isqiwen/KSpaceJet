@@ -297,7 +297,7 @@ inline constexpr std::string_view kControlMessageTypeRef = "ksj.control-message"
   return TypeDescriptor::create(specification);
 }
 
-// ismrmrd.acquisition: One immutable host-resident opaque ISMRMRD acquisition message envelope accepted at a public PipelineDefinition ingress.
+// ismrmrd.acquisition: One immutable host-resident opaque ISMRMRD acquisition message envelope accepted at a declared PipelineDefinition ingress.
 // Structural payload: none opaque rank 0 [].
 // Payload semantics: {"dimension_meanings":{},"message_contract":"The handle denotes one complete ISMRMRD acquisition envelope, including its acquisition header and any sample or trajectory payload owned by the ISMRMRD binding. Generic graph code neither decodes nor retains internal fields outside the owning message-handle contract.","numeric_encoding":"opaque_ismrmrd_acquisition_message_handle","payload_role":"ismrmrd_acquisition_message_envelope"}
 // Metadata semantics: {"kind":"none","meaning":"No separately-addressable metadata bytes are defined. ISMRMRD acquisition header and attribute semantics remain inside the opaque message handle."}
@@ -319,7 +319,7 @@ inline constexpr std::string_view kIsmrmrdAcquisitionTypeRef = "ismrmrd.acquisit
   return TypeDescriptor::create(specification);
 }
 
-// ismrmrd.waveform: One immutable host-resident opaque ISMRMRD waveform message envelope accepted at a public PipelineDefinition ingress.
+// ismrmrd.waveform: One immutable host-resident opaque ISMRMRD waveform message envelope accepted at a declared PipelineDefinition ingress.
 // Structural payload: none opaque rank 0 [].
 // Payload semantics: {"dimension_meanings":{},"message_contract":"The handle denotes one complete ISMRMRD waveform envelope, including its waveform header and waveform data owned by the ISMRMRD binding. Generic graph code neither decodes nor retains internal fields outside the owning message-handle contract.","numeric_encoding":"opaque_ismrmrd_waveform_message_handle","payload_role":"ismrmrd_waveform_message_envelope"}
 // Metadata semantics: {"kind":"none","meaning":"No separately-addressable metadata bytes are defined. ISMRMRD waveform header and sample semantics remain inside the opaque message handle."}
@@ -341,7 +341,7 @@ inline constexpr std::string_view kIsmrmrdWaveformTypeRef = "ismrmrd.waveform";
   return TypeDescriptor::create(specification);
 }
 
-// ismrmrd.image: One immutable host-resident opaque ISMRMRD image message envelope accepted at a public PipelineDefinition egress.
+// ismrmrd.image: One immutable host-resident opaque ISMRMRD image message envelope accepted at a declared PipelineDefinition egress.
 // Structural payload: none opaque rank 0 [].
 // Payload semantics: {"dimension_meanings":{},"message_contract":"The handle denotes one complete ISMRMRD image envelope, including its image header, pixels, and attributes owned by the ISMRMRD binding. Generic graph code neither decodes nor retains internal fields outside the owning message-handle contract.","numeric_encoding":"opaque_ismrmrd_image_message_handle","payload_role":"ismrmrd_image_message_envelope"}
 // Metadata semantics: {"kind":"none","meaning":"No separately-addressable metadata bytes are defined. ISMRMRD image header, pixel, and attribute semantics remain inside the opaque message handle."}

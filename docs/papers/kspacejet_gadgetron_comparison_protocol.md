@@ -1,5 +1,11 @@
 # KSpaceJet–Gadgetron 公平对照与复现实验协议
 
+> **历史 / 非规范性研究记录。** 本文保存已撤回或探索性的对照协议，不定义当前产品能力、
+> 状态、接口、部署、验收或 artifact authority。其关于公开 MRD/ISMRMRD session、
+> `ksj-gateway`、Connector、scanner/采集集成、网络 relay/transport 或结构化 core logging
+> 的任何表述均已撤回。当前产品边界、artifact authority 与执行状态的唯一权威为
+> [KSpaceJet project plan and acceptance](../architecture/KSpaceJet_project_plan_and_acceptance.md)。
+>
 > 状态：多基线预注册草案。
 > 目的：在看到正式性能结果之前冻结比较边界，避免挑选数据、指标、运行次数或配置。
 > 关联稿件：[KSpaceJet 资源合约流式重建论文初稿](kspacejet_resource_contract_streaming_paper_draft.md)。
@@ -702,7 +708,9 @@ paper-artifacts/<paper-identity>/
 
 ## 14. AI 执行映射
 
-唯一权威工作单 ID、依赖 DAG、允许路径和验收命令定义在[架构规划第 11、14 节](../architecture/streaming_reconstruction_framework_plan.md)。本协议不再建立平行的 `PAPER-BENCH-*` namespace；runner、论文和 issue tracker 只能引用 `KSJ-BENCH-*`、`KSJ-PAPER-*` 及其 machine-readable work-item manifest。
+本节的工作单 ID、依赖 DAG、允许路径、验收命令和 machine-readable manifest 都是已撤回的
+研究流程设想，不得作为当前任务权威或平行 namespace。当前唯一执行台账为
+[KSpaceJet project plan and acceptance](../architecture/KSpaceJet_project_plan_and_acceptance.md)。
 
 | 协议证据步骤 | 权威实现工作单 | 权威执行/论文工作单 | 协议完成门禁 |
 | --- | --- | --- | --- |

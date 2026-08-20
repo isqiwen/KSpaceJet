@@ -32,7 +32,7 @@ struct PlanBuildRequest {
   // resolved pipeline's canonical authored configuration, then the verifier
   // independently derives and exact-compares the frozen plan bindings.
   const ResolvedPipeline& resolved_pipeline;
-  ExecutionProfile requested_profile{ExecutionProfile::bounded_online};
+  ExecutionProfile requested_profile{ExecutionProfile::bounded_reconstruction_graph};
   const ScanDescriptor& scan_descriptor;
   const TargetEnvelope& target_envelope;
   const MachinePolicy& machine_policy;

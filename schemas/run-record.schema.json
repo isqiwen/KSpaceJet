@@ -382,11 +382,11 @@
     "executionProfile": {
       "type": "string",
       "enum": [
-        "offline",
-        "bounded-online",
-        "isolated-strict-online",
-        "deadline-qualified-online",
-        "research-unbounded"
+        "offline-reference",
+        "bounded-reconstruction-graph",
+        "provider-development",
+        "embedded-incremental",
+        "isolated-provider-runtime"
       ]
     },
     "cause": {

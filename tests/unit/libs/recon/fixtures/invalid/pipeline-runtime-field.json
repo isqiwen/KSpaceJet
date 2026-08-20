@@ -5,7 +5,7 @@
     "display_name": "Reference Cartesian reconstruction"
   },
   "allowed_profiles": [
-    "bounded-online"
+    "bounded-reconstruction-graph"
   ],
   "parameters": {},
   "provider_requirements": [

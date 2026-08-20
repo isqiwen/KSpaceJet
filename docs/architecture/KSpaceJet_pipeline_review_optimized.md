@@ -1,9 +1,15 @@
 # KSpaceJet 重建 Pipeline 全面评估与优化设计
 
-> 文档状态：建议冻结版
+> **历史 / 非规范性记录。** 本文保存已撤回或探索性的优化设计，不定义当前产品能力、
+> 状态、接口、部署、验收或 artifact authority。其关于公开 MRD/ISMRMRD session、
+> `ksj-gateway`、Connector、scanner/采集集成、网络 relay/transport 或结构化 core logging
+> 的任何表述均已撤回。当前产品边界、artifact authority 与执行状态的唯一权威为
+> [KSpaceJet project plan and acceptance](KSpaceJet_project_plan_and_acceptance.md)。
+>
+> 文档状态：历史优化设计记录；非当前规范。
 > 评估对象：`pipeline_definition.md`
-> 命名策略：项目尚未发布，本文直接定义唯一当前形态；不保留版本后缀、兼容别名或并行格式。
-> 核心目标：把“优秀的形式化蓝图”收敛成“可以分阶段实现、可验证、可测量、能承载 CPU/NUMA/GPU 实时 MRI 重建的工程规范”。
+> 命名策略：本文记录当时的直接替换设想；它不再定义当前形态、兼容性或命名。
+> 历史核心目标：把“优秀的形式化蓝图”收敛成“可以分阶段实现、可验证、可测量、能承载 CPU/NUMA/GPU 实时 MRI 重建的工程规范”。
 
 ---
 

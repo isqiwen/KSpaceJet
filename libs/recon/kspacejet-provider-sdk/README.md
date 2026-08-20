@@ -67,5 +67,5 @@ it may stop/release provider work but must never emit ordinary MRI data.
 
 This SDK defines neither a loader nor a process-isolation/data-plane protocol.
 Current in-process providers are therefore not evidence for an
-`isolated-strict-online` deployment claim; that profile requires a separately
-implemented and approved worker fault boundary.
+`isolated-provider-runtime` deployment claim; that profile requires a
+separately implemented and approved worker fault boundary.

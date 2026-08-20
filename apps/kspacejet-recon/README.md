@@ -1,10 +1,9 @@
 # `ksj-recon`
 
-`ksj-recon` is an offline HDF5 reconstruction executable. It admits a narrow,
-explicitly selected route, builds a normal `PipelineDefinition`, compiles and
-verifies its execution plan, then runs the frozen graph through Provider node
-instances. It never discovers a Provider from a directory or chooses an
-algorithm on the caller's behalf.
+`ksj-recon` is an offline HDF5 reconstruction reference executable, not an online service.
+It admits a narrow, explicitly selected route, builds a normal `PipelineDefinition`, compiles
+and verifies its execution plan, then runs the frozen graph through Provider node instances. It
+never discovers a Provider from a directory or chooses an algorithm on the caller's behalf.
 
 Every Provider module and every OperatorContract is supplied by the caller.
 The paths below are examples only; use the modules and contracts that belong to
@@ -87,11 +86,12 @@ measurements, phase-correction references, and parallel calibration. A
 parallel-calibration-and-imaging acquisition supplies both relevant roles.
 It rejects inconsistent geometry, trajectories, 3-D coordinates, discarded
 samples, changing channel counts, non-finite values, partial or duplicate
-imaging `ky` coverage, or calibration data for a disabled branch. This route
-currently supports dimensions in `[2, 512]` and `[1, 64]` physical channels.
+imaging `ky` coverage, or calibration data for a disabled branch. This temporary reference
+route currently supports dimensions in `[2, 512]` and `[1, 64]` physical channels; the channel
+limit is not a KSpaceJet framework capacity claim.
 
-The output is native-endian, row-major `float32` RSS data. This is a bounded
-engineering route, not a clinical reconstruction claim.
+The output is native-endian, row-major `float32` RSS data. This is a bounded engineering
+reference route, not a clinical reconstruction or service claim.
 
 ## `noncartesian-rss`
 

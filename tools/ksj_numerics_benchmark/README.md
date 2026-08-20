@@ -167,7 +167,7 @@ thread 数、CPU affinity、trial、进程重复数和最小采样时长必须�
 - 正式 sweep 和其回归基线必须使用相同 CPU affinity；实际 affinity 会写入报告、gate JSON 和 baseline
   manifest。
 
-CI 和本地门禁使用 [tools/checks/benchmark_smoke.sh](../checks/README.md) 调用本工具。默认 smoke
+CI 和本地门禁使用 [tools/checks/linux/benchmark_smoke.sh](../checks/linux/benchmark_smoke.sh) 调用本工具。默认 smoke
 验证构建、运行、报告结构和正确性；`--full` 使用 policy 门禁与 9 个 trials。release 分支或生产标定时应再提供生产机器回归基线。
 
 ## 内部结构

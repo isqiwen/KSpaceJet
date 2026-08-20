@@ -31,8 +31,15 @@
 ## 构建
 
 ```bash
-cmake --preset linux-release-research
-cmake --build --preset linux-release-research
+bash tools/devenv/linux/bootstrap.sh
+tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
+tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
+tools/devenv/linux/run.sh conan install . \
+  --output-folder=out/build/linux-release-research \
+  --profile:host=conan/profiles/linux-gcc14-release \
+  --build=missing
+tools/devenv/linux/run.sh cmake --preset linux-release-research
+tools/devenv/linux/run.sh cmake --build --preset linux-release-research
 ```
 
 `linux-release-research` 是 Linux Release 专用 preset，默认构建 `ksj_cpp_numerics_performance_handbook`
@@ -43,7 +50,7 @@ cmake --build --preset linux-release-research
 需要带到生产服务器运行时，可以安装到独立运行目录：
 
 ```bash
-cmake --build --preset linux-release-research-install
+tools/devenv/linux/run.sh cmake --build --preset linux-release-research-install
 ```
 
 安装产物位于 `out/install/linux-release-research/`，包含 handbook case 可执行程序和必要运行时库。
@@ -116,7 +123,7 @@ case,variant,type,size,coils,iterations,trials,mean_ns,min_ns,max_ns,checksum
   L2/sum+sumsq/min-max reduction、complex AoS multiply/conj-multiply/normalize/magnitude/deinterleave、
   indirect gather、masked compact、strided pack、ROI materialization、transpose scatter、1D/2D/3D stencil/filter、
   volume zpad/scale、coil 小维度 aggregation、int16/int32 affine clamp。
-  同时从 KSpaceJet 代码中抽取了多类真实循环形状：`libs/mri/kspacejet-math` 的 complex/phase functor，
+  同时从已移除的历史 `kspacejet-math` 代码中抽取了多类真实循环形状：complex/phase functor，
   KSpaceJet array view 的 real/imag 分量写回，以及代表性的 waterfat、prewhiten、
   RSS、hamming 2D complex filter、mask morphology、B0/shim phase quality，以及 `libs/numerics` 的 image threshold、
   signal FIR convolution 和 transpose/layout 转换。

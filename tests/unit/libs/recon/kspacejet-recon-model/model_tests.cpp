@@ -86,7 +86,7 @@ edge_spec(const std::string_view id, const std::string_view pool_id, const Synch
     .machine_policy = std::string(kDigest),
   };
   result.operator_plan_bindings = {{.node_id = "node", .canonical_config_digest = std::string(kDigest)}};
-  result.execution_profile = ExecutionProfile::offline;
+  result.execution_profile = ExecutionProfile::offline_reference;
   result.synchronous_buffer_pool_plans = {
     pool_spec("pool.ingress", SynchronousDataEndpointKind::ingress, "ingress", "", descriptor),
     pool_spec("pool.output", SynchronousDataEndpointKind::node, "node", "output", descriptor),
@@ -173,6 +173,42 @@ TEST(KSpaceJetReconModelArtifactDigest, DerivesStableCanonicalConfigIdentity) {
   ASSERT_TRUE(empty.ok()) << empty.status();
   EXPECT_EQ("sha256:113d6dfdc042c5b439b9ce57594a079a1f364755e26e126cd9db7bc11125c6bc", empty.value().value());
   EXPECT_FALSE(derive_canonical_config_digest("").ok());
+}
+
+TEST(KSpaceJetReconModelExecutionProfile, AcceptsCanonicalNamesAndRejectsLegacyNames) {
+  const auto offline_reference = parse_execution_profile("offline-reference");
+  const auto bounded_graph = parse_execution_profile("bounded-reconstruction-graph");
+  const auto provider_development = parse_execution_profile("provider-development");
+  const auto embedded_incremental = parse_execution_profile("embedded-incremental");
+  const auto isolated_runtime = parse_execution_profile("isolated-provider-runtime");
+
+  ASSERT_TRUE(offline_reference.ok()) << offline_reference.status();
+  ASSERT_TRUE(bounded_graph.ok()) << bounded_graph.status();
+  ASSERT_TRUE(provider_development.ok()) << provider_development.status();
+  ASSERT_TRUE(embedded_incremental.ok()) << embedded_incremental.status();
+  ASSERT_TRUE(isolated_runtime.ok()) << isolated_runtime.status();
+  EXPECT_EQ(ExecutionProfile::offline_reference, offline_reference.value());
+  EXPECT_EQ(ExecutionProfile::bounded_reconstruction_graph, bounded_graph.value());
+  EXPECT_EQ(ExecutionProfile::provider_development, provider_development.value());
+  EXPECT_EQ(ExecutionProfile::embedded_incremental, embedded_incremental.value());
+  EXPECT_EQ(ExecutionProfile::isolated_provider_runtime, isolated_runtime.value());
+  EXPECT_EQ("offline-reference", to_string(offline_reference.value()));
+  EXPECT_EQ("bounded-reconstruction-graph", to_string(bounded_graph.value()));
+  EXPECT_EQ("provider-development", to_string(provider_development.value()));
+  EXPECT_EQ("embedded-incremental", to_string(embedded_incremental.value()));
+  EXPECT_EQ("isolated-provider-runtime", to_string(isolated_runtime.value()));
+  EXPECT_TRUE(is_currently_supported_in_process(offline_reference.value()));
+  EXPECT_TRUE(is_currently_supported_in_process(bounded_graph.value()));
+  EXPECT_FALSE(is_currently_supported_in_process(provider_development.value()));
+  EXPECT_FALSE(is_currently_supported_in_process(embedded_incremental.value()));
+  EXPECT_FALSE(is_currently_supported_in_process(isolated_runtime.value()));
+  EXPECT_TRUE(requires_provider_isolation(isolated_runtime.value()));
+  EXPECT_FALSE(requires_provider_isolation(provider_development.value()));
+
+  for (const std::string_view legacy :
+       {"offline", "bounded-online", "isolated-strict-online", "deadline-qualified-online", "research-unbounded"}) {
+    EXPECT_FALSE(parse_execution_profile(legacy).ok()) << legacy;
+  }
 }
 
 TEST(KSpaceJetReconModelOperatorContract, SupportsExplicitMultiInputPorts) {

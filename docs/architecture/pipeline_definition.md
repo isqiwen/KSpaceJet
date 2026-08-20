@@ -1,21 +1,25 @@
 # KSpaceJet PipelineDefinition 与重建流水线设计
 
-> **实现基线已更新。** 当前代码和后续实现以
-> [KSpaceJet Pipeline Review Optimized](KSpaceJet_pipeline_review_optimized.md)
-> 为唯一权威：它定义 profile-neutral `ResolvedPipeline`、由
-> `PlanBuildRequest` 选择 profile、由 TypeRegistry 解析的精确 `TypeDescriptor`、多域
-> `ResourceVector`、节点级 `NodePlanningRequirementsBinding`，以及独立的
-> `VerificationRecord`。本文保留为早期
-> 设计记录；其中 `ExecutionPlanCertificate`、旧 profile 名称或与优化版
-> 冲突的字段均不应成为新实现的依据。
+> **历史 / 非规范性记录。** 本文保存已撤回或探索性的 Pipeline 设计，不定义当前产品
+> 能力、状态、接口、部署、验收或 artifact authority。其关于公开 MRD/ISMRMRD session、
+> `ksj-gateway`、Connector、scanner/采集集成、网络 relay/transport 或结构化 core logging
+> 的任何表述均已撤回。当前产品边界、artifact authority 与执行状态的唯一权威为
+> [KSpaceJet project plan and acceptance](KSpaceJet_project_plan_and_acceptance.md)。
+>
+> **历史实现基线说明。** 本文与
+> [KSpaceJet Pipeline Review Optimized](KSpaceJet_pipeline_review_optimized.md) 共同保留当时
+> 对 profile-neutral `ResolvedPipeline`、`PlanBuildRequest`、`TypeDescriptor`、
+> `ResourceVector`、`NodePlanningRequirementsBinding` 和 `VerificationRecord` 的设想；两者
+> 都不是当前实现的权威。新实现只能依据 canonical execution ledger 及相应受维护的
+> 源码、schema 和测试；`ExecutionPlanCertificate`、旧 profile 名称和其他历史字段均不得
+> 作为实现依据。
 
-> 状态：历史设计记录；实现基线见上方链接。
-> 适用范围：KSpaceJet 的文件 replay、公开 MRD/ISMRMRD streaming session、Provider plugin 与 **ksj-recon** 内部 runtime。
+> 状态：历史设计记录；非当前实现基线。
+> 历史适用范围：文件 replay、公开 MRD/ISMRMRD streaming session、Provider plugin 与 **ksj-recon** 内部 runtime。
 > 非目标：定义新的网络协议、复刻任何私有历史格式、规定具体重建算法，或把运行时调度参数写死在用户 pipeline 文件中。
 >
 > 本文历史段落中的 `strict-online`、`bounded-best-effort` 等旧 profile 名称不再是当前
-> profile identifier。当前 generic synchronous runtime 的范围、profile 准入和下一边界见第
-> 12 节；该状态不放宽优化版规范中的任何要求。
+> profile identifier；当前 mode、profile 准入和边界见 canonical execution ledger。
 
 > **类型实施基线。** Provider authored `OperatorContract` 的每个 port 只写可读的
 > `type_ref`，其唯一来源是 `types/registry.json`。compiler 解析该 TypeRef 后，才在

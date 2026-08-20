@@ -69,6 +69,20 @@ TEST(KSpaceJetLogging, ExplicitConfigurationReplacesDefaultConsoleFallback) {
   ksj::logging::Shutdown();
 }
 
+TEST(KSpaceJetLogging, RejectsStructuredDiagnosticOutput) {
+  ksj::logging::Shutdown();
+
+  ksj::config::LoggingConfig config;
+  config.logger_name = "ksj_logging_text_only_test";
+  config.async = false;
+  config.output_format = "json";
+
+  std::string error_message;
+  EXPECT_FALSE(ksj::logging::Configure(config, ".", nullptr, nullptr, &error_message));
+  EXPECT_EQ(error_message, "logging.output_format currently supports only text.");
+  EXPECT_FALSE(ksj::logging::IsConfigured());
+}
+
 TEST(KSpaceJetLogging, FormattedLoggingNeverThrows) {
   ksj::logging::Shutdown();
 

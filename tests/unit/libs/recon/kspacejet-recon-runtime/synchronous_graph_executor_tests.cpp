@@ -426,7 +426,7 @@ public:
       .target_envelope = std::string(kEnvelopeDigest),
       .machine_policy = std::string(kMachinePolicyDigest),
     };
-    specification.execution_profile = ExecutionProfile::bounded_online;
+    specification.execution_profile = ExecutionProfile::bounded_reconstruction_graph;
     specification.synchronous_buffer_pool_plans = pools_;
     specification.synchronous_data_edge_plans = edges_;
     specification.calibration_artifact_binding_plans = artifacts_;

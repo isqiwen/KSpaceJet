@@ -45,7 +45,7 @@ struct PipelineEdge {
 
 struct IngressPort {
   std::string id;
-  // Only public ISMRMRD acquisition/waveform types are legal here.  The
+  // Only registry-defined ISMRMRD acquisition/waveform types are legal here. The
   // completed ksj.kspace-frame ABI is an internal typed-node output and must
   // cross a resolved graph edge before a downstream node can consume it.
   std::string type;
@@ -60,7 +60,7 @@ struct EgressPort {
 
 // CalibrationReady remains an internal dependency event.  This binding names
 // the producer output port and every consuming input port, but it is never a
-// transport wire message.
+// cross-process or wire message.
 struct CalibrationBinding {
   std::string id;
   NodePortReference producer;

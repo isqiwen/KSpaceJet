@@ -2,20 +2,21 @@
 
 These Draft 2020-12 schemas are the machine-readable structural boundary for
 KSpaceJet's reconstruction artifacts. Their implementation baseline is
-[KSpaceJet pipeline review, optimized](../docs/architecture/KSpaceJet_pipeline_review_optimized.md).
+[the canonical execution ledger](../docs/architecture/KSpaceJet_project_plan_and_acceptance.md).
 They validate shape, finite JSON values, fixed kind tags, and forbidden
-fields; the resolver, compiler, independent verifier, and runtime remain the
-authorities for semantic checks.
+fields; the parser, resolver, compiler, independent verifier, and runtime
+remain the authorities for semantic checks. Historical architecture papers are
+reference material only and cannot create a second artifact authority.
 
 | Schema | Owner | Purpose |
 | --- | --- | --- |
 | <code>provider-operator-catalog.schema.json</code> | in-tree Provider planning | Canonical in-tree Provider/Operator taxonomy. It reserves product identities and links planned Operators to planning-only interfaces; it is not a bundle manifest, resolver input, or runtime artifact. |
 | <code>operator-interface.schema.json</code> | Provider planner | Planning-only reservation of one unimplemented Operator's Provider ownership, semantic ports, and configuration-key boundary. It deliberately omits executable contract fields and cannot be loaded or resolved. |
-| <code>pipeline.schema.json</code> | pipeline author | Scan-independent graph, Provider selection intent, node configuration, public ISMRMRD bindings, and explicit calibration bindings. Nodes never duplicate Provider port declarations. |
+| <code>pipeline.schema.json</code> | pipeline author | Scan-independent graph, Provider selection intent, node configuration, declared registry-defined ISMRMRD bindings, and explicit calibration bindings. Nodes never duplicate Provider port declarations. |
 | <code>operator-contract.schema.json</code> | Provider | Immutable typed interface declaration: only the Operator identity and authored registry <code>type_ref</code> ports. |
 | <code>resolved-pipeline.schema.json</code> | resolver | Exact Provider bundle and Operator snapshot. It is deliberately profile-neutral. |
 | <code>plan-build-request.schema.json</code> | compiler caller | Chooses one profile and binds a profile-neutral resolved pipeline to a scan, envelope, machine policy, and one NodePlanningRequirements payload per node. It is an input, not a replacement for an ExecutionPlan. |
-| <code>target-envelope.schema.json</code> | scanner/deployment integration | Finite input, arrival, and public-sink service envelope. |
+| <code>target-envelope.schema.json</code> | caller/deployment planner | Finite caller-submitted input, local arrival, and local result-delivery envelope; it is not a scanner, session, relay, or network transport contract. |
 | <code>machine-policy.schema.json</code> | deployment | Permitted execution profiles and multi-domain resource capacity. It never specifies scan task counts or queue sizing. |
 | <code>execution-plan.schema.json</code> | scan compiler | Frozen scan-specific generic synchronous graph: explicit ingress/node/egress edges, static calibration artifacts, resolved TypeDescriptors, bounded firing capacity, ResourceVector demand, and finite terminal occurrence count. |
 | <code>verification-record.schema.json</code> | independent verifier | Immutable conclusion about one ExecutionPlan; it carries verified resource/terminal bounds and obligations, not a second graph or admission decision. |
@@ -41,17 +42,23 @@ boundaries. Neither is a Provider bundle/loader descriptor nor a valid input
 to the resolver, compiler, verifier, or runtime. Only a completed Provider
 may publish an exact `OperatorContract` and become Pipeline-resolvable.
 
+The diagram is the only current artifact-authority sequence. Schemas establish
+structural validity only; the owning parser/resolver/compiler/verifier/runtime
+establishes semantic validity at its corresponding step. No architecture note,
+Provider catalog entry, or scaffold can substitute for an artifact in this
+chain.
+
 The execution-profile strings selectable by PipelineDefinition and MachinePolicy are:
 
-- <code>offline</code>
-- <code>bounded-online</code>
-- <code>isolated-strict-online</code>
-- <code>deadline-qualified-online</code>
-- <code>research-unbounded</code>
+- <code>offline-reference</code>
+- <code>bounded-reconstruction-graph</code>
+- <code>provider-development</code>
+- <code>embedded-incremental</code>
+- <code>isolated-provider-runtime</code>
 
-`isolated-strict-online` and `deadline-qualified-online` are claims that require
-a qualified worker/fault boundary. The current in-process Provider runtime must
-reject them rather than silently weakening their semantics.
+`isolated-provider-runtime` is a claim that requires a qualified worker/fault
+boundary. The current in-process Provider runtime must reject it rather than
+silently weakening its semantics.
 
 OperatorContract does not carry a profile-selection, scheduling, resource, or
 topology field. PipelineDefinition, NodePlanningRequirements, MachinePolicy,
@@ -98,11 +105,13 @@ Artifact-chain schema fixtures live in [tests/unit/libs/recon/fixtures](../tests
 - <code>valid/</code> contains minimal examples for every artifact-chain root
   schema, including both AdmissionRecord outcomes and pre-admission, completed,
   and source-replay RunRecord outcomes.
-- <code>invalid/</code> contains representative structural rejections: a
-  copied node-port declaration or authored runtime field, profile leakage into
-  ResolvedPipeline, fixed task configuration in MachinePolicy, integer
-  overflow, a cancelled admission outcome, and an unsafe TargetEnvelope
-  integer.
+- <code>invalid/</code> contains representative negative cases. Structural
+  cases cover a copied node-port declaration or authored runtime field,
+  profile leakage into ResolvedPipeline, fixed task configuration in
+  MachinePolicy, integer overflow, a cancelled admission outcome, and an
+  unsafe TargetEnvelope integer. Schema-valid semantic cases are accepted by
+  their JSON Schema and must then be rejected by the resolver, compiler, or
+  verifier that owns the relevant semantic rule.
 
 The Provider catalog and OperatorInterface schemas deliberately do not use
 generic artifact fixtures: the checked-in catalog and each interface it

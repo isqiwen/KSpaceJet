@@ -7,7 +7,7 @@ namespace ksj::recon::runtime {
 namespace {
 
 constexpr bool is_pre_admission(const ScanState state) noexcept {
-  return state == ScanState::session_candidate || state == ScanState::describing || state == ScanState::planning ||
+  return state == ScanState::input_candidate || state == ScanState::describing || state == ScanState::planning ||
          state == ScanState::verifying || state == ScanState::admitting;
 }
 
@@ -20,9 +20,9 @@ constexpr bool is_terminal(const ScanState state) noexcept {
 
 std::string_view to_string(const ScanState state) noexcept {
   static constexpr std::array names{
-    "session_candidate", "describing",  "planning",      "verifying", "admitting", "starting",
-    "running",           "ingress_closed", "draining", "finalizing", "sink_flushing", "cancelling",
-    "failing",           "terminal_cleanup", "completed", "rejected", "cancelled", "failed",
+    "input_candidate", "describing",       "planning",  "verifying",  "admitting",     "starting",
+    "running",         "ingress_closed",   "draining",  "finalizing", "sink_flushing", "cancelling",
+    "failing",         "terminal_cleanup", "completed", "rejected",   "cancelled",     "failed",
   };
   return names.at(static_cast<std::size_t>(state));
 }
@@ -49,7 +49,7 @@ bool ScanLifecycle::terminal() const noexcept {
 }
 
 ksj::base::Status ScanLifecycle::begin_describing() {
-  const auto status = require_state(ScanState::session_candidate, "begin_describing");
+  const auto status = require_state(ScanState::input_candidate, "begin_describing");
   if (!status.ok()) {
     return status;
   }
@@ -218,7 +218,7 @@ ksj::base::Status ScanLifecycle::require_state(const ScanState expected, const s
 }
 
 ksj::base::Status ScanLifecycle::require_one_of(const ScanState first, const ScanState second,
-                                                 const std::string_view operation) const {
+                                                const std::string_view operation) const {
   if (state_ == first || state_ == second) {
     return ksj::base::Status::Ok();
   }

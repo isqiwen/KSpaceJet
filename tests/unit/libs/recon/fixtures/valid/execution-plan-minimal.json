@@ -12,7 +12,7 @@
       "canonical_config_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
     }
   ],
-  "execution_profile": "bounded-online",
+  "execution_profile": "bounded-reconstruction-graph",
   "synchronous_nodes": [
     {
       "node_id": "process",

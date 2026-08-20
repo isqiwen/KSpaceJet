@@ -1,0 +1,1418 @@
+# KSpaceJet — Codex 主实施计划、功能规范与验收标准
+
+> 文档性质：**唯一主实施规范（Single Source of Implementation Truth）**
+> 状态权威：第 12 节唯一执行台账；顶部总览只是可再生成的只读投影
+> 适用仓库：`isqiwen/KSpaceJet`
+> 文档状态：ACTIVE
+> 版本：0.3
+> 建立日期：2026-08-19
+> 基线分支与提交：main / `8c31b30419ed330688b3f1b90f14a4498503317d`
+> 项目阶段：Pre-release；接口、ABI、schema 和源代码布局均可直接演进，不保留兼容层，除非当前任务明确要求。
+
+这是 KSpaceJet 的单一执行总规范。它把项目计划、功能需求、非功能需求、验收标准、工作项依赖、当前进度、证据和决策记录放在同一个文件中，供 Codex 在每次开发工作开始和结束时持续使用。
+
+---
+
+## 0. Codex 使用本文件的强制流程
+
+每个 Codex 实例必须把本节当作执行协议，而不是阅读材料。
+
+1. 先阅读仓库根目录 AGENTS.md，再完整阅读本文件的第 0、1、11、12、13 节；先查看第 0.4 节快速总览，再以第 12 节的逐项状态为准。
+2. 执行 Git 状态检查；识别用户已有改动，绝不覆盖、回退或混入无关改动。
+3. 若第 12 节已有唯一 `IN_PROGRESS` 或 `VERIFYING` 项，先恢复它；否则选择**唯一一个**状态为 READY 的最小工作项。若没有 READY 项，则按依赖关系找出第一个可解锁项或保留精确 BLOCKED 记录；不要并行改动两个相互耦合的工作项。
+4. 阅读该工作项列出的权威文档、代码路径、测试和前置条件。若事实与本文件不一致，先完成 P0-001 的基线复核并更新本文件，而不是基于猜测写代码。
+5. 只实现该工作项的范围。新增的接口、配置、Provider 或工具必须同时具有对应测试和文档；不得用临时兼容层掩盖未完成设计。
+6. 运行该工作项规定的最小验证，以及受改动影响的扩展验证。若环境无法运行，记录准确阻塞原因、已尝试命令和缺失前提，状态改为 BLOCKED；不得写 ACCEPTED。
+7. 在同一次变更中更新第 12 节的状态、证据和下一步；随后用 `tools/checks/check_execution_plan.py --write` 重建第 0.4 节，并用 `--check` 验证投影一致。只有通过全部验收命令并记录证据后，才可把工作项置为 ACCEPTED。
+8. 再次执行格式、差异和必要测试检查。向用户报告：完成项、证据、未覆盖的风险和下一项；不要声称整个阶段完成，除非阶段门禁全部通过。
+
+### 0.1 工作项状态机
+
+| 状态 | 含义 | 允许的下一状态 |
+| --- | --- | --- |
+| PLANNED | 已定义但其依赖尚未满足，或现有代码尚未接受证据审计 | READY、NOT_APPLICABLE、SUPERSEDED |
+| READY | 前置条件已 ACCEPTED，可被当前 Codex 选中 | IN_PROGRESS、BLOCKED |
+| IN_PROGRESS | 当前唯一正在实施的工作项 | VERIFYING、BLOCKED、READY |
+| VERIFYING | 实现、测试、注册和文档已写入，正在执行完整验收 | ACCEPTED、BLOCKED、IN_PROGRESS |
+| ACCEPTED | 所有要求、验收命令和证据均已满足 | REOPENED、SUPERSEDED |
+| BLOCKED | 需要外部事实、硬件、数据、产品决策或缺失依赖 | READY、NOT_APPLICABLE、SUPERSEDED |
+| NOT_APPLICABLE | 当前发布范围明确不启用，必须记录决定人和原因 | READY、SUPERSEDED |
+| SUPERSEDED | 被新的、已链接的工作项取代 | 无 |
+| REOPENED | 已 ACCEPTED 的事项发生回归、范围错误或证据失效 | IN_PROGRESS、BLOCKED |
+
+禁止把“已有文件”“可编译”或“部分测试存在”当成 ACCEPTED。对于仓库已有的能力，先通过 P0-001 复核后才能提升状态。
+
+### 0.2 证据记录格式
+
+每个完成项在第 12 节必须至少记录以下信息；没有证据的完成项一律视为未完成。
+
+| 字段 | 内容 |
+| --- | --- |
+| Commit 或工作树版本 | 可复现的 commit SHA；未提交时写明工作树状态 |
+| 改动范围 | 主要文件和公开接口 |
+| 需求映射 | 本文件的功能 ID 和验收 ID |
+| 验证命令 | 实际执行的命令，不是计划命令 |
+| 结果 | 成功、失败、跳过及原因 |
+| 输出证据 | 测试名、报告、fixture、golden digest、trace 或日志路径 |
+| 已知限制 | 未覆盖平台、性能边界、待决决策 |
+| 下一项 | 下一条可执行工作项 ID |
+
+不得伪造、概括或删除失败证据。若后续证据推翻一个 ACCEPTED 项，应把它置为 REOPENED 或 BLOCKED，并在变更日志说明原因。
+
+### 0.3 自主性边界
+
+Codex 可自行完成明确属于当前工作项的代码、测试、文档、格式化、局部重构和可逆配置修改。以下情况必须停止推进该工作项，记录 BLOCKED，并向用户提出一个精确问题：
+
+- 需要改变 ISMRMRD-only 输入边界，或引入任何外部 transport、session、gateway、Connector、私有协议或采集控制；
+- 需要授权访问真实病人数据、生产扫描仪、凭据、商业 Provider 或专有算法；
+- 需要为性能目标、硬件拓扑、临床用途、监管等级或发布兼容性作产品决定；
+- 需要删除、覆盖或迁移用户未确认的重要数据；
+- 发现两个权威文档在语义上冲突且无法由本文件的优先级规则消解。
+
+构建失败、测试失败、缺少普通开发依赖、局部设计缺口和可由源码调查解决的问题不构成暂停理由；先诊断并在当前工作项内解决。
+
+### 0.4 当前执行总览（由第 12 节派生；非状态权威）
+
+本总览提供与主实施计划相同的快速进度入口：阶段覆盖度、当前工作项、READY/阻塞项和恢复方向。它**不得**发起状态转换或独立维护任务状态；运行 `tools/checks/check_execution_plan.py --write` 从第 12 节重建，`--check` 会拒绝任何漂移。
+
+<!-- KSJ-PLAN-DASHBOARD:BEGIN -->
+
+#### 执行进度总览（自动生成）
+
+> 此区块是 [第 12 节唯一执行台账](#12-唯一执行台账) 的只读投影。修改任务状态、依赖或证据后，运行 `python3 tools/checks/check_execution_plan.py --write`；不要手工编辑本区块。
+> 覆盖度 = `ACCEPTED / 适用项`，不按工作量加权，也不表示阶段门禁已经通过。
+
+```yaml
+source: "docs/architecture/KSpaceJet_project_plan_and_acceptance.md#12-唯一执行台账"
+ledger_date: 2026-08-20
+execution_state: BLOCKED
+active_phase: null
+active_work_item: null
+next_task: null
+ready_items: []
+blocked_items:
+  - P0-002
+  - P0-003
+  - P0-006
+accepted: 4
+applicable: 54
+coverage: 7.4%
+```
+
+| 阶段 | 目标 | 已接受 | 适用项 | 覆盖度 | 状态分布 |
+| --- | --- | ---: | ---: | ---: | --- |
+| P0 | 规范、基线和工程治理 | 4 | 8 | 50% | ACCEPTED: 4 · BLOCKED: 3 · PLANNED: 1 |
+| P1 | 可信离线 reference 基线 | 0 | 7 | 0% | PLANNED: 7 |
+| P2 | 图、artifact、compiler、verifier 和 CLI 计划工具 | 0 | 6 | 0% | PLANNED: 6 |
+| P3 | 有界 generic CPU runtime | 0 | 6 | 0% | PLANNED: 6 |
+| P4 | Provider 产品化 | 0 | 6 | 0% | PLANNED: 6 |
+| P5 | 可选进程内 ISMRMRD feed 与宿主 API | 0 | 7 | 0% | PLANNED: 7 |
+| P6 | 并行、NUMA、GPU 与性能 | 0 | 7 | 0% | PLANNED: 7 |
+| P7 | Qualification、CI、安装、供应链和发布 | 0 | 7 | 0% | PLANNED: 7 |
+
+#### 最近验收证据（自动生成）
+
+| 工作项 | 证据记录 |
+| --- | --- |
+| P0-008 | [13.9 P0-008 ACCEPTED 证据](#139-p0-008-accepted-证据) |
+| P0-005 | [13.7 P0-005 ACCEPTED 证据](#137-p0-005-accepted-证据) |
+| P0-004 | [13.6 P0-004 ACCEPTED 证据](#136-p0-004-accepted-证据) |
+
+#### 当前阻塞项（自动生成）
+
+> 详细依赖、证据和限制以第 12 节为准；下表只显示其下一精确行动。
+
+| 工作项 | 解锁后动作 |
+| --- | --- |
+| P0-002 | 在实际 Windows x64 + VS 2022 v143 + Windows SDK 主机/runner 上执行 debug/release bootstrap、build、install、installed help smoke 与 DLL depende… |
+| P0-003 | 将交付的 `AGENTS.md` 与本文件放入实际仓库，提交并记录 commit/tree 后置 ACCEPTED。 |
+| P0-006 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture owner 的 source/scope/review inputs；收到… |
+
+<!-- KSJ-PLAN-DASHBOARD:END -->
+
+---
+
+## 1. 权威关系、范围和完成定义
+
+### 1.1 权威关系
+
+当文本冲突时，按以下顺序处理：
+
+1. 用户在当前任务中的明确要求；
+2. 仓库根目录 AGENTS.md 的产品边界和工程硬约束；
+3. 本执行总规范的范围、任务状态和验收标准；
+4. 当前受维护源码、schema、fixture 和测试所证明的实现/结构语义；它们不能扩张前三级的产品边界或验收状态；
+5. 当前 README、CLI help 和配置说明；
+6. 已明确标为历史/非规范性的 architecture、paper、注释和历史提交，仅可作为背景，不拥有当前规范权威。
+
+若第 4 或第 5 项与前三项冲突，不能静默选择：收口实现/文档、建立或更新决策记录，并在第 12 节保留真实验收状态。历史记录中的任何表述均不得恢复已撤回的 scope、mode、artifact authority 或 capability claim。
+
+### 1.2 项目愿景
+
+KSpaceJet 是一个面向 MRI 重建的开源 C++20 框架。框架的责任是处理调用方提交的标准 ISMRMRD 数据，编译并执行显式类型化的重建图，管理可插拔 Provider，并生成可追溯的重建结果 artifact。
+
+它不是私有扫描仪协议、专有算法仓库或历史系统兼容层。具体重建算法归独立 Provider 所有；框架提供可验证的运行时、数据所有权、资源账本、调度、工具、配置和交付边界。
+
+### 1.3 不可违反的产品边界
+
+| ID | 约束 |
+| --- | --- |
+| BND-001 | ISMRMRD 是唯一输入数据语义；当前 reference 输入为标准 ISMRMRD HDF5，未来调用方提交的内存对象也必须已具有相同的 ISMRMRD 语义。 |
+| BND-002 | KSpaceJet 从已提交的 ISMRMRD 数据开始；不实现、不配置、不链接或不测试扫描仪、采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备缓冲、网络 relay、采集侧 ACK/credit/read-gating/pause/reconnect 或任何采集传输协议。 |
+| BND-003 | 不引入旧私有数据格式、旧队列表、BRF、ComQ、DPC 兼容层或专有重建算法。 |
+| BND-004 | Provider 是独立动态库、信任和生命周期边界；算法不能泄漏到 host ABI entrypoint、CLI 或网关。 |
+| BND-005 | 运行时仅拥有输入提交后的 materialization、buffer、排队、顺序、execution admission、结果 artifact/callback 交付；这些不是 Provider Operator，也不是外部采集或传输职责。 |
+| BND-006 | 所有长期异步数据必须由 host 管理、被资源账本计费且具有清晰所有权；借用的 AcquisitionView 不能跨回调保留。 |
+| BND-007 | 项目未发布；默认直接替换旧形状，不增加兼容 alias、双格式、迁移 shim 或版本协商。 |
+| BND-008 | 数值基线为 Eigen；Intel、FFTW、OpenCV、ITK、MATIO 等仅在私有实现边界出现，不暴露 vendor 类型。 |
+
+### 1.4 v1 完成定义
+
+v1 不是“有一个能运行的 demo”。只有下列条件同时满足才可声明 v1 完成：
+
+- P0 至 P4 全部 ACCEPTED，P6 中当前配置启用的能力全部 ACCEPTED，P7 的 qualification gate 通过；
+- 一个公开、可复现的 Cartesian reference pipeline 可以从 HDF5 运行至最终输出，具有完整 run record、输入身份、Provider 身份、配置和结果证据；
+- 一个公开、可复现的 non-Cartesian reference pipeline 同样成立；
+- Generic PipelineDefinition 路径而非只靠专用 CLI 编排，能够完成 resolve、compile、independent verify、admit、execute、cancel、normal end 和 failure end；
+- 动态 Provider SDK、loader、bundle identity 和最小第三方 conformance 流程可用；
+- 已支持的 HDF5 和调用方提交的等价 ISMRMRD 输入在 runtime-frame 边界具有相同语义；
+- 在声明的 CPU、NUMA、内存和可选 GPU target envelope 下，正确性、资源上界、稳定性和性能证据齐全；
+- Linux 和 Windows 的支持范围、安装、CLI JSON 输出、文档、风险和已知限制均经过 release gate。
+
+---
+
+## 2. 当前基线与诚实的成熟度判断
+
+本节只记录截至基线提交可从仓库直接观察到的事实，**不代表任何模块已经正式验收**。
+
+| 领域 | 已观察到的事实 | 当前结论 |
+| --- | --- | --- |
+| 工程基础 | C++20、CMake presets、Conan 2、Linux GCC 14 与 Windows MSVC 2022 profile、项目内 bootstrap 和 checks 已存在。 | 可作为 P0 环境基线，需复跑。 |
+| 数值与基础库 | core、memory、threading、logging、platform、array、FFT、linalg、image、NUFFT 等库及大量 unit/benchmark target 已存在。 | 组件基础强，但每个生产路径仍需需求映射。 |
+| 类型与 schema | types/registry.json、生成的 C++/C type registry、PipelineDefinition、ExecutionPlan、RunRecord 等 schema 已存在。 | P1/P2 的重要起点；需验证 schema、canonical JSON 与 runtime 一致。 |
+| Provider 基础 | provider SDK、loader、catalog、contracts、calibration、Cartesian、non-Cartesian、coil-combine、image-ops、conditioning Provider 及测试存在。 | 可作为 reference Provider 基线；尚不能自动推导“第三方生产可用”。 |
+| 图与运行时 | recon-model、recon-graph、synchronous graph compiler/verifier、FiringLease、bounded edge、resource ledger、frame slot、serial Cartesian 等实现和测试存在。 | 已具有 P1-P3 的部分实现，需要按 P0-001 建立已验证能力清单。 |
+| 离线应用 | ksj-recon 提供 Cartesian RSS 与 non-Cartesian RSS HDF5 命令；ksj 提供 pipeline validate 和 provider init。 | 有 reference vertical slices；CLI 产品面尚未闭环。 |
+| 外部集成目录 | ksj-gateway 的主程序明确标为 scaffold。按产品边界它不属于 KSpaceJet 重建范围，也不构成路线图或验收对象。 | 不得从该目录推断采集、传输、gateway 或在线服务能力。 |
+| 文档治理 | 已存在多个大型架构文档；旧架构规划提到 work-item schema 与 docs/work-items 目录，但当前仓库未发现其落地。部分 docs/conventions/README.md 链接也指向不存在文件或目录。 | P0 必须先建立真实的执行台账和文档链接基线；本文件暂为唯一进度账本。 |
+
+### 2.1 当前第一目标
+
+当前第一目标不是增加一个新算法，而是完成 P0-001：建立可重复的基线审计。它将把“代码存在”拆分为已实现、已测试、已系统验证、已性能验证和已发布资格五个不同结论。只有完成该审计，才可安全地将后续工作项从 PLANNED 置为 READY。
+
+### 2.2 成熟度分层
+
+| 层级 | 含义 | 可对外宣称 |
+| --- | --- | --- |
+| L0 设计 | 文档或接口预留，未验证 | planned only |
+| L1 实现 | 有源码和局部测试 | implemented, not qualified |
+| L2 可复现 | 干净环境可构建，单元和集成测试通过 | reproducibly verified |
+| L3 系统 | 端到端场景、故障路径、artifact 和运维证据通过 | system verified |
+| L4 资格 | 性能、平台、安全、文档和 release gate 通过 | qualified for declared envelope |
+
+没有 L4 的功能不得标记 production-ready。
+
+---
+
+## 3. 目标产品和系统架构
+
+### 3.1 四个可执行工程
+
+| 可执行文件 | 唯一职责 | 禁止承担的职责 |
+| --- | --- | --- |
+| ksj | 用户和开发者命令行：检查、生成、验证、解释、重放、比较、Provider 工具和本地运行入口。 | 不实现第二套 runtime，不把 JSON stdout 当日志。 |
+| ksj-gateway | 仓内保留的外部集成 scaffold；不是 KSpaceJet 产品能力或计划工作项。 | 不实现采集、传输、relay、认证、连接器或任何数据协议。 |
+| ksj-recon | 执行 plan、管理调用方提交后的 ISMRMRD 数据、Provider、资源账本、scan lifecycle 和 run artifact。 | 不隐藏 Provider 算法，不依赖 research data plane，也不接管采集/传输。 |
+| ksj-research | 实验编排、证据冻结、跨框架比较、论文和性能报告。 | 不成为正常 runtime 或数据面的依赖。 |
+
+### 3.2 逻辑数据流
+
+    Standard ISMRMRD HDF5 or caller-submitted host-owned ISMRMRD data
+                     |
+                     v
+    Structural + semantic validation / materialization / classifier / frame assembler
+                     |
+                     v
+    ResolvedPipeline -> ExecutionPlan -> independent verifier -> admission
+                     |
+                     v
+    Bounded graph executor -> host-enforced Provider firing leases
+                     |
+                     v
+    Result artifact or caller callback / run record / metrics
+
+每个箭头都必须有明确的所有权、失败语义、资源上限和可观察证据。调用方负责外部采集与传输；KSpaceJet 对已提交输入只执行本地资源保护和明确的 accept/reject/terminal 语义。
+
+### 3.3 核心持久 artifact
+
+| Artifact | 生产者 | 不变性与用途 |
+| --- | --- | --- |
+| PipelineDefinition | 作者或 CLI | 描述语义图、Provider 选择、参数绑定和 ingress/egress，不描述线程或 buffer。 |
+| OperatorContract | Provider | 描述单一 Operator 的端口、类型、配置、资源、terminal 和 capability 事实。 |
+| TypeRegistry | 项目 | 所有 payload 类型的唯一来源，生成 C++/C API。 |
+| ResolvedPipeline | resolver | 将 Provider、Contract、TypeRef 和默认值固定为一次解析结果。 |
+| ExecutionPlan | compiler | 物理执行图、资源、并发、队列、placement、终止和 admission 依据。 |
+| RunRecord | runtime | 记录一次 scan 的身份、输入、plan、Provider、配置、结果、状态与可复现证据。 |
+
+PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容量或资源上界绝不是 frame completion 条件。
+
+---
+
+## 4. 功能需求目录
+
+表中 Target 阶段是该功能最晚必须通过的阶段。每个功能均映射到第 10 节验收编号和第 11 节工作项。
+
+### 4.1 基础、数据和 artifact
+
+| ID | 必须具备的功能 | Target | 验收 |
+| --- | --- | --- | --- |
+| FUN-001 | 可在 Linux 与 Windows 的固定工具链上从干净 checkout 配置、构建、测试和安装。 | P0 | AC-BLD-001 至 004 |
+| FUN-002 | TypeRegistry 是唯一类型来源；生成代码失效会使构建失败而非静默重写。 | P0 | AC-TYP-001 至 003 |
+| FUN-003 | 所有 JSON artifact 可进行 schema、canonicalization、identity digest 和跨引用校验。 | P1 | AC-ART-001 至 005 |
+| FUN-004 | HDF5 reader 以 callback 范围内的零额外复制 view 暴露 acquisition；异步边界使用 host-managed materialization。 | P1 | AC-DAT-001 至 004 |
+| FUN-005 | acquisition classification、四类 key、FrameSlot 和真实 frame completion 独立于资源上界工作。 | P1 | AC-DAT-005 至 008 |
+| FUN-006 | 所有输入、输出、配置和运行结果均具有稳定 identity、可追溯 provenance 与结构化错误码。 | P1 | AC-ART-006 至 008 |
+
+### 4.2 Pipeline、编译和执行
+
+| ID | 必须具备的功能 | Target | 验收 |
+| --- | --- | --- | --- |
+| FUN-010 | PipelineDefinition 只能作者化语义图；不允许隐式 merge、drop、barrier、partial 或物理调度字段。 | P2 | AC-PLN-001 至 004 |
+| FUN-011 | Resolver 以 catalog、contract、TypeRegistry 和配置生成不可变 ResolvedPipeline。 | P2 | AC-PLN-005 至 007 |
+| FUN-012 | Compiler 从 ScanDescriptor、TargetEnvelope、MachinePolicy 和 ResolvedPipeline 生成 ExecutionPlan。 | P2 | AC-PLN-008 至 012 |
+| FUN-013 | 独立 verifier 能拒绝不安全、类型不匹配、资源超限、终止不闭合或身份失配的 plan。 | P2 | AC-PLN-013 至 016 |
+| FUN-014 | Runtime 有 bounded edge、资源预留、all-or-none fan-out、KeyShard 单写者和无 hold-and-wait 的 firing transaction。 | P3 | AC-RT-001 至 006 |
+| FUN-015 | Host 强制 FiringLease；Provider 不能持有借用输入、未计费 buffer 或绕过 terminal 规则。 | P3 | AC-RT-007 至 010 |
+| FUN-016 | normal end、cancel、failure、timeout、partial output 和恢复语义清楚、可测并写入 RunRecord。 | P3 | AC-RT-011 至 015 |
+| FUN-017 | 多 scan admission、公平性、资源水位与有界背压可观测、可拒绝、可恢复。 | P6 | AC-RT-016 至 019 |
+
+### 4.3 Provider、参考重建和用户工具
+
+| ID | 必须具备的功能 | Target | 验收 |
+| --- | --- | --- | --- |
+| FUN-020 | Provider SDK 有稳定 C ABI、bundle manifest、identity 和动态 loader；失败诊断可操作。 | P4 | AC-PRV-001 至 006 |
+| FUN-021 | Provider init、inspect、doctor、test、package 支持第三方最小开发闭环。 | P4 | AC-CLI-001 至 006 |
+| FUN-022 | Reference Cartesian 2-D RSS pipeline 能完成 HDF5 输入、可选 conditioning、Provider execution、image 输出和 metadata。 | P1/P3 | AC-REF-001 至 007 |
+| FUN-023 | Reference non-Cartesian 2-D pipeline 能完成 trajectory 处理、重建、coil combine、输出和错误路径。 | P1/P3 | AC-REF-008 至 013 |
+| FUN-024 | ksj 可 inspect、dataset validate/generate、pipeline validate/explain/render/dry-run、run、compare、golden 和 doctor。 | P2/P4 | AC-CLI-007 至 016 |
+| FUN-025 | RunRecord、verification record 和结果 artifact 可复现地关联到 input、plan、Provider 和配置 digest。 | P4 | AC-OBS-001 至 004 |
+
+### 4.4 宿主嵌入、运维、性能与资格
+
+| ID | 必须具备的功能 | Target | 验收 |
+| --- | --- | --- | --- |
+| FUN-030 | 若启用增量输入，嵌入宿主只能提交已归一化的 in-process ISMRMRD 数据；它与 HDF5 replay 在 runtime-frame 边界语义等价。 | P5 | AC-FED-001 至 004 |
+| FUN-031 | ksj-recon 或嵌入 API 可报告本地 run lifecycle、admission、cancel、状态与结果 artifact；它不提供采集/传输服务。 | P5 | AC-FED-005 至 007 |
+| FUN-032 | 已接受输入后的内部 queue、Provider 执行和结果 artifact 写入保持有界、可观测，并能以明确 reject/terminal 处理本地资源不足。 | P3/P5 | AC-FED-008 至 010 |
+| FUN-033 | trace、metrics、audit、crash breadcrumb、日志和配置 resolve/explain 足以定位失败和性能退化。 | P7 | AC-OBS-005 至 011 |
+| FUN-034 | CPU、NUMA、内存域、可选 GPU DevicePlan、异步取消和动态资源账本正确且无泄漏。 | P6 | AC-PERF-001 至 009 |
+| FUN-035 | benchmark、golden、fuzz/property、长稳、故障注入、跨平台安装、供应链和文档门禁共同构成 release qualification。 | P7 | AC-REL-001 至 010 |
+
+---
+
+## 5. 非功能需求和可测约束
+
+### 5.1 正确性与决定性
+
+- 正确性优先于吞吐；任何优化必须先通过相同输入、相同 Provider、相同配置下的数值验证。
+- 每个 reference case 必须指定绝对误差、相对误差、ULP 或领域指标，不能只写“输出看起来正确”。
+- 算法的可重复性等级必须写入 contract 和 RunRecord：bitwise deterministic、numerically reproducible、statistical 或 nondeterministic。
+- Golden 更新只能通过显式命令和人工可审计理由；普通测试不得重写 golden。
+
+### 5.2 有界资源和实时性
+
+- 所有框架拥有的队列、pool、FrameSlot、local artifact staging、GPU buffer、batch 和 in-flight firing 都必须有 item 与 charged-byte 双上界。
+- 对调用方已提交的 ISMRMRD 输入，admission 必须先完成本地资源预留；无法接受时返回明确的本地 reject/terminal，绝不定义或暗示上游 ACK、pause、credit、重试或流控。
+- 慢 Provider、结果 artifact 写入和内部队列均不得导致无界堆积。KSpaceJet 只声明自己的本地拒绝、取消和失败语义；调用方负责后续上游数据如何处理。
+- 性能目标由 TargetEnvelope 和 MachinePolicy 参数化。没有测量环境、输入集和硬件拓扑时，不得在代码或本文件硬编码虚假帧率、延迟或内存指标。
+
+### 5.3 性能指标定义
+
+| 指标 | 定义 | 需要的证据 |
+| --- | --- | --- |
+| first-output latency | 从冻结 timed boundary start 到第一个合格 image egress 的单调时钟时间。 | trace、外部 collector、RunRecord。 |
+| completion latency | 从 timed boundary start 到最后一个合格 output 或明确 terminal outcome。 | 同上。 |
+| sustained throughput | 在指定 replay rate、case 和 duration 下的成功 frame 或 acquisition 数。 | replay report、sink count、resource trace。 |
+| peak resource | RSS/PSS、各 memory domain charged bytes、GPU bytes、queue high-water、线程和 CPU time。 | external collector 加 runtime metrics。 |
+| jitter | 延迟分位数与最大值，必须带样本数和时间窗。 | 原始样本或可复算摘要。 |
+| correctness loss | 与冻结 reference 的数值误差、非法值、丢帧、重复帧、顺序违例和 terminal 违例。 | comparison report。 |
+
+### 5.4 安全、供应链和故障隔离
+
+- 所有外部 JSON、HDF5 metadata、调用方提交的 ISMRMRD data、Provider manifest 和路径必须验证大小、schema、UTF-8、digest、边界和权限。
+- Provider bundle 在加载前验证 ABI、export、identity、dependency、hash、license 和 SBOM；不信任 Provider 不得自动进入 production registry。
+- 进程内 trusted path 与 isolated-strict path 的保证必须分别声明。杀掉 worker 进程不等于 GPU kernel 已终止或显存已安全回收。
+- 任何 crash、timeout、cancel、provider failure、input submission failure 和 result-artifact failure 都必须被映射为可审计的 ScanLifecycle terminal outcome。
+
+---
+
+## 6. 产品模式、范围冻结和关键决策
+
+### 6.1 产品模式
+
+功能必须按 mode 宣称。一个 mode 未通过其门禁时，上层 mode 不得启用。
+
+| Mode | 允许能力 | 明确不承诺 | 最低阶段 |
+| --- | --- | --- | --- |
+| offline-reference | 公开 HDF5、单机、有限 reference Provider、可复现结果和离线分析。 | 增量 feed、临床、故障隔离、实时 deadline。 | P1 |
+| bounded-reconstruction-graph | Generic plan 编译、独立验证、有界同步执行、取消和完整 RunRecord。 | 多 scan 并发、任意 async Provider、外部采集/传输。 | P3 |
+| provider-development | SDK、in-process trusted Provider、contract、loader、第三方 conformance。 | 不可信 Provider 的 crash/hang 隔离。 | P4 |
+| embedded-incremental | 同进程宿主提交 ISMRMRD、明确本地 admission、状态、cancel 和 callback/artifact。 | socket/session/gateway、上游 flow control、未测硬件的 hard real-time。 | P5 |
+| isolated-provider-runtime | worker fault boundary、quota、watchdog、审计、恢复、已验证设备策略。 | 临床诊断或监管宣称，除非另有专门项目。 | P7 |
+
+### 6.2 已冻结的决策
+
+| ADR ID | 决策 | 理由 | 后续动作 |
+| --- | --- | --- | --- |
+| ADR-001 | 本文件是当前唯一进度账本；不把不存在的 docs/work-items YAML 目录当作已实施系统。 | 旧架构计划提出过工作项 schema 和目录，但当前仓库不存在，双重台账会导致状态漂移。 | P0-003 检查是否需要从本文件生成只读报告，生成物不得反向成为第二权威。 |
+| ADR-002 | 当前 Core diagnostics 保持 plain text；机器可读观测由 CLI JSON stdout、metrics、trace、RunRecord 和 audit artifact 提供。 | 根目录 AGENTS.md 的工程规则优先于长期架构文档中“结构化 JSON 日志”的冲突表述。 | P0-005 原子更新冲突文档和相应测试。 |
+| ADR-003 | KSpaceJet 的 ISMRMRD schema、generic reader、CLI、ScanDescriptor、planner 和 runtime 不得规定通道数上限。 | 当前 Cartesian reference route 的 1 至 64 仅是临时实现限制，必须被移除；256 及更大数据集只是普通 reconstruction case，不是框架能力上限。 | P1-007 删除通道上限并加入任意正整数通道数 generator/property tests；机器资源不足以 bytes/work 失败，不得报“超通道上限”。 |
+| ADR-004 | gateway、Connector、MRD session、网络 relay 与任何采集/传输职责不属于 KSpaceJet。 | 用户已明确项目输入仅为 ISMRMRD 数据；保留的 gateway scaffold 不构成产品承诺。 | 原 P5 中的网络/gateway 子范围已被 P5-004 scope-closure 取代；仅可在单独外部项目中重新立项。 |
+| ADR-005 | 先完成 feature-gated CPU 可信路径，再增量开放并行、NUMA、GPU 和隔离特性。 | 不能用未证实的并发能力替代正确性和资源闭环。 | P3 是 P6 的强前置条件。 |
+
+### 6.3 待决产品参数
+
+下列参数没有用户或真实测量数据时，Codex 不得猜测。P0-006 必须为每一个填入实际值、单位、来源、适用范围和复核日期。
+
+| 参数 | 例子 | 影响 |
+| --- | --- | --- |
+| ISMRMRD reconstruction envelope | encoding 数、矩阵、采样点、trajectory 维数、实际 channel 数、scan 并发数和算法配置；不得包含 channel 上限。 | FrameSlot、pool、计算、结果质量与本地资源测量。 |
+| 性能 SLO | first image、completion、吞吐、p95/p99、允许队列时间 | plan、admission、benchmark gate。 |
+| 部署拓扑 | CPU core、NUMA node、内存、GPU model/VRAM、NIC、OS、container 或 bare metal | placement、resource domain、binary packaging。 |
+| 数据与隐私 | 是否仅 synthetic/public、脱敏规则、artifact 保留期、访问权限 | fixture、logging、capture、upload。 |
+| 输出契约 | image encoding、metadata、ordering、artifact/callback、partial image 规则 | writer、callback、CLI、golden。 |
+| 信任等级 | in-process trusted、isolated worker、签名、SBOM、第三方发布策略 | loader、runtime、release gate。 |
+
+#### 6.3.1 P0-006 参数登记与阻塞证据（2026-08-20）
+
+本表只登记已审计到的事实及其边界；没有任何一行把 fixture、reference-route 派生值、历史/研究数据或本机观察提升为产品承诺。除非同一参数具备不可变来源、具名 owner、适用范围和 review date，否则它不是可接受的 `TargetEnvelope`、`MachinePolicy` 或产品 policy。
+
+| 参数域 | 已观察到的事实（不得提升为产品值） | 来源 / owner / review | 状态与精确解阻输入 |
+| --- | --- | --- | --- |
+| ISMRMRD reconstruction envelope 与算法配置 | `tests/unit/libs/recon/fixtures/valid/target-envelope-minimal.json` 的 `org.example` 数值（64 KiB XML、1 MiB acquisition、16 MiB frame/image、8192 samples、64 channels、单 scan、1000 items/s）仅为 schema fixture。Cartesian/non-Cartesian reference route 每次从 HDF5 preflight 的 shape 派生单 scan、host-only 值；它们分别是 2-D RSS / non-DCF、non-SENSE direct adjoint 的开发 reference。研究 manifest 记录一个 84,543,864 B Gadgetron input，但 datasets README 明确其是 research/interoperability material，而非产品 case。 | fixture annotations 为空；route 代码和 research manifest 都没有产品 owner/review。research source access date 为 2026-08-11，但 license 为 `not stated by source`、redistribution 为 `unclear`。 | **BLOCKED**：case owner 必须冻结经批准的 ISMRMRD case manifest，逐项提供 encoding、matrix、samples、trajectory dims、实际 channel 数（非上限）、scan concurrency、Provider/algorithm config digest、来源/许可/隐私审核、适用范围和 review date。 |
+| channel count 边界 | 当前两个 reference route 仍各有临时 `kMaximumChannels = 64`；ADR-003 禁止把它写入 framework envelope 或容量结论。 | `cartesian_rss_hdf5.cpp:49`、`noncartesian_rss_hdf5.cpp:45`；无产品 owner/review。 | **BLOCKED / P1-007 scope**：删除 reference-route 限制并以任意正整数 channel corpus 验证；P0-006 不登记任何框架 channel 上限。 |
+| MachinePolicy 与部署拓扑 | schema/模型具备 host bytes、CPU permits、NUMA、memory domain、device 等字段；唯一 JSON instance 是 `org.example.dev-host` fixture（16 GiB、8 permits、1 NUMA、host-only）。当前主机观测为 Linux `6.12.101+deb13-amd64` x86_64、Intel i7-14700K、28 logical CPUs、1 NUMA node、67,077,595,136 B RAM、RTX 4060 Ti 16,380 MiB/driver 550.163.01、Intel I226-LM PCI device。 | schema/fixture/model 不含 deployment identity、owner 或 review date。本机命令可复现，但只是本次 build host；未发现 committed deployment config。 | **BLOCKED**：deployment owner 必须为每个目标环境给出 CPU affinity/permits、NUMA、RAM reserve、OS、container/bare-metal、NIC 需求，以及明确 CPU-only 或 GPU backend/device/VRAM/driver/stream budget、适用范围与 review date。本机 GPU 不能推断 runtime support；P6-004 仍是 GPU DevicePlan 的前置项。 |
+| 性能 SLO | benchmark CMake/工具和空的 report template 存在；默认 preset 关闭 performance/benchmark/native-arch 选项。reference route 的 `acquisitions_read`、minimum drain `1` 和 fixture token-bucket 值是内部派生/测试值，不是测量结果。 | `docs/benchmark_reports/` 没有已接受 report；无 timed boundary、样本、raw artifacts、owner 或 review。 | **BLOCKED**：performance owner 必须提供 first output、completion、throughput、queue time、p50/p95/p99（含单位）、case/目标机/版本、timed boundary、样本和 raw artifacts，并指定 review date。 |
+| 数据、隐私与保留 | research Gadgetron manifest 具有 pinned source/hash；raw payload 不提交、本地 research storage 保留。`logging.file.retention_days=30` 是 disabled-by-default 的日志文件配置；RunRecord 仅禁止 reason code 带 PHI。 | research manifest 没有具名 case/data owner；不存在 de-identification、access 或 retention policy/review。 | **BLOCKED**：data-governance owner 必须决定允许的 synthetic/public/approved case 类别、license/redistribution、de-identification/PII、访问控制、日志/结果 artifact retention 与删除规则，并给出 source、适用范围和 review date。 |
+| 输出契约 | 当前 reference CLI 写 native-endian row-major f32 RSS binary 和 JSON sidecar；writer 使用 truncate。P1-002 已声明它只是 developer artifact。 | `apps/kspacejet-recon`/runtime source 没有正式 image artifact spec、owner 或 review。 | **BLOCKED**：output owner 必须冻结正式 image encoding、metadata/provenance、ordering、partial/callback、overwrite/durability、failure 和 retention/access policy，并给出 source、范围和 review date。 |
+| Provider trust 与第三方发布 | loader 可用 caller-supplied absolute path、trusted root 和 optional bundle digest，但明确是 trusted in-process ABI boundary；catalog 的 `implemented-development` 不是 release/trust approval。 | 未提交 trusted root/allowlist、签名、SBOM、第三方审核或 isolation policy；无 owner/review。 | **BLOCKED**：security/release owner 必须定义 trusted root、digest/signing/SBOM/hash、第三方准入/撤销、in-process trust tier 与 isolated-provider activation rule，并给出 source、范围和 review date。 |
+| 参数表示权威 | JSON TargetEnvelope schema 与 C++ `planning_inputs.hpp` value model 的字段并不一致，且未发现 JSON TargetEnvelope parser/serializer；两者都不能单独成为部署参数 authority。 | schema 仅结构验证，未定义 owner/source/review metadata。 | **BLOCKED**：architecture owner 必须指定可审计的单一参数 artifact/serialization 和与 C++ model 的一致性计划；在此之前不得从任何一侧生成或接受产品 policy。 |
+
+采集设备、scanner、gateway、session、网络 relay/transport 参数按 ADR-004 不在本登记范围。P0-006 的阻塞不改变 P0-002 的 Windows BLOCKED 记录，亦不允许由 Linux 或本机事实替代 Windows deployment evidence。
+
+---
+
+## 7. 验收总策略
+
+### 7.1 验收层级
+
+| 层级 | 目标 | 最低证据 |
+| --- | --- | --- |
+| A0 文档与静态 | 路径、链接、格式、schema、生成物和依赖一致。 | 机器检查、diff check、链接检查和 schema negative fixtures。 |
+| A1 单元 | 单个类型、算法、资源事务、状态转换和错误码正确。 | focused CTest 或 Python test。 |
+| A2 组件 | Provider、loader、compiler、verifier、reader、sink 等边界正确。 | 可执行 integration test 和 fixture。 |
+| A3 端到端 | 从 source 到 image/result 的正常、失败、取消和恢复路径。 | 固定 input、RunRecord、output compare、terminal assertion。 |
+| A4 压力与故障 | 已提交输入后的内部资源压力、burst replay、slow Provider、artifact writer failure、hang、crash、内存压力和长稳。 | fault injection、high-water、no-leak、outcome report。 |
+| A5 性能与资格 | 目标机、目标数据、重复实验、跨平台和发布包证据。 | benchmark report、artifact manifest、install/smoke、审计清单。 |
+
+一个功能至少通过 A0 至 A3 才能被标为 L3 system verified。P6/P7 的功能还必须通过适用的 A4/A5。
+
+### 7.2 固定验证入口
+
+所有直接命令均先使用项目的 bootstrap/runner；不要误用系统 PATH 中的 Conan、CMake、Ninja 或 formatter。
+
+Linux 首次准备：
+
+    bash tools/devenv/linux/bootstrap.sh
+    tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
+    tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
+
+Linux 格式与静态基线：
+
+    git diff --check
+    bash tools/checks/linux/format_check.sh --changed HEAD^
+    python3 tools/type_registry/generate.py --project-root . --check
+
+Linux 单元测试：
+
+    bash tools/checks/linux/ci_unit.sh
+    tools/devenv/linux/run.sh ctest --preset linux-release-unit-tests --output-on-failure
+    tools/devenv/linux/run.sh ctest --preset linux-release-unit-tests -L recon --output-on-failure
+
+Linux 完整检查和 benchmark smoke：
+
+    bash tools/checks/linux/ci_check.sh
+    bash tools/checks/linux/ci_full.sh
+
+Windows 基础门禁：
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\checks\windows\pre_commit.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\checks\windows\pre_push.ps1
+
+产品 application 与 unit/benchmark/research 测试必须使用不同 build tree。不得以 application build 成功替代 unit test，也不得把测试 preset 同时配置为 application build。
+
+### 7.3 验收条目
+
+#### AC-BLD：构建、供应链和文档完整性
+
+| ID | 通过条件 |
+| --- | --- |
+| AC-BLD-001 | 新 clone 的 Linux 环境在依赖前提满足时能 bootstrap、export local recipes、configure linux-release-unit-tests、build 和 ctest。 |
+| AC-BLD-002 | Windows MSVC 2022 debug/release 至少有 configure、build、install smoke；失败时报告缺失 host prerequisite 而不是静默跳过。 |
+| AC-BLD-003 | Git LFS Intel payload 的 manifest、hash、Linux/Windows runtime dependency 通过仓库验证。 |
+| AC-BLD-004 | docs 站内链接、引用目录、命令和 target 均存在；失效链接会由检查阻止合并。 |
+| AC-TYP-001 | 修改 registry 而未更新生成 C++/C header 时，type registry check 必定失败。 |
+| AC-TYP-002 | 每个 TypeRef 的 layout、identity digest 和 schema digest 只从 registry/generated factory 取得，无手写副本。 |
+| AC-TYP-003 | 类型破坏性变更同时更新 schema、registry、generated headers、Provider contract、fixture 和测试。 |
+
+#### AC-ART / AC-DAT：数据与 artifact
+
+| ID | 通过条件 |
+| --- | --- |
+| AC-ART-001 | 每个主 artifact 有 valid 与 invalid fixture，schema 验证成功和失败路径均稳定。 |
+| AC-ART-002 | canonical JSON 与 digest 对对象键顺序、空白和等价表示具有规定行为，篡改必改变或拒绝 identity。 |
+| AC-ART-003 | ResolvedPipeline、ExecutionPlan、RunRecord 跨 artifact 的 digest/ID 关联可验证。 |
+| AC-ART-004 | schema pass 不能替代 semantic validation；至少有 schema 合法但 compiler/verifier 拒绝的 fixture。 |
+| AC-ART-005 | Provider contract、catalog、plan 和 type registry 的 identity mismatch 有稳定错误码和机器可读诊断。 |
+| AC-ART-006 | 每个 input、output、config、pipeline、plan、Provider 和 result artifact 有稳定 identity/provenance，且可由 RunRecord 关联。 |
+| AC-ART-007 | artifact 写入具备 atomicity、完整性校验和失败清理语义；中断写入不得伪装为成功结果。 |
+| AC-ART-008 | artifact reader 能拒绝截断、schema/digest 不匹配、未知必需字段和非法编码，并保留诊断上下文。 |
+| AC-DAT-001 | HDF5 reader 不在 callback 外泄漏 borrowed view；异步路径只能接收 materialized host buffer。 |
+| AC-DAT-002 | 同一 scan 的 HDF5 replay 与调用方提交的等价 in-process ISMRMRD 数据在 runtime-frame boundary 产生相同 classification、frame identity 和 completion 语义。 |
+| AC-DAT-003 | 空、截断、非法 XML、非有限值、错误 layout、重复/缺失 acquisition、坏 trajectory 的输入被确定拒绝或产生规定 terminal outcome。 |
+| AC-DAT-004 | 所有输入都有经过测试的最大字节数、元素数、metadata 长度与整数溢出防护；不得设置或隐含最大 channel 数。 |
+| AC-DAT-005 | Scan、Frame、Ordering、Calibration、Partition key 彼此分离；测试证明它们不能被错误混用。 |
+| AC-DAT-006 | FrameSlot 只有在真实 completion 条件达成后 Ready；max count 只用于资源规划，不能结束一个 frame。 |
+| AC-DAT-007 | 参数化 fixture/generator 能接受任意正整数 channel 数（至少覆盖 1、64、256 和大于 256 的 case）并走相同 generic code path；不得以 channel count 拒绝。若实际 bytes/work 无法预留，必须报告资源不足而非通道上限。 |
+| AC-DAT-008 | 一次 scan 结束时，所有 incomplete frame 都转为明确 terminal outcome，绝不靠零填充猜测数据长度。 |
+
+#### AC-SCH / AC-PLN / AC-RT：并行语义、图、计划与运行时
+
+| ID | 通过条件 |
+| --- | --- |
+| AC-SCH-001 | 每个可并行 Provider Operator 都在 contract 中声明 `PartitionCapability`：每个候选轴的 independent/grouped/ordered/window/collective 语义、共享 calibration/state、partial-execution、output order、可用 backend 与限制。未声明时 compiler 默认不在该轴并行。 |
+| AC-SCH-002 | compiler 仅从实际存在的 ISMRMRD logical group 构造 WorkKey；不得将 encoding、slice、contrast、frame 盲目做笛卡尔积，且每个 WorkKey 都能追溯到输入与 Provider contract。 |
+| AC-SCH-003 | WorkKey 只有在对应 FrameSlot 语义 complete/sealed、所需 calibration epoch 与 ordered predecessor 全部 ready 后才可进入 Ready；max acquisition count 不得替代 completion。 |
+| AC-SCH-004 | stateful/calibration/ordered path 的同一 KeyShard 在任意时刻只有一个 queued-or-running writer；无共享可变状态的 ComputeTask 才能在 CPU/GPU executor 并行。 |
+| AC-SCH-005 | 每个 grouped/window/collective task 都有显式 join、normal/cancel/failure terminal 和 deterministic output order；执行完成顺序不得改变可见 image/result 顺序。 |
+| AC-SCH-006 | channel count 不是 partition admission 条件。channel block 只能由实际 bytes/work、cache/device policy 和 Provider contract 导出；1、64、256 及大于 256 的输入不触发框架分支或上限。 |
+| AC-SCH-007 | ResourceLedger 在 task 可见于 ReadyQueue 前原子预留其 host/device bytes、queue items/bytes、CPU concurrency、device stream、artifact staging 与 async-token 预算；资源不足时不创建部分 task 或半可见状态。 |
+| AC-SCH-008 | 每个 BufferHandle、FiringLease、OutputGrant、device fence 和 async token 有单一 owner、charged resource domain 与一次释放路径；normal/cancel/failure/crash 后实际 ledger 回到规定值。 |
+| AC-SCH-009 | 同一 ScanDescriptor、ResolvedPipeline、Provider contract 和 MachinePolicy 生成 deterministic ExecutionPlan；并行运行与 serial oracle 在声明数值规则内等价。 |
+| AC-SCH-010 | Runtime 只能在已验证 ExecutionPlan 的合法 ready task 中选择运行顺序；不得临时扩大 partition、改变 grouped/ordered 语义、绕过 reservation 或让 Provider 自行创建未计费调度。 |
+| AC-SCH-011 | P6 的 multi-scan fairness、NUMA/GPU placement、batch/fusion 只在 P3 基线通过后启用；每个策略都有 starvation、cancel、high-water、正确性与 fallback evidence。 |
+
+#### AC-PLN / AC-RT：图、计划、运行时
+
+| ID | 通过条件 |
+| --- | --- |
+| AC-PLN-001 | PipelineDefinition 不能作者化 worker count、queue implementation、allocator 或任意物理 schedule。 |
+| AC-PLN-002 | 所有 merge、join、reorder、calibration dependency、drop、partial 和 terminal 行为显式声明并可验证。 |
+| AC-PLN-003 | 每条 edge 的 TypeRef、port direction、multiplicity 和 ownership 被静态检查。 |
+| AC-PLN-004 | invalid graph 的诊断指向 source location、node/port 和违反规则。 |
+| AC-PLN-005 | resolver 对同样输入产生同样 ResolvedPipeline digest；选择、默认值和 config binding 可解释。 |
+| AC-PLN-006 | 无法发现 Provider、contract、TypeRef 或 capability 时，resolver 不产生半有效 plan。 |
+| AC-PLN-007 | provider interface reservation 不可被当作 executable contract 使用。 |
+| AC-PLN-008 | compiler 对 ScanDescriptor、TargetEnvelope、MachinePolicy 和 ResolvedPipeline 产生完整的物理资源和 terminal plan。 |
+| AC-PLN-009 | ExecutionPlan 的各队列、pool、batch、threads、memory domain、device 和 in-flight 上限均可追溯至 source field。 |
+| AC-PLN-010 | plan 中每个 Provider action 有 required FiringLease 输入/输出与 terminal policy。 |
+| AC-PLN-011 | P6 前 compiler 不得偷偷开启 partition、fusion、async 或 GPU scheduling；必须由明确 capability 和 feature flag 支持。 |
+| AC-PLN-012 | compiler 对同一固定输入 deterministic，或在计划中记录许可的 nondeterministic choice。 |
+| AC-PLN-013 | independent verifier 不调用 compiler 私有状态，且可拒绝篡改的 digest、类型、边界、终止和资源。 |
+| AC-PLN-014 | 小图 exhaustive/property corpus 中 compiler 成功的 plan 均由 verifier 接受，非法 plan 均被拒绝。 |
+| AC-PLN-015 | verifier 的 pass 只表示已证明的边界；不能宣称未编码的 latency、GPU cancel 或 process isolation。 |
+| AC-PLN-016 | plan 证书和实际 runtime high-water 有可对比的字段。 |
+| AC-RT-001 | edge reservation 是原子 transaction；资源不足不会产生部分可见 payload 或泄漏 reservation/lease。 |
+| AC-RT-002 | fan-out 要么所有 target 成功提交，要么无 target 可见；禁止隐式 drop。 |
+| AC-RT-003 | 同一 serial KeyShard 在任意时刻 queued plus running 不超过一；不同 key 的并行只在 capability 允许时开启。 |
+| AC-RT-004 | actual item/byte high-water 不超过 ExecutionPlan；违反立即记录 fatal diagnostic。 |
+| AC-RT-005 | runtime 不持有未计费 provider-owned pool，也不允许 provider 隐藏 background work。 |
+| AC-RT-006 | 资源账本在正常、取消、失败、重复释放和异常 path 后回到零或规定 persistent artifact 占用。 |
+| AC-RT-007 | FiringLease 输入只读、输出已预留、deadline/terminal/cancel 可查询；Provider 无法写出 lease 边界。 |
+| AC-RT-008 | Provider 尝试 retain borrowed data、写超界、double commit、漏掉 terminal 或返回非法 identity 时被 host 拒绝。 |
+| AC-RT-009 | In-process Provider native crash 只允许在 provider-development mode；isolated-provider-runtime mode 必须有隔离证据。 |
+| AC-RT-010 | synchronous path 的结果与 serial oracle 数值等价，误差规则明确。 |
+| AC-RT-011 | normal end 仅在 EndOfInput 和声明的 normal flush 完成后产生 Completed。 |
+| AC-RT-012 | cancel、input submission failure、provider failure、timeout、result-artifact failure 各有唯一 terminal outcome 和稳定错误上下文。 |
+| AC-RT-013 | partial output 只有被 contract/sink 明确允许时才交付，且含 ordinal/reason/provenance。 |
+| AC-RT-014 | recovery/cleanup 不会把未完成 GPU/worker work 误认为安全回收。 |
+| AC-RT-015 | 同一终态重复消息幂等，不会重复输出、重复释放或错误晋级。 |
+| AC-RT-016 | 对调用方已提交的 ISMRMRD 数据，admission 按 item、byte、CPU、device 与结果 artifact budget 作出本地 accept/reject；拒绝不得留下部分 scan 状态，也不得定义上游 ACK/credit/pause。 |
+| AC-RT-017 | 多 scan 的内部资源占用、queue、thread、device 和 output budget 可分别计账；一个 scan 的 cancel/failure 不可污染其他 scan。 |
+| AC-RT-018 | 本地过载、Provider saturation、结果 artifact writer failure 与持久化空间不足均执行已声明策略，不允许无界堆积或静默丢弃已接受的 ISMRMRD 数据。 |
+| AC-RT-019 | fairness、priority、quota 和本地 admission decision 被记录为可观察事件，并可通过确定性模拟或系统测试复现。 |
+
+#### AC-PRV / AC-REF / AC-CLI：Provider、参考路径和工具
+
+| ID | 通过条件 |
+| --- | --- |
+| AC-PRV-001 | Provider C ABI header 在 C 与 C++ 下均可编译，symbol visibility 和 calling convention 在 Linux/Windows 均通过。 |
+| AC-PRV-002 | loader 对缺失 export、错误 ABI、错误 manifest、hash mismatch、重复 identity、依赖冲突和错误架构给出稳定失败。 |
+| AC-PRV-003 | bundle identity 将 Provider binary、contract、TypeRegistry、ABI、dependencies 和可选签名关联起来。 |
+| AC-PRV-004 | provider init 生成的最小项目可独立 build、test、package；生成目录存在时绝不覆盖。 |
+| AC-PRV-005 | provider test 在独立 test process 中覆盖正常、cancel、错误、边界和并发 conformance；native crash 明确归因。 |
+| AC-PRV-006 | isolated-provider-runtime 只接受经过 policy 许可、可隔离且通过 conformance 的 bundle。 |
+| AC-REF-001 | Cartesian reference 明确其 2-D、encoding、layout 和 sampling 语义；不得以 channel count 限制输入。若特定 Provider 的数学 contract 不适用，必须给出 contract diagnostic 而非 framework input rejection。 |
+| AC-REF-002 | Cartesian fully sampled fixture 对 reference image、metadata、shape、orientation 和 finite value 进行比较。 |
+| AC-REF-003 | optional noise prewhiten、phase correction、coil compression、readout crop 每条分支有独立 baseline、组合测试和关闭分支测试。 |
+| AC-REF-004 | channel/coil layout、readout direction、FFT scaling、RSS 公式和 output dtype 均有可复算 oracle。 |
+| AC-REF-005 | Cartesian 的 corrupted/missing calibration、invalid offset、provider failure、cancel 和 output failure 有确定结果。 |
+| AC-REF-006 | Cartesian 成功输出包含 input、pipeline、plan、Provider、config、result digest 和 timing provenance。 |
+| AC-REF-007 | reference 路径不宣称临床算法或超出 contract 的能力。 |
+| AC-REF-008 | non-Cartesian reference 明确限定为其实现的 2-D direct adjoint 或已启用能力，不推断 density、trajectory correction 或 SENSE。 |
+| AC-REF-009 | trajectory dimensions、sample count、ordering、nonfinite trajectory 和 mismatch 具有 fixture 和确定错误。 |
+| AC-REF-010 | non-Cartesian 输出与独立可复算 reference 或冻结 golden 在声明 tolerance 内。 |
+| AC-REF-011 | coil combine、metadata、shape、output dtype 和 nonfinite result 通过正常与异常测试。 |
+| AC-REF-012 | non-Cartesian route 在 cancel、provider failure 和 sink failure 下资源归零并生成 RunRecord。 |
+| AC-REF-013 | 任何 future trajectory correction、phase correction、SENSE 必须先从 planned interface 升级为完整 contract、Provider、测试和 catalog 事实。 |
+| AC-CLI-001 | 所有 app 使用 CLI11 声明命令、参数、校验和 help；不得手写 argv parser 或未文档化 alias。 |
+| AC-CLI-002 | 每个支持 machine output 的命令提供 format text 或 json；JSON stdout 不混入 log，diagnostic 去 stderr。 |
+| AC-CLI-003 | exit code、JSON schema、success/failure envelope 和错误字段有 app test。 |
+| AC-CLI-004 | provider init 的名称、路径、catalog 不变性、覆盖保护和生成物有 app test。 |
+| AC-CLI-005 | provider inspect/doctor/test/package 能发现 ABI、manifest、runtime dependency 和 contract 问题。 |
+| AC-CLI-006 | 每个 CLI command 具有完整 help 与至少一条 success/invalid input 端到端测试。 |
+| AC-CLI-007 | inspect 输出 XML、encoding、维度、flags、coil、trajectory、数量和时间线摘要。 |
+| AC-CLI-008 | dataset validate/generate 使用公开、可重复 fixture，并输出稳定 validation report。 |
+| AC-CLI-009 | pipeline validate/explain/render/dry-run 将 schema、semantic、resolver、compiler、verifier、admission 层次分开报告。 |
+| AC-CLI-010 | run 只能使用已验证 plan，输出 artifact、RunRecord、exit status 和 machine-readable summary。 |
+| AC-CLI-011 | replay/dataset validate 的输入只接受公开 ISMRMRD；不得新增 capture、socket、session 或私有落盘格式。 |
+| AC-CLI-012 | compare/golden 命令报告 absolute/relative/ULP 或明确领域误差及差异 artifact。 |
+| AC-CLI-013 | trace 和 benchmark 命令保留 case、硬件、timed boundary、版本和 raw report。 |
+| AC-CLI-014 | run list/show/cancel 只针对本地或嵌入宿主已经建立的 reconstruction run 开放，且支持 JSON；不得出现 gateway 命令。 |
+| AC-CLI-015 | doctor 报告 CPU/NUMA、dynamic library、Intel payload、文件权限、配置和可执行修复建议；不得探测或配置网络端口、扫描仪或采集设备。 |
+| AC-CLI-016 | 未实现 command 不能伪装成功；应在 help/JSON 中明确 scaffold 或 unavailable。 |
+
+#### AC-FED / AC-OBS / AC-PERF / AC-REL：嵌入输入、观测、性能和发布
+
+| ID | 通过条件 |
+| --- | --- |
+| AC-FED-001 | HDF5 replay 与调用方提交的等价 in-process ISMRMRD 数据在 classification、frame identity、completion 和 result artifact 上等价。 |
+| AC-FED-002 | 借用的 ISMRMRD view 只在回调内有效；异步/并行执行前完成 host-owned materialization。 |
+| AC-FED-003 | in-process feed API 不引入 socket、session、wire message、gateway、Connector、采集设备或上游流控依赖。 |
+| AC-FED-004 | malformed、truncated、duplicate、missing 或 producer-terminated 的输入都映射为明确 local terminal outcome。 |
+| AC-FED-005 | local/embedded run 的 live state、version、config digest、Provider readiness、admission 状态可查询且有 JSON 模式。 |
+| AC-FED-006 | run list/show/cancel 对 concurrency、terminal states 和 idempotence 有测试。 |
+| AC-FED-007 | normal run、cancel、input submission failure、Provider failure、result-artifact failure 和 restart 的 status transition 可追踪。 |
+| AC-FED-008 | 本地 admission 在接受输入前完成资源预留；资源不足只返回本地 reject，不提供上游 ACK、pause、credit 或 retry 语义。 |
+| AC-FED-009 | bounded internal queue、slow Provider 和 artifact writer failure 不会无限增长，也不会无声丢弃已接受 input 或 image。 |
+| AC-FED-010 | paced HDF5 replay 与 in-process feed 的 burst/ordering corpus 可验证 runtime 高水位不超过 plan，结果与 HDF5 oracle 等价。 |
+| AC-OBS-001 | RunRecord 和 verification record 的 schema、identity、write timing 和 failure path 有单元与端到端测试。 |
+| AC-OBS-002 | audit event 在权限、admission、Provider identity、terminal、output 和安全决策上不可伪造、可排序、可关联。 |
+| AC-OBS-003 | config resolve/explain 输出来源、默认值、优先级、digest 和脱敏后的实际值。 |
+| AC-OBS-004 | crash breadcrumb 和 emergency signal path 不调用不安全 logger，并可关联 Scan/Run ID。 |
+| AC-OBS-005 | metrics 至少包含 queue/pool high-water、ledger、firing、provider duration、input submission/result-artifact rate、terminal outcome、errors 和 admission reject。 |
+| AC-OBS-006 | trace 可以关联外部 monotonic clock；框架内部 trace 不能伪造外部端到端 latency。 |
+| AC-OBS-007 | core diagnostics plain text，CLI JSON stdout 和指标/trace/artifact 各自保持协议边界。 |
+| AC-OBS-008 | 每个可测 SLO 都暴露采样数、窗口、分位数、单位、版本和输入 case。 |
+| AC-OBS-009 | 日志、trace、artifact 的 retention/PII policy 可配置并经审计。 |
+| AC-OBS-010 | 失败时最小上下文足以复现：input identity、plan/provider/config digest、terminal reason 和高水位。 |
+| AC-OBS-011 | observability 失败不会改变重建结果，也不会导致无界 buffer 或崩溃。 |
+| AC-PERF-001 | CPU thread count、affinity、NUMA placement 与 memory domain 是 plan 可见、可验证字段。 |
+| AC-PERF-002 | 多 scan scheduler 满足所声明的公平策略，并且一个慢 scan 不会无限占用全局资源。 |
+| AC-PERF-003 | 每个 parallelization、partition 和 fusion 只在 Provider capability 显式声明后开启。 |
+| AC-PERF-004 | 资源 transaction 在并发压力下无 deadlock、leak、credit drift 或 double release。 |
+| AC-PERF-005 | GPU DevicePlan 描述 device、stream、buffer、event、fallback 和 resource accounting。 |
+| AC-PERF-006 | GPU async cancel、device loss、worker kill、event timeout 后不会重用尚在执行的 device buffer。 |
+| AC-PERF-007 | 性能宣称使用冻结 case、目标机、warmup、重复次数、统计方法、原始样本和外部 collector。 |
+| AC-PERF-008 | 每项优化先通过数值和资源正确性，再显示相对于固定 baseline 的实测收益。 |
+| AC-PERF-009 | 未启用 GPU/NUMA feature 时，默认 CPU path 不携带隐藏依赖或性能回退。 |
+| AC-REL-001 | GitHub 或既有 CI 平台在每个受保护变更上执行 format、type registry、unit 和适用 app tests。 |
+| AC-REL-002 | main 的合并受 required checks 和 review/branch policy 保护；本地脚本不是唯一质量门。 |
+| AC-REL-003 | Linux/Windows 安装树在干净环境运行 help/version/basic smoke，并验证 DLL/SO 依赖闭包。 |
+| AC-REL-004 | release manifest 列出 source commit、工具链、dependency lock、Provider bundle、schema/type registry 和 artifact digests。 |
+| AC-REL-005 | SBOM、license、hash、签名 policy 和安全扫描有可复现生成与审核记录。 |
+| AC-REL-006 | long soak、fault injection、benchmark、memory diagnostics 和 static analysis 在声明范围内通过。 |
+| AC-REL-007 | 文档链接、CLI reference、configuration reference、known limitations 和 mode claim 与实际功能一致。 |
+| AC-REL-008 | 版本、upgrade/rollback、config migration 和 data retention 有明确 pre-release policy；不得暗中保留兼容层。 |
+| AC-REL-009 | release candidate 对已知风险、未启用 feature、硬件 envelope 和非临床声明有明确清单。 |
+| AC-REL-010 | 只有全部适用 AC 通过才能在相应 mode 下标记 qualified。 |
+
+---
+
+## 8. 实施纪律
+
+### 8.1 每个工作项的最小交付
+
+每一个工作项必须产生以下可审计结果：
+
+1. 一个清晰的需求和范围边界；
+2. 受影响的源文件、schema、Provider/CLI/API surface；
+3. 正向测试、负向测试和至少一个不变量；
+4. 必要的文档和 fixture；
+5. 实际执行的验证命令和结果；
+6. 本文件进度表与变更日志的更新。
+
+如果无法在一个可审查变更中完成，拆分任务，但新任务必须有独立的输入、输出、验收和依赖；不要以“后续补测试”作为默认计划。
+
+### 8.2 代码和文档变更规则
+
+- 改 schema 时，必须同步检查 schema reader、canonical JSON、model、compiler/verifier、fixtures、文档和生成物。
+- 改 TypeRef 时，必须同步更新 registry、generated headers、Provider contracts、runtime matcher、tests 和 type registry check。
+- 改 Provider 时，必须同步更新 contract、catalog、CMake、bundle install list、SDK conformance、provider test 和 README。
+- 改 runtime terminal/resource 语义时，必须同步更新 plan verifier、RunRecord、metrics、fault tests 和文档。
+- 改 CLI 时，必须同步更新 CLI11 declaration、help、JSON envelope、exit code、app test 和 docs。
+- 任何将调用方提交的 ISMRMRD 输入扩展为网络协议、session、gateway、Connector 或采集控制的提议都超出本项目范围；停止并要求一个单独外部项目的明确授权。
+
+### 8.3 任务完成时的提交边界
+
+一个提交宜对应一个工作项或一个可独立验证的子工作项。提交中必须包含代码、测试和本文件状态更新；不把格式化全库、无关重命名、vendor payload 或用户已有改动混入。若任务需要多个提交，第一个提交不得把公开 API 留在不编译或不安全的半状态。
+
+### 8.4 文档完整性规则
+
+P0-004 通过前，任何文档链接不得假定存在。当前已观察到 docs/conventions/README.md 对 reconstruction_state.md、release.md、benchmark_reports 和 research_reports 的引用需要逐项核实。若这些文件不是当前产品所需，删除链接；若需要，则同一工作项中创建实际内容并加链接检查。
+
+---
+
+## 9. 阶段门禁和依赖顺序
+
+| 阶段 | 目标 | 入口条件 | 退出条件 |
+| --- | --- | --- | --- |
+| P0 规范与可信边界 | 建立单一事实来源、环境证据、链接完整性、真实能力矩阵和冲突裁决。 | 本文件和 AGENTS 已存在。 | P0 全部 ACCEPTED；不再有未裁决的规范冲突或失效文档引用。 |
+| P1 串行可信离线基线 | 把现有 HDF5 reference 路径变为可复现、可解释、有限范围内正确的开发闭环。 | P0-001、P0-002、P0-004 ACCEPTED。 | Cartesian/non-Cartesian 正常/异常/golden/RunRecord 通过；无范围夸大。 |
+| P2 计划编译与独立验证 | 让语义 Pipeline、artifact、compiler、verifier 和 CLI 工具成为可证明一致的边界。 | P1 的 artifact/data 基线 ACCEPTED。 | valid/invalid/property corpus、plan identity、CLI JSON protocol 通过。 |
+| P3 有界 CPU runtime | 把现有同步组件收口为由 plan 驱动、资源闭环、终止正确的 generic runtime。 | P2 compiler/verifier ACCEPTED。 | serial equivalence、resource high-water、terminal/fault/lease 证据通过。 |
+| P4 Provider 产品化 | 形成可审计的 SDK、bundle、loader、conformance、run record 和隔离路线。 | P3 baseline ACCEPTED。 | trusted development Provider 流程完整；isolated-provider-runtime 的隔离前提可验证。 |
+| P5 可选进程内 ISMRMRD feed | 仅在有嵌入宿主需求时，完成 host-owned ISMRMRD feed、本地 run API 和等价性测试。 | P3 bounded correctness 和明确 embedding 需求。 | 不创建网络服务、gateway、session、Connector 或上游 flow control；本阶段不属于 v1 必经路径。 |
+| P6 并行、NUMA、GPU 与性能 | 以 feature-gated 方式按能力增加并行性和硬件利用。 | P3 的 bounded correctness ACCEPTED；MachinePolicy 已填写。 | 每个启用 feature 均有正确性、资源、cancel 和性能证据。 |
+| P7 Qualification 与发布 | 让质量门在远程 CI、可安装包、长期运行、供应链和文档中可重复。 | P0-P4 ACCEPTED，启用的 P5/P6 工作项 ACCEPTED。 | 适用 AC-REL 全通过，mode claim 与证据一致。 |
+
+阶段不能通过“多数任务完成”进入下一阶段。一个 BLOCKED 的强依赖会阻止其所有后续强依赖；只有明确定义 activation predicate 的 NOT_APPLICABLE 才能解除该依赖。
+
+---
+
+## 10. 可执行工作目录
+
+本节定义任务内容；**唯一可变状态在第 12 节执行台账**。每个任务均允许更新本文件的自身台账、直接相关测试、必要 CMake 注册和直接相关文档。超出列出的主路径时，先在台账 Notes 写明原因和新增影响面。
+
+### P0：规范、基线和工程治理
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P0-001 | 建立每项现有能力的事实矩阵：implemented、tested、system-tested、performance-tested、qualified 分离。输出为本文件第 12 节的 baseline evidence 行和能力状态。 | 根 README、AGENTS、docs/architecture、apps、libs/recon、providers、tests、CMakePresets。 | 无。 | AC-BLD-001、AC-ART-004；执行关键 configure/build/CTest，不能运行的环境逐项 BLOCKED。 |
+| P0-002 | 验证 Linux/Windows toolchain、Conan、Git LFS、preset、install 和 check script 的实际可用性；形成机器可读/可复制命令记录。 | tools/devenv、tools/checks、CMakePresets、conan profiles、third_party/intel。 | P0-001。 | AC-BLD-001 至 003；Linux 必跑 ci_unit，Windows 至少 bootstrap/configure/install smoke 或准确 BLOCKED。 |
+| P0-003 | 固定本文件为唯一状态账本，建立状态转换检查和恢复流程；禁止重新引入无同步机制的第二 TODO/工作项系统。 | AGENTS、docs/architecture、可选 tools/checks。 | 无。 | 第 0、12、13 节完整；AC-BLD-004；对任一任务能从状态、依赖和下一步恢复。 |
+| P0-004 | 修复或删除所有断链、缺失目录、过时 app 角色描述和无效构建命令；增加轻量 link/path check。 | docs/README、docs/conventions、docs/architecture、README、tools/checks。 | P0-001。 | AC-BLD-004；链接检查必须能在无网络情况下发现相对路径错误。 |
+| P0-005 | 解决规范冲突，至少包括 plain-text core diagnostics 对 structured log 主张、采集/transport/gateway scope claim、profile 名称和 artifact authority。每项冲突只留一个规范。 | AGENTS、docs/architecture、apps README、schemas README、tests。 | P0-001、P0-004。 | AC-ART-004、AC-OBS-007、AC-REL-007；冲突扫描无双重强制语义。 |
+| P0-006 | 建立 MachinePolicy 和 ISMRMRD reconstruction-case 参数登记：数据形状、算法配置、CPU/NUMA/GPU、SLO、隐私、Provider trust 和输出 policy；不得登记框架 channel 上限或采集链路参数。 | schemas、docs/architecture、本文件第 6.3 节、部署 config。 | P0-001。 | 参数均有 source/owner/review date；缺失参数明确 BLOCKED，不猜测默认值。 |
+| P0-007 | 建立远程 CI 和分支保护计划；若用户授权，实际创建 CI workflow/现有 runner pipeline 和 required checks。 | .github 或现有 CI 目录、tools/checks、GitHub settings。 | P0-002。 | AC-REL-001、002；无远程写入授权时只产出设计和 BLOCKED 证据。 |
+| P0-008 | 将本文件升级为可快速查看的 Master Plan：从唯一台账派生阶段完成度、当前项、READY/阻塞项和最近证据，并以离线检查器阻止其与台账漂移。 | 本文件、README、docs/README、tools/checks。 | P0-001。 | 总览只读派生自第 12 节，不复制单项状态；检查器验证第 10/12 节 ID 集合、状态、唯一 READY/活动项、READY 依赖、入口链接和总览一致性。 |
+
+### P1：可信离线 reference 基线
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P1-001 | 冻结公开/合规 HDF5 fixture manifest，包含数据来源、SHA-256、encoding、预期 terminal、golden tolerance 和可再生成方式。 | tests fixtures、tools、docs、ISMRMRD reader。 | P0-002、P0-006。 | AC-DAT-001 至 004、AC-REF-001/008；生成和验证必须不依赖私有数据。 |
+| P1-002 | 定义并实现标准 image output artifact。当前 native-endian row-major f32 加 JSON sidecar 仅作为 developer artifact；生产 reference 输出需明确 HDF5 image schema、metadata 和 provenance。 | recon-runtime output、apps/kspacejet-recon、schemas、tests。 | P1-001、P0-005。 | AC-ART-006 至 008、AC-REF-002/006/010/011；roundtrip/interoperability fixture 通过。 |
+| P1-003 | 审计并验收 2-D fully sampled Cartesian RSS reference；把支持矩阵与 IFFT/RSS/orientation/scale golden 固定下来，并确保 reference route 不含 channel-count cap。 | cartesian_rss_hdf5、cartesian Provider、coil combine、tests。 | P1-001、P1-002、P1-007。 | AC-REF-001 至 007；执行 Cartesian focused CTest、normal/optional branch/negative cases。 |
+| P1-004 | 审计并验收 2-D non-Cartesian direct-adjoint RSS reference；明确无 DCF、trajectory correction、SENSE 的界限。 | noncartesian_rss_hdf5、noncartesian Provider、coil combine、tests。 | P1-001、P1-002。 | AC-REF-008 至 013；执行 non-Cartesian focused CTest 与 golden compare。 |
+| P1-005 | 实现或收口 scan/frame completion、classification、key separation、incomplete/duplicate/missing acquisition terminal semantics。 | acquisition_classification、host_frame_assembler、cartesian_frame_slot、scan_lifecycle、tests。 | P1-001、P0-006。 | AC-DAT-005、006、008、AC-RT-011/012；resource 和 terminal 负向测试通过。 |
+| P1-006 | 将每次离线 run 的 input、plan/verifier、Provider/config、terminal、output hash 写入最小 RunRecord，并提供验证读取。 | recon-model run_record、recon-runtime、apps、schemas、tests。 | P1-002、P1-003、P1-004。 | AC-ART-003、006 至 008、AC-OBS-001 至 004。 |
+| P1-007 | 删除 reference CLI 的 1 至 64 通道上限，并保证 ISMRMRD schema、generic reader、CLI、ScanDescriptor、planner 和 runtime 对任意正整数 channel count 走同一 generic path。算法特有限制只可由 Provider contract 声明。 | ScanDescriptor、ExecutionPlan、FrameSlot、CLI、fixtures、benchmarks。 | P0-006、P1-001、P1-005。 | AC-DAT-004/007、AC-PERF-001/004；资源不足以 bytes/work 明确失败，绝不因 channel count 失败。 |
+
+### P2：图、artifact、compiler、verifier 和 CLI 计划工具
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P2-001 | 审计 artifact 权威归属，移除重复/自引用 digest、重复 profile owner 或混合 semantic/physical 字段；所有新字段归属唯一。 | recon-model、recon-graph、schemas、pipeline docs、fixtures。 | P0-005、P1-006。 | AC-ART-001 至 005、AC-PLN-001 至 004。 |
+| P2-002 | 完成 PipelineDefinition 静态验证、Resolver 和 ResolvedPipeline determinism，并让 catalog/contract/type/config 诊断可解释。 | pipeline_definition、artifact_json、operator_contract_json、provider catalog、CLI、tests。 | P2-001。 | AC-PLN-001 至 007、AC-CLI-009；valid/invalid fixture 和 JSON output tests。 |
+| P2-003 | 完成 ExecutionPlan compiler 的资源、terminal、placement、Provider firing、PartitionCapability 与 WorkKey 输出；只能按已声明的并行语义构造实际 ISMRMRD group。 | execution_plan_compiler、synchronous graph compiler、planning inputs、resource vector、Provider contracts、schemas、tests。 | P2-002、P0-006。 | AC-SCH-001/002/006/009/010、AC-PLN-008 至 012、AC-RT-004。 |
+| P2-004 | 强化 independent verifier，与 compiler 私有实现隔离；增加 mutated plan、small graph exhaustive/property、非法 partition/resource/terminal 和 differential corpus。 | synchronous graph verifier、plan storage、tests/fuzz tooling。 | P2-003。 | AC-SCH-002 至 010、AC-PLN-013 至 016；compiler/verifier verdict matrix 通过。 |
+| P2-005 | 扩展 ksj 的 pipeline validate、explain、render、dry-run；每个命令具有 CLI11 help、text/json、exit code 和 app protocol test。 | apps/kspacejet-cli、recon graph/model、tests/apps、docs。 | P2-002、P2-004。 | AC-CLI-001 至 003、007 至 010。 |
+| P2-006 | 建立 schema structural 与 semantic validation 的双层测试规则；schema 合法但 resolver/compiler/verifier 拒绝的 corpus 必须持续存在。 | schemas、fixtures、tests/unit/libs/recon、tools/checks。 | P2-002、P2-004。 | AC-ART-004、AC-PLN-013 至 015；单独 schema pass 不可让测试 green。 |
+
+### P3：有界 generic CPU runtime
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P3-001 | 审计并收口 buffer pool、fixed edge、resource ledger 和 resource-vector ledger 的预留/提交/回滚/释放不变量；ReadyQueue 前必须完成原子 reservation。 | buffer_pool、fixed_buffer_edge、resource ledger、tests。 | P2-003。 | AC-SCH-007/008、AC-RT-001 至 006；成功/失败/cancel/overflow/double-release stress tests。 |
+| P3-002 | 固化 current synchronous executor 支持矩阵：仅执行已验证的 ready WorkKey、exact identity cohort、无未声明 fan-out/join/retain/async/device；禁止 runtime 临时扩大 partition。 | synchronous_graph_executor、FiringLease、docs、tests。 | P2-004、P3-001。 | AC-SCH-005/009/010、AC-RT-007 至 010；未知 motif 必须 compile/verifier/runtime fail closed。 |
+| P3-003 | 建立 KeyShard activation、calibration gate、ordering、normal flush 和 terminal state machine 的可执行不变量；分离 stateful writer 与 immutable ComputeTask。 | key_shard、calibration_gate/store、scan_lifecycle、executor、tests。 | P1-005、P3-001。 | AC-SCH-003 至 005、AC-RT-003、011 至 015；虚拟时间和 fault corpus。 |
+| P3-004 | 收口 host-enforced FiringLease 和 ProviderNodeInstance：输入借用、输出 grant、identity、cancel、terminal 和 background work 全部可强制。 | synchronous_firing_lease、provider_node_instance、provider SDK、test Provider。 | P3-001、P3-002。 | AC-RT-007 至 010、AC-PRV-001/002。 |
+| P3-005 | Generic graph 与 serial Cartesian/non-Cartesian oracle 做端到端差分；修复任何 WorkKey、语义、数值或资源不等价。 | serial_cartesian_pipeline、recon runtime、reference providers、tests。 | P1-003、P1-004、P3-002 至 004。 | AC-SCH-009、AC-RT-010、AC-REF-002/010；normal 和 fault path 对比。 |
+| P3-006 | 实现 runtime resource/terminal/Provider trace 和 fatal diagnostic；实际 high-water 与 plan certificate 可比较。 | recon-runtime、performance、logging、run record、tests。 | P3-001、P3-003。 | AC-PLN-016、AC-OBS-005/006/010/011。 |
+
+### P4：Provider 产品化、隔离路线与开发者体验
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P4-001 | 收口 Provider bundle manifest、catalog、contract、binary、TypeRegistry、dependency、SBOM/hash/signature 的 identity policy。 | provider SDK/loader、providers catalog/contracts、schemas、tests。 | P2-001、P3-004。 | AC-PRV-002、003、AC-REL-004/005。 |
+| P4-002 | 强化 loader：ABI/export/architecture/dependency/manifest mismatch 的 deterministic failure 和跨平台 test matrix。 | provider-loader、platform dynamic library、tests/unit/recon。 | P4-001、P0-002。 | AC-PRV-001、002；Linux SO 与 Windows DLL evidence。 |
+| P4-003 | 完成 ksj provider init、inspect、doctor、test、package 的单一 SDK 开发闭环；不得复制 runtime。 | apps/kspacejet-cli、sdk/templates/provider、tools、tests/apps。 | P4-001、P4-002、P2-005。 | AC-PRV-004、005、AC-CLI-004 至 006、015。 |
+| P4-004 | 将每个 reference Provider 按 functional source layout、contract、catalog、CMake install 和 conformance 测试完整化；contract 必须声明 PartitionCapability，planned interface 不得混入 executable map。 | providers、sdk、tests/unit/providers、docs。 | P4-002、P3-005。 | AC-SCH-001、AC-PRV-003 至 006、AC-REF-013。 |
+| P4-005 | 设计并实现 isolated worker/supervisor 路线、trust tier、quota、watchdog、crash reconciliation 和 rolling upgrade。 | recon runtime、process-runtime、platform、schemas、tests/fault. | P4-001、P3-003、P0-006。 | AC-RT-009/014、AC-PRV-006；不能只 kill host 来模拟 GPU safety。 |
+| P4-006 | 把 audit、RunRecord、crash breadcrumb、config resolve/explain 和 Provider identity 形成可重放事故证据链。 | run_record、config、crash、logging、CLI、schemas、tests。 | P1-006、P4-001、P3-006。 | AC-OBS-001 至 004、007、010。 |
+
+### P5：可选进程内 ISMRMRD feed 与宿主 API
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P5-001 | 冻结仅限同进程的 caller-to-framework ISMRMRD feed contract：ownership、callback lifetime、input identity、completion 与 terminal mapping。 | docs/architecture、schemas、io、fixtures。 | P0-005、P0-006、P3-003。 | AC-FED-001 至 004；不得添加 socket、session、transport、gateway 或 source-control 语义。 |
+| P5-002 | 实现 feed materialization 和 HDF5/feed equivalence harness；所有异步路径仅持有 host-owned buffer。 | io/recon runtime、schemas、tests/fuzz。 | P5-001、P3-003。 | AC-DAT-001/002、AC-FED-001 至 004；无 borrowed view 跨异步边界。 |
+| P5-003 | 实现本地/embedded run lifecycle、admission、run list/show/cancel、RunRecord 和受保护的 control API；它不得承载 raw-data transport。 | apps/kspacejet-recon、recon-runtime、config、tests/apps。 | P5-002、P4-006。 | AC-FED-005 至 008、AC-CLI-014/015。 |
+| P5-004 | 将 ksj-gateway、Connector、MRD session、relay、网络 auth 与采集/传输控制从 KSpaceJet 路线图和默认产品 claim 中移除。 | AGENTS、docs/architecture、apps/kspacejet-gateway、CMake/docs。 | P0-005。 | AC-FED-003、AC-REL-007；不得实现 gateway 代替此 scope-closure 任务。 |
+| P5-005 | 使本地 admission、internal queue、Provider saturation 与结果 artifact writer 具有有界资源、确定 reject/terminal 和高水位观测。 | bounded edge/ledger、runtime、tests/fault。 | P5-003、P3-001。 | AC-FED-008 至 010、AC-RT-016 至 019。 |
+| P5-006 | 建立 HDF5 replay 与 in-process feed 的端到端 equivalence、cancel、Provider crash、restart 和 result idempotence suite。 | replay tooling、runtime、fixtures、tests/system。 | P5-002、P5-003、P5-005、P4-005。 | AC-DAT-002、AC-FED-001/004/007/010、AC-OBS-010。 |
+| P5-007 | 扩展 ksj replay、dataset validate、local run 与 run status 命令，只通过共享 runtime/embedded API，不创建第二数据面或 gateway 命令。 | apps/kspacejet-cli、io、tests/apps、docs。 | P5-003、P5-006。 | AC-CLI-011、014、AC-FED-005 至 010。 |
+
+### P6：并行、NUMA、GPU、容量与性能
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P6-001 | 按 Provider capability 开放 KeyShard 并行、continuation、bounded batching 与安全 fusion；每个 motif 独立 feature bit，并保持 grouped/ordered WorkKey 语义。 | executor、KeyShard、ExecutionPlan/verifier、Provider contracts、tests。 | P3-002 至 P3-005、P0-006。 | AC-SCH-001/004/005/011、AC-PERF-001 至 004、AC-RT-003/004；未声明 capability 必须被拒绝。 |
+| P6-002 | 实现多 scan quota、admission、DRR 或已声明公平策略、cancel storm isolation 和 resource accounting；调度器只能重排合法 ready task。 | scheduler、ledger、runtime、metrics、tests/fault. | P3-001、P3-003、P6-001。 | AC-SCH-007/010/011、AC-RT-016 至 019、AC-PERF-002/004。 |
+| P6-003 | 实现 NUMA discovery、memory placement、thread/backend budget、local queue 和 fallback；无 NUMA host 也有 deterministic behavior。 | core memory/threading/performance、recon runtime、MachinePolicy、tests/benchmarks. | P6-001、P0-006。 | AC-PERF-001、002、007、009；目标机与单 NUMA regression 比较。 |
+| P6-004 | 设计并实现 GPU DevicePlan、host/device buffer domain、transfer ledger、stream/event ownership 和 CPU fallback；GPU task 只能来自 verified WorkKey，fence/token 进入 ResourceLedger。 | recon model/runtime、Provider SDK/contracts、GPU backend、tests。 | P3-001、P6-001、P0-006。 | AC-SCH-008/011、AC-PERF-005、009；无 GPU 环境不假装通过，保持 BLOCKED。 |
+| P6-005 | 实现 GPU async Provider、fence、cancel quarantine、device loss 和 worker crash 回收规则。 | GPU runtime、Provider worker/supervisor、fault tests。 | P4-005、P6-004。 | AC-PERF-006、AC-RT-014；确认 completion 前绝不复用 device memory。 |
+| P6-006 | 建立可复现 benchmark harness：machine descriptor、case manifest、warmup、repeat、collector、raw samples、correctness gate 和报告。 | ksj-research、tools、tests/benchmarks、docs/conventions/benchmark。 | P1-003、P1-004、P3-006、P0-006。 | AC-PERF-007/008、AC-OBS-006/008；single smoke 不是性能结论。 |
+| P6-007 | 对每个实际 ISMRMRD reconstruction case 做 capacity/quality/performance evidence；256 及更大 channel count 只是普通 case，不能形成框架上限或 gate。 | MachinePolicy、ExecutionPlan、fixtures、benchmarks、docs。 | P1-007、P6-003、P6-006。 | AC-DAT-007、AC-PERF-001/007/008；仅以实际 bytes/work 的本地资源不足拒绝。 |
+
+### P7：Qualification、CI、安装、供应链和发布
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P7-001 | 将本地 format/type/unit/app/benchmark gates 映射到远程 CI；启用 PR status、artifact retention 和可信 baseline。 | .github 或 CI 配置、tools/checks、CMakePresets。 | P0-007、P2-006、P3-006。 | AC-REL-001/002；远程 run URL 或 artifact 为证据。 |
+| P7-002 | 建立 Linux 和 Windows clean-install、help/version、dynamic dependency closure、Provider load 和 basic reconstruction smoke。 | CMake install、apps、Provider packaging、CI scripts。 | P4-002、P4-003、P7-001。 | AC-BLD-002、AC-REL-003。 |
+| P7-003 | 建立 static analysis、memory diagnostics、TSAN 或等效并发检查、fuzz/property corpus 与已知 sanitizer suppression policy。 | CMakePresets、tools/static analysis、tests/fuzz、CI。 | P3-001 至 P3-004、P6-001。 | AC-REL-006；所有 suppression 必须有 issue/expiry/owner。 |
+| P7-004 | 完成 SBOM、license、hash/signature、Provider trust policy、LFS payload verification 和 secret/credential policy。 | conan, third_party, provider packaging, docs, CI. | P4-001、P7-001。 | AC-BLD-003、AC-REL-004/005。 |
+| P7-005 | 完成长稳、fault injection、input-submission pressure、result-artifact failure、Provider worker failure 和 resource leak report。 | ksj-research、system tests、runtime、CI artifacts。 | P3-006、P4-005、P6-002 至 P6-005。 | AC-REL-006、AC-RT-006；启用 P5 时附加 AC-FED-009/010。 |
+| P7-006 | 审核 release docs、CLI reference、mode claim、known limitation、target envelope、non-clinical statement 和 rollback policy。 | README、docs、apps help/tests、release manifest。 | P0-004、P0-005、P7-002、P7-004。 | AC-REL-007 至 009；文档与 executable behavior 一致。 |
+| P7-007 | 执行最终 qualification review：列出适用/不适用 AC、风险、残余 BLOCKED 项和 mode。只在证据充分时提升 release profile。 | 本文件、CI reports、release artifacts。 | P0-P4、启用的 P5/P6 和 P7-001 至 P7-006 ACCEPTED。 | AC-REL-010；生成 signed-off qualification report，不得用 README 状态替代。 |
+
+### 10.1 明确不在 v1 主线内的项目
+
+除非用户明确新增范围，下列事项不得阻塞 P0 至 P7：
+
+- GUI、移动端、Web dashboard；
+- DICOM/PACS、诊断工作站、临床流程、医疗器械监管或诊断宣称；
+- 云端多节点调度、跨院数据同步；
+- 厂商私有 scanner protocol、旧 DPC/BRF/ComQ 兼容；
+- 扫描仪/采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备 ring、网络 transport、MRD session、gateway、Connector 或采集端流控；
+- 私有或专有重建算法；
+- 未被 Provider contract、TargetEnvelope 和 benchmark 证据支持的 GRAPPA、SENSE、partial Fourier、adaptive coil combine、trajectory correction 等算法。
+
+如果未来启动这些能力，必须先在本文件新增一组 feature ID、边界、数据/合规决策、独立 acceptance 和 release profile，不能把它们悄悄塞进 reference Provider。
+
+---
+
+## 11. 任务选择与变更控制清单
+
+每次开始实现前，逐项确认：
+
+- [ ] 当前任务在第 12 节是 READY，且其依赖均为 ACCEPTED 或有已记录的 NOT_APPLICABLE predicate。
+- [ ] 本次工作只对应一个任务 ID，已写明 base commit、目标和下一行动。
+- [ ] 已读该任务指定的现有代码、tests、schemas 和架构规范。
+- [ ] 已检查公开 API、ABI、schema、TypeRef、CLI JSON、artifact digest、Provider/catalog、CMake install 的影响。
+- [ ] 已列出最小验证和完成所需完整验证；没有以 schema pass 替代 semantic/runtime test。
+- [ ] 没有混入用户已有改动、vendor payload、大范围格式化或后续 feature。
+- [ ] 任务如涉及外部 transport、采集 hardware、真实数据、session/gateway/Connector 或协议，已检查是否超出本项目边界并触发第 0.3 节暂停条件。
+
+每次完成/阻塞时，逐项确认：
+
+- [ ] 已运行并记录实际命令、平台、结果和失败输出摘要。
+- [ ] 已更新 tests、fixtures、docs、registration 和 code；没有“以后补”的隐含欠债。
+- [ ] 已执行 git diff --check，且格式检查范围与改动相符。
+- [ ] 已检查所有生成文件；TypeRegistry 变更已运行 generator check。
+- [ ] 第 12 节的 Status、Evidence、Known limitations、Next action 和更新时间已同步。
+- [ ] 只在第 12 节改变工作项状态；随后运行 `tools/checks/check_execution_plan.py --write` 和 `--check` 同步第 0.4 节只读投影。总览不得反向改变状态。
+- [ ] 若 ACCEPTED，所有任务级 acceptance 都有证据；若 BLOCKED，阻塞信息足以使下一位执行者立即复现。
+
+---
+
+## 12. 唯一执行台账
+
+**更新时间**：2026-08-20，P0-004、P0-005、P0-008 已 ACCEPTED；P0-002 仍等待 Windows 主机、P0-003 仍等待远程交付权限/commit、P0-006 仍等待产品参数 authority
+**当前可执行任务**：无；第 12 节没有 READY、IN_PROGRESS 或 VERIFYING 项。不得伪造下一项；只在外部阻塞解除后按本节状态机恢复。
+**状态权威**：本节是本文件中唯一允许修改任务状态的位置。任务目录第 10 节不维护重复状态。
+
+### 12.1 P0 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P0-001 | ACCEPTED | 无 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`；同一未提交 code/test/fixture diff 在独立本地 clone 的新 `.venv`/unit build tree 上完成 bootstrap、321-step build、35/35 CTest。主工作树复验也通过；完整证据见第 13.1 节。 | P0-002：验证 Linux/Windows toolchain、Conan、LFS、preset、install 与 check scripts。 | 仅 Linux component evidence；Windows、install、app/system、性能和 qualification 尚未由本项验证。 |
+| P0-002 | BLOCKED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含已接受但未提交的 P0-001 code/test/fixture/docs diff。Linux LFS、bootstrap、unit、application build/install、clean-prefix help 与 check scripts 全部通过；完整命令和 Windows 阻塞见第 13.2 节。 | 在实际 Windows x64 + VS 2022 v143 + Windows SDK 主机/runner 上执行 debug/release bootstrap、build、install、installed help smoke 与 DLL dependency closure 记录。 | `AC-BLD-002` 未满足：当前仅有 Linux kernel，且无 PowerShell、MSVC/VS 或 Windows runner；Linux evidence 不能替代 Windows acceptance。 |
+| P0-003 | BLOCKED | 无 | 本执行总规范已位于目标相对路径 `docs/architecture/KSpaceJet_project_plan_and_acceptance.md`，AGENTS 自主协议已写入交付文件；Markdown 结构和 whitespace 检查通过。GitHub branch creation 被 integration 拒绝。 | 将交付的 `AGENTS.md` 与本文件放入实际仓库，提交并记录 commit/tree 后置 ACCEPTED。 | GitHub connector 创建 agent/kspacejet-execution-plan 返回 403 Resource not accessible by integration；本次没有远程仓库写入。 |
+| P0-004 | ACCEPTED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含未提交的 P0-001/P0-002 evidence diff。已修复五个真实本地 Markdown 断链、过时路径/命令和应用角色说明；新增离线 link/path gate，最终扫描为 75 个 Markdown 文件、151 个本地 link，零错误；完整证据见第 13.6 节。 | P0-005：列出冲突原文，并同一变更更新全部主规范、help 和测试。 | 外部 URL 不联网验证；当前 Linux 主机不能执行 Windows PowerShell hook。remote merge enforcement 仍属于 P0-007。 |
+| P0-005 | ACCEPTED | P0-001, P0-004 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含未提交的 P0-001/P0-004 diffs。五个 canonical profile、schema/fixture/test、active help、artifact authority、plain-text diagnostics 和历史文档边界已原子收口；完整证据见第 13.7 节。 | P0-006：只收集真实 TargetEnvelope/MachinePolicy 参数或精确记录缺失输入。 | P4/P5/P7 mode 仍未接受；P0-002 的 Windows evidence 仍 BLOCKED，不能扩大任何能力宣称。 |
+| P0-006 | BLOCKED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含 P0-001/P0-004/P0-005 的未提交改动。第 6.3.1/13.8 节证明没有 committed、deployment-owned TargetEnvelope 或 MachinePolicy；fixture、reference defaults、research case 和本机硬件均已明确降级为非产品证据。 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture owner 的 source/scope/review inputs；收到后重新打开 P0-006 并按每项复核。 | 不得猜测 channel 上限、SLO 或 GPU 配置；不把 test fixture、reference-route value 或当前 Linux host 自动提升为产品 envelope。 |
+| P0-007 | PLANNED | P0-002 | main 无 GitHub Actions/.gitlab CI 文件和 required status evidence。 | 先制定最小 CI matrix；外部 repo settings 改动仅在被授权时执行。 | remote workflow/branch protection 尚未配置。 |
+| P0-008 | ACCEPTED | P0-001 | 用户要求的 Master Plan 视图已在第 0.4 节作为受控派生总览落地：显示阶段覆盖度、当前/READY/阻塞项、最近验收证据和阻塞恢复动作；完整证据见第 13.9 节。第 12 节仍是唯一状态权威。 | 后续状态变更只改第 12 节，然后运行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；无 READY 时保持无下一项。 | 总览不能直接改变状态。P0-002 的 Windows、P0-003 的远程交付和 P0-006 的参数 authority BLOCKED 均不因本项解除；当前 Linux 主机无法执行 Windows hook。 |
+
+### 12.1.1 P0-001 基线能力矩阵（2026-08-20，ACCEPTED）
+
+| 能力范围 | implemented | tested | system-tested | performance-tested | qualified | 当前结论 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Linux 构建、TypeRegistry 与已覆盖 recon 组件 | 是 | 是：独立本地 clone 的 Linux unit 配置、321-step build、35/35 CTest、TypeRegistry check。 | 否 | 否 | 否 | L2，仅 Linux unit/component 范围；clone 使用已存在的本机 LFS/Conan 缓存，不是远端传输或 cold-cache 证据。 |
+| Pipeline schema、resolver 与 compiler 语义边界 | 是 | 是：两个 schema-valid fixture 分别由 resolver 与 compiler 拒绝；compiler focused GTest 通过。 | 否 | 否 | 否 | L2 组件；schema pass 不是 executable acceptance。 |
+| bounded runtime、HDF5 replay、loader 与仓内 Provider | 是 | 是：全量 unit suite 和 `recon` label group 覆盖其组件边界。 | 否 | 否 | 否 | L2 组件；loader 仍为 in-process，不能推导 fault isolation。 |
+| offline CLI/reference route | 是 | 仅相关 runtime/component test surface；未在本项运行正向 application protocol、golden artifact 或完整 CLI route。 | 否 | 否 | 否 | L1，不宣称离线产品闭环。 |
+| gateway、research 与 online/transport | scaffold 或不在产品范围 | 否 | 否 | 否 | 否 | 不构成 gateway、online service、relay 或 transport 能力。 |
+| 性能、容量与发布资格 | benchmark/基础代码可观察 | 无 reconstruction workload、target machine、长期运行或 release evidence。 | 否 | 否 | 否 | 不作吞吐、延迟、256-channel、production-ready 或 clinical claim。 |
+
+当前 Cartesian 与 non-Cartesian reference route 的 `kMaximumChannels = 64` 是 P1-007 必须移除的临时实现限制，不是框架容量声明；本矩阵不把它解释为 64-channel 支持或 256-channel 反证。
+
+### 12.2 P1 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P1-001 | PLANNED | P0-002, P0-006 | HDF5 reader 与测试存在；fixture manifest 的合规/identity 状态未审计。 | 清点 tests 中 HDF5 fixture，建立 manifest draft。 | 不得上传/使用真实患者数据。 |
+| P1-002 | PLANNED | P1-001, P0-005 | 当前 ksj-recon 输出为 raw f32 加 JSON sidecar。 | 定义标准 HDF5 image artifact 及 interop test，而不删除 developer diagnostic route。 | 输出标准和外部 consumer 尚未冻结。 |
+| P1-003 | PLANNED | P1-001, P1-002 | Cartesian IFFT2 plus RSS 和 optional conditioning 有实现/测试。 | 读取 route README/contract/fixtures，制作 support matrix 与 golden test plan。 | 当前 route 仅是 development reference。 |
+| P1-004 | PLANNED | P1-001, P1-002 | non-Cartesian adjoint plus RSS 有实现/测试。 | 制作明确的 non-DCF/non-SENSE support matrix 与 golden test plan。 | 不得宣称完整 non-Cartesian clinical reconstruction。 |
+| P1-005 | PLANNED | P1-001, P0-006 | FrameSlot、classifier、assembler、scan lifecycle 已有源码/测试。 | 以 missing/duplicate/incomplete corpus 审计 completion/resource 分离。 | 现有 coverage 需实际运行验证。 |
+| P1-006 | PLANNED | P1-002, P1-003, P1-004 | RunRecord model/schema 及测试存在。 | 核对离线 applications 是否每 run 写出完整 record。 | source 有实现不代表 CLI 已交付 artifact。 |
+| P1-007 | PLANNED | P0-006, P1-001, P1-005 | 当前 Cartesian CLI 对 physical channel 采用 1 至 64 的临时 reference 限制；这与框架无通道上限的产品边界冲突。 | 删除该限制，建立任意正整数 channel generator/property corpus，并验证资源错误以 bytes/work 报告。 | reference Provider 可能仍有其自身算法 layout 限制，必须声明在 Provider contract。 |
+
+### 12.3 P2 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P2-001 | PLANNED | P0-005, P1-006 | recon-model/graph、schemas、canonical JSON、artifact tests 已存在。 | 画出 artifact field owner matrix 并寻找重复/自引用。 | 不能在未决语义下加 compatibility field。 |
+| P2-002 | PLANNED | P2-001 | PipelineDefinition resolver/validation 及 fixtures 已存在。 | 将 CLI 支持、schema 验证和 semantic resolver 的覆盖分开审计。 | schema pass 不是 acceptance。 |
+| P2-003 | PLANNED | P2-002, P0-006 | synchronous graph compiler/ExecutionPlan/resource vector 已存在；尚未证明 PartitionCapability/WorkKey 是权威输入。 | 先形成 Provider contract → ScanDescriptor → WorkKey → reservation → ExecutionPlan 字段矩阵与 valid/invalid fixture。 | 不得假定 GPU/parallel feature 已可用，也不得从 header 自动推断独立性。 |
+| P2-004 | PLANNED | P2-003 | independent verifier 和 extensive tests 已存在。 | 检查 verifier 是否不依赖 compiler 私有状态；添加 undeclared partition、fake Cartesian WorkKey、missing join/reservation 的 mutated-plan matrix。 | 未跑 tests。 |
+| P2-005 | PLANNED | P2-002, P2-004 | ksj 目前只含 pipeline validate/provider init。 | 按 CLI11/API boundary 分别实现 planned tool，不复制 runtime。 | 新 command 不可显示为已可用直到 app tests 通过。 |
+| P2-006 | PLANNED | P2-002, P2-004 | schemas README 已声明结构和语义验证分层。 | 增加 schema-valid/semantic-invalid corpus inventory 和 CI gate。 | 当前 corpus completeness 未知。 |
+
+### 12.4 P3 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P3-001 | PLANNED | P2-003 | buffer pool、fixed edge、resource ledger 和相应 tests 已存在。 | 先执行 focused runtime tests，按每一个 WorkKey/task 的 reserve/charge/release/cancel path 建资源守恒表。 | synchronous implementation 不等于多 scan safe。 |
+| P3-002 | PLANNED | P2-004, P3-001 | synchronous executor/FiringLease 已存在，当前明确是受限 motif。 | 固化“只执行 verified Ready task”的矩阵：dynamic edge/join/fan-out/async、runtime 不得临时扩展 partition。 | 不得扩大语义仅因 code 接受输入。 |
+| P3-003 | PLANNED | P1-005, P3-001 | KeyShard、calibration gate/store、scan lifecycle 已有源码。 | 执行/扩充 FrameSlot seal、calibration epoch、ordered/window predecessor、single-writer KeyShard、cancel/normal flush corpus。 | 需要实体 tests 后才可自称 terminal-closed。 |
+| P3-004 | PLANNED | P3-001, P3-002 | host-enforced FiringLease、ProviderNodeInstance 与 test Provider 存在。 | 审计 retain/double commit/out-of-bound/illegal terminal tests。 | in-process crash 仍与 host 同故障域。 |
+| P3-005 | PLANNED | P1-003, P1-004, P3-002, P3-003, P3-004 | serial Cartesian path 和 generic graph executor 均存在。 | 建立同 fixture 的 WorkKey/parallel-plan versus serial differential harness。 | non-Cartesian serial/generic equivalence 要先明确。 |
+| P3-006 | PLANNED | P3-001, P3-003 | performance/logging/run record 基础库存在。 | 设计 plan versus actual high-water trace field map。 | 当前日志/metric conflict 由 P0-005 先消除。 |
+
+### 12.5 P4 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P4-001 | PLANNED | P2-001, P3-004 | Provider catalog/contracts/SDK/loader identity tests 已存在。 | 列出 bundle identity 成分和 missing SBOM/signature policy。 | identity 不等于 trust/isolation。 |
+| P4-002 | PLANNED | P4-001, P0-002 | loader 显式为 in-process dynamic loader，Linux/Windows boundary 需实测。 | 运行 loader focused tests 和 ABI negative matrix。 | 不提供 process isolation。 |
+| P4-003 | PLANNED | P4-001, P4-002, P2-005 | provider init 已实现；其它 Provider developer commands 计划中。 | 先制定 command-by-command CLI/output/exit app test。 | 不创建第二套 runtime。 |
+| P4-004 | PLANNED | P4-002, P3-005 | 多个 in-tree reference Provider 和 planned interfaces 存在。 | 对 catalog 的 implemented/planned operator 做一致性审计，并为可执行 reference Provider 建立 PartitionCapability matrix。 | planned interfaces 不可加载。 |
+| P4-005 | PLANNED | P4-001, P3-003, P0-006 | 当前没有 worker/supervisor/fault boundary 证据。 | 先写 threat/fault model 和 process policy，未冻结时不写隔离代码。 | 需要平台和 security 决策。 |
+| P4-006 | PLANNED | P1-006, P4-001, P3-006 | run record/crash/config/logging 基础存在。 | 用一个 reference run 定义完整 evidence chain。 | 需要 P1 reference artifacts。 |
+
+### 12.6 P5 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P5-001 | PLANNED | P0-005, P0-006, P3-003 | 尚未定义 caller-to-framework in-process ISMRMRD feed contract。 | 仅在存在 embedding 需求时定义 ownership/lifetime/terminal contract 与 fixtures。 | 不得引入 public binding、session、socket 或 transport。 |
+| P5-002 | PLANNED | P5-001, P3-003 | 未观察到通用 in-process feed materialization/equivalence harness。 | 建立 HDF5 与 caller-submitted ISMRMRD feed semantic equivalence corpus。 | 仅保留 host-owned input；不能测试采集设备。 |
+| P5-003 | PLANNED | P5-002, P4-006 | ksj-recon 当前为 offline CLI，尚无 embedded local run control API。 | 先定义 local run lifecycle/status/cancel API，禁止 raw-data transport scope。 | 隔离 Provider 不是该项强前置。 |
+| P5-004 | PLANNED | P0-005 | ksj-gateway main 是 scaffold；用户已明确 transport/gateway 不在 KSpaceJet 范围。 | 移除所有产品 claim/default route，保留或删除目录须作为 scope-closure 变更处理。 | 不得将该项改造成 gateway 实现。 |
+| P5-005 | PLANNED | P5-003, P3-001 | resource/edge 基础存在；本地 host API 未见完整 admission evidence。 | 定义 accepted-input 后的 bounded internal queue、Provider saturation 和 artifact writer contract。 | 不定义 ACK/read-gating/slow-source 语义。 |
+| P5-006 | PLANNED | P5-002, P5-003, P5-005, P4-005 | 尚无 HDF5 与 in-process feed 的端到端 equivalence suite。 | 建立 equivalence、cancel、Provider crash、restart、result idempotence tests。 | P5 是可选能力包，不阻塞 v1。 |
+| P5-007 | PLANNED | P5-003, P5-006 | ksj 尚无 local run status command。 | 仅增加 replay/dataset/local-run 命令与 app tests。 | 禁止 capture、gateway、session 或第二数据面。 |
+
+### 12.7 P6 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P6-001 | PLANNED | P3-002, P3-003, P3-004, P3-005, P0-006 | 当前 executor 是受限 synchronous implementation。 | 先冻结 Provider PartitionCapability/feature-flag grammar，并为每个 motif 建 serial-equivalence/KeyShard gate。 | 不能声称 generic async/keyed join。 |
+| P6-002 | PLANNED | P3-001, P3-003, P6-001 | 无 multi-scan scheduler/fairness evidence。 | 从 quota/metrics/model 开始，只允许在合法 Ready task 集合内验证 DRR/priority。 | 不依赖网络或采集服务。 |
+| P6-003 | PLANNED | P6-001, P0-006 | core memory/threading/performance 和 Linux NUMA dependency 存在。 | 采集真实 topology 并制定 placement oracle。 | 目标硬件未记录。 |
+| P6-004 | PLANNED | P3-001, P6-001, P0-006 | 未观察到 GPU DevicePlan/runtime implementation。 | 先确定 CUDA/provider ABI/device policy，以及 device bytes/stream/fence/async-token 进入同一 ledger 的字段。 | GPU model、driver、backend 未冻结。 |
+| P6-005 | PLANNED | P4-005, P6-004 | 未观察到 GPU async cancel/quarantine evidence。 | 先设计 fence/ownership/fault matrix。 | 无 GPU test environment。 |
+| P6-006 | PLANNED | P1-003, P1-004, P3-006, P0-006 | benchmarks/research runner 已存在，但 end-to-end benchmark protocol 尚未接受。 | 审计 existing benchmark docs 和构建可复现 harness。 | 不可从 microbenchmark 推断 service SLO。 |
+| P6-007 | PLANNED | P1-007, P6-003, P6-006 | 任何 channel count 都不是框架 gate；256 只是未来可测 case。 | 基于实际 ISMRMRD case、算法和目标 machine 运行 capacity/quality model。 | 需要 workload、host memory 与 scan data；不得创建 channel cap。 |
+
+### 12.8 P7 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P7-001 | PLANNED | P0-007, P2-006, P3-006 | local checks 存在，远程 workflow/required check 未见。 | 选择 CI carrier 并实现 test/artifact matrix。 | 需要外部 repo settings 授权。 |
+| P7-002 | PLANNED | P4-002, P4-003, P7-001 | install preset 存在，clean install evidence 未观察到。 | 用 disposable Linux/Windows environment 验证 install tree。 | Windows runner 未知。 |
+| P7-003 | PLANNED | P3-001, P3-002, P3-003, P3-004, P6-001 | static analysis/memory diagnostics preset 存在。 | 审计 sanitizers/fuzz/path coverage 与 CI feasibility。 | tools/hardware availability 未知。 |
+| P7-004 | PLANNED | P4-001, P7-001 | local dependency payload/recipes 存在，release SBOM/signature evidence 未观察到。 | 选择 deterministic SBOM/attestation format。 | trust/signing policy 待决定。 |
+| P7-005 | PLANNED | P3-006, P4-005, P6-002, P6-003, P6-004, P6-005 | 暂无 runtime/fault/soak evidence。 | 先建立 HDF5/input-submission pressure/artifact-writer/Provider failure testbed。 | P5 启用时增加 feed 测试；GPU 依赖仍独立。 |
+| P7-006 | PLANNED | P0-004, P0-005, P7-002, P7-004 | README/docs 分散且部分链接可能失效。 | 自动核对 command/help/mode claim 对齐。 | release target未定义。 |
+| P7-007 | PLANNED | P0-P4, enabled P5/P6, P7-001 至 P7-006 | 无 qualification report。 | 建立 checklist，等所有强依赖 ACCEPTED 后执行。 | 不得提前做 isolated-provider/deadline claim。 |
+
+---
+
+## 13. 证据、变更和决策日志
+
+此日志按时间追加，不删除旧条目。更正错误时增加新条目并链接旧条目。
+
+| 日期 | 事件 | 关联工作项 | 证据/事实 | 结果与下一步 |
+| --- | --- | --- | --- | --- |
+| 2026-08-19 | 建立初始执行总规范和 AGENTS 自主流程。 | P0-003 | 静态审查 main 8c31b304；读取 README、AGENTS、CMake、apps、recon、Provider、schema 和测试目录。 | P0-003 等待文档结构校验；P0-001 是下一 READY 项。 |
+| 2026-08-19 | 验证并尝试将执行规范写入隔离 GitHub branch。 | P0-003 | 两个 Markdown 文件通过 whitespace/diff 结构检查；创建 agent/kspacejet-execution-plan 分支返回 GitHub API 403 Resource not accessible by integration。 | 未改变远程仓库；P0-003 置 BLOCKED，待将交付文件复制/提交到仓库。 |
+| 2026-08-19 | 基线成熟度审查。 | P0-001 | 观察到 offline HDF5 Cartesian/non-Cartesian reference、generic synchronous in-process graph、Provider SDK/loader/contract、bounded runtime primitives 和大量测试；未实际 build/test。 | 不能标任何已有 feature ACCEPTED；先执行可重复基线。 |
+| 2026-08-19 | 范围更正：KSpaceJet 只接收 ISMRMRD 数据。 | P0-005, P5-004 | 用户确认本项目不是采集/transport/gateway；P5 改为可选 in-process feed，外部 session/relay 计划被移除。 | 不得在 README/CLI/计划中恢复 scanner、DMA、FPGA、PCIe、session 或 gateway 产品 claim。 |
+| 2026-08-19 | 通道数更正。 | P0-006, P1-007, P6-007 | 用户确认框架不得对 channel count 设限；当前 Cartesian 1–64 是临时 reference 实现问题。 | P1-007 必须删除该限制；256 及更大仅为测试 case，资源不足按 bytes/work 报告。 |
+| 2026-08-19 | 冻结并行、调度与资源架构。 | P2-003/004, P3-001 至 006, P4-004, P6-001 至 004 | 用户确认该架构必须进入可执行文档；第 18 节定义 Provider PartitionCapability、WorkKey、compiler/verifier、KeyShard、ResourceLedger、CPU/GPU scheduler 与无通道上限规则。 | 先按 P2/P3 的 schema、plan、ledger、serial-oracle 工作项实施；P6 仍保持 PLANNED，不能由文档直接视为已实现。 |
+| 2026-08-19 | 文档冲突和断链审查。 | P0-004, P0-005 | 发现旧规划提出但未落地的 work-item YAML/schema；发现 document link 风险；plain-text core log 与 structured log 主张冲突。 | ADR-001/002 已记录；P0-004/005 必须原子收口。 |
+| 2026-08-20 | 完成可重复 Linux 基线与 schema/semantic negative evidence。 | P0-001 | 独立本地 clone、全新 `.venv`/unit build tree、321-step build、35/35 CTest；`recon` label 4/4；两个 schema-valid fixture 与 compiler focused test 均通过。 | P0-001 ACCEPTED；P0-002 成为唯一 READY 项。 |
+| 2026-08-20 | 完成 Linux toolchain、LFS、application install 与 check-script 验证。 | P0-002 | Linux/Windows Intel manifest 全量 hash、Git LFS pointer/object fsck、Linux bootstrap、35/35 unit、application build/install、clean-prefix four-app help、format/configure check 全部通过；Windows host probe 失败。 | P0-002 BLOCKED，等待真实 Windows MSVC 2022 runner；P0-004 READY。 |
+| 2026-08-20 | 将唯一执行台账升级为可校验的 Master Plan 视图。 | P0-008 | 第 0.4 节从第 12 节生成阶段覆盖度、当前/READY/阻塞项、最近验收证据和恢复动作；离线 checker 与本地 document gates 已接入。 | P0-008 ACCEPTED；当前无 READY/IN_PROGRESS 项，P0-002、P0-003、P0-006 保持独立 BLOCKED。 |
+
+### 13.1 P0-001 ACCEPTED 证据
+
+- Work item: `P0-001`；requirements/acceptance: `FUN-001` 的 Linux baseline 部分、`FUN-002`、`AC-BLD-001`、`AC-ART-004`。
+- Commit/tree: `8c31b30419ed330688b3f1b90f14a4498503317d` / `4455dc2fb45214952b710fa5519d8d084e9efad5`。本项未提交；开始时已存在的 `AGENTS.md` 和本台账改动未被覆盖或回退。
+- Changed files/public surface: `cmake/KSpaceJetBootstrap.cmake`、`schemas/README.md`、两项 graph tests、两个 semantic-invalid fixture 与本台账。无 public API/ABI/schema/CLI 改动；修复多值 CTest label 的注册，使 `ctest -L recon` 实际选择 4 个既有 recon tests。
+- Clean-clone validation: 在临时目录 `out/ksj-p0-001-local-clone-fkOT8T/source` 执行本地 `git clone --no-local`，checkout 相同 baseline 并应用同一未提交 code/test/fixture diff；该 clone 使用新的 Git metadata、`.venv` 和 build tree。执行 `git lfs checkout`（3459/3459、3.0 GB）、`bash tools/devenv/linux/bootstrap.sh --prepare linux-release-unit-tests`、`bash tools/checks/linux/ci_unit.sh`；结果为 bootstrap/recipe export/configure 成功、321-step build 成功、CTest 35/35 通过（2.59 s）。clone 使用已存在的本机 LFS/Conan cache；它不是远端 clone、远端 LFS transfer 或 cold-cache evidence。
+- Focused validation: `tools/devenv/linux/run.sh jsonschema --instance tests/unit/libs/recon/fixtures/invalid/pipeline-semantic-provider-mismatch.json schemas/pipeline.schema.json`；同命令针对 `pipeline-semantic-unbound-contract-port.json`；两者 schema pass。`tools/devenv/linux/run.sh out/build/linux-release-unit-tests/bin/ksj_recon_graph_tests --gtest_filter='SynchronousGraphPlan.RejectsSchemaValidPipelineWithUnboundContractPortFixture'` 通过，证明该 fixture 经 parser/resolver 后被 compiler 拒绝。`pipeline-semantic-provider-mismatch.json` 的 resolver negative test 随 graph suite 通过。
+- Complete validation: 主工作树执行 `bash tools/checks/linux/ci_unit.sh`（35/35，2.61 s）、`tools/devenv/linux/run.sh python tools/type_registry/generate.py --project-root . --check`、`tools/devenv/linux/run.sh ctest --preset linux-release-unit-tests -L recon --output-on-failure`（4/4）、两个上述 `jsonschema` 命令、上述 focused GTest、`tools/devenv/linux/run.sh clang-format --dry-run --Werror`（两个改动测试）、`tools/devenv/linux/run.sh cmake-format --check cmake/KSpaceJetBootstrap.cmake`、`bash tools/checks/linux/format_check.sh --changed HEAD^` 与 `git diff --check`；全部退出 0。`jsonschema` 仅报告其 CLI deprecation warning；`cmake-format` 仅报告既有 install-form warning，均未失败。
+- Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, GCC/G++ 14.2.0, CMake 3.31.6, Git LFS 3.6.1, Python 3.13.5, Conan 2.31.2, 28 logical CPUs / 62 GiB RAM.
+- Produced artifacts/digests: TypeRegistry generator check 未产生待提交差异；semantic fixtures 为 `tests/unit/libs/recon/fixtures/invalid/pipeline-semantic-provider-mismatch.json` 和 `tests/unit/libs/recon/fixtures/invalid/pipeline-semantic-unbound-contract-port.json`。
+- Known limitations: 未验证 Windows、install、真实远端 LFS transfer、application end-to-end/golden artifact、system/fault/soak、性能/容量或 release qualification；Provider loader 仍为 in-process；不得作 online/gateway/GPU/256-channel/clinical 或 production-ready 宣称。
+- Next READY item at the time of acceptance: `P0-002`。
+
+### 13.2 P0-002 BLOCKED 证据
+
+- Work item: `P0-002`; requirements/acceptance: `FUN-001`, `AC-BLD-001` 至 `AC-BLD-003`。
+- Base commit/tree: `8c31b30419ed330688b3f1b90f14a4498503317d` / `4455dc2fb45214952b710fa5519d8d084e9efad5`；工作树还包含已接受但未提交的 P0-001 code/test/fixture/docs diff。本项没有源码、测试或公开 contract 改动。
+- Exact Linux LFS commands/results: `tools/devenv/linux/run.sh python tools/devenv/verify_intel_payload.py --platform linux-x86_64 --full` exit 0（`2981 files`）；同命令的 `--platform windows-x86_64 --full` exit 0（`611 files`）；`git lfs fsck --pointers` 与 `git lfs fsck --objects` 均 exit 0（`Git LFS fsck OK`）。Windows payload hash 可在 Linux 上验证，但不构成 Windows build/install evidence。
+- Exact Linux bootstrap/build/install commands/results: `bash tools/devenv/linux/bootstrap.sh --no-hooks --prepare linux-release` exit 0（6.895 s）；`tools/devenv/linux/run.sh cmake --build --preset linux-release --target ksj_cli ksj_gateway ksj_recon ksj_research` exit 0（3.245 s），产出 `ksj`、`ksj-gateway`、`ksj-recon`、`ksj-research`；`tools/devenv/linux/run.sh cmake --build --preset linux-release-install` exit 0（4.342 s）；`tools/devenv/linux/run.sh cmake --install out/build/linux-release --prefix out/ksj-p0-002-install.koog7k` exit 0（1.385 s）。该临时 prefix 随后按精确路径安全删除。
+- Install/runtime smoke: fresh prefix 含四个 executable、六个 Provider `.so` 和 15 个 Provider contracts；对每个 executable 运行 `env -i PATH=/usr/bin:/bin LANG=C <prefix>/bin/<ksj|ksj-recon|ksj-gateway|ksj-research> --help` 均 exit 0。`readelf -d <prefix>/bin/ksj` 显示 `RPATH [$ORIGIN/../lib]`；主 install tree 中四个 executable 的 `ldd` 均无 `not found`。gateway/research help 明确为 scaffold；gateway 仍有 external-session/connector/MRD forwarding 文案，转交 P0-005，不能作为能力证据。
+- Check scripts/results: `bash tools/checks/linux/ci_unit.sh` exit 0，CTest 35/35（2.59 s）；`bash tools/checks/linux/ci_check.sh` exit 0（changed format + `linux-release` configure）。
+- Incremental-build investigation: 初始既有 `out/build/linux-release` 的 Ninja metadata 报 `premature end of file; recovering`；CMake cache 指向 `.venv/bin/ninja` 1.13.0，而裸主机 `/usr/bin/ninja` 为 1.12.1 且报告 `build log version is too new`。在确认 `.ninja_log` / `.ninja_deps` 均为 `/out/` 下未跟踪、可再生文件后，只处理这两个精确 target：清理时 `.ninja_log` 已不存在，删除 `.ninja_deps`；以项目 Ninja 重建后，`tools/devenv/linux/run.sh cmake --build --preset linux-release --target ksj_cli ksj_gateway ksj_recon ksj_research` exit 0 且仅执行 glob/type-registry recheck，无 warning。随后 install preset 再次 exit 0，四个已安装 app 的空环境 `--help` 再次 exit 0。此为 ignored build artifact 修复，未改源码；后续必须经 platform runner 调用工具，不能以裸 host Ninja 混用该 build tree。
+- Exact Windows investigation/output: `uname -srm` -> `Linux 6.12.101+deb13-amd64 x86_64` (exit 0)；`command -v powershell`、`command -v pwsh`、`command -v cl`、`command -v vswhere` 均 exit 1；`test -d /mnt/c` exit 1；`cmake --list-presets` 只显示可用 Linux presets。`wine` 存在但不是 Windows kernel、PowerShell 或 MSVC build host。
+- Missing fact/authority/device: 可用的 Windows x64 host/CI runner，以及 Visual Studio 2022 v143 C++ Build Tools、Windows SDK、Git/Git LFS 和 PowerShell。无需也未请求远端/凭据授权。
+- Why no safe local alternative exists: Wine 不能替代 Windows kernel、MSVC ABI/DLL loader 或 VS CMake generator；把 Linux result 伪装为 Windows result 会违反 `AC-BLD-002`。
+- Impacted successor items: `P0-007`、`P1-001`、`P4-002`、`P7-002` 及其强依赖链均不能因本项进入 ACCEPTED。
+- Unblock condition: 在真实 Windows host/runner 上，对 debug 和 release 分别运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Prepare windows-vs2022-debug` / `windows-vs2022-release`，随后以 `tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-<config>` 和 `windows-vs2022-<config>-install` 完成 build/install，并从干净 install tree 运行 `ksj.exe --help` 等 basic smoke，记录实际输出、DLL dependency closure 和失败（如有）。
+- Proposed next owner/action: 具备上述 Windows host/runner 的维护者或 CI runner；完成前保持 `P0-002` 为 `BLOCKED`，不作跨平台或 release-qualified 宣称。下一可执行项为 `P0-004`。
+
+### 13.3 决策记录规则
+
+对于任何影响公共能力、数据语义、API/ABI/schema、Provider trust、在线协议、性能 SLO 或发布 mode 的决定，新增一行：
+
+| ADR ID | 日期 | 决定 | 候选方案与取舍 | 证据 | 影响任务 | 复核触发条件 |
+| --- | --- | --- | --- | --- | --- | --- |
+| ADR-xxx | yyyy-mm-dd | 一句话结论 | 为什么没有选择其他方案 | 测试、测量、规范或用户指令 | Px-xxx | 何时必须重新评估 |
+
+没有 ADR 的重大变更不得被隐藏在普通代码改动中。
+
+### 13.4 BLOCKED 记录模板
+
+每个 BLOCKED 行至少包含：
+
+    Work item:
+    Base commit/tree:
+    Exact command or investigation:
+    Actual output:
+    Missing fact/authority/device/data:
+    Why no safe local alternative exists:
+    Impacted successor items:
+    Unblock condition:
+    Proposed next owner/action:
+
+### 13.5 ACCEPTED 记录模板
+
+每个 ACCEPTED 行至少包含：
+
+    Work item:
+    Commit/tree:
+    Requirement and acceptance IDs:
+    Changed files/public surface:
+    Focused validation:
+    Complete validation:
+    Platform/toolchain:
+    Produced artifacts/digests:
+    Known limitations:
+    Next READY item:
+
+### 13.6 P0-004 ACCEPTED 证据
+
+- Work item: `P0-004`; requirements/acceptance: `FUN-001` 的文档完整性部分与 `AC-BLD-004`。
+- Base commit/tree: `8c31b30419ed330688b3f1b90f14a4498503317d` / `4455dc2fb45214952b710fa5519d8d084e9efad5`；工作树也包含 P0-001/P0-002 的未提交证据改动及用户已有的 `AGENTS.md` 改动，均未覆盖或回退。
+- Changed surface: 新增 `tools/checks/check_markdown_links.py`（仅标准库、无网络），并接入 Linux `ci_check`/`pre_commit`、Windows `pre_commit`、hook 提示和 checks 文档；创建 `docs/benchmark_reports/` 与 `docs/research_reports/` 的实际说明/模板；修复 conventions、开发环境、static-analysis、numerics、benchmark、历史规划和 apps 前门文档中的失效路径、无效 app-test build 命令及过时角色描述。无 public API/ABI/schema/CLI 行为变更；文档明确 gateway/research 当前是 scaffold，`ksj-recon` 是离线 HDF5 reference。
+- Path audit: 原有 `docs/conventions/README.md` 的 `reconstruction_state.md`、`release.md` 链接已删除并指向现有权威文档；benchmark/research reports 的三条链接已有实际目标。`tools/batch_recon_studio`、`tools/ksj_static_analysis`、不存在的 array benchmark singleton、已移除的 MRI math 路径、未实现 work-item schema 和错误的 app-test build 形式均已修复、删除或显式标为历史/未实现设计；重新扫描没有仍被当作现存目标的上述路径。
+- Focused validation: `tools/devenv/linux/run.sh python -m py_compile tools/checks/check_markdown_links.py` exit 0；`tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --self-test` exit 0（4/4，包括临时目录中缺失相对路径使普通 CLI 返回非零的断言，以及缺失锚点、代码/LaTex 排除和 local-environment/vendor 排除）；`tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .` exit 0（`75 file(s), 151 local link(s)`）。
+- Complete validation: `bash tools/checks/linux/ci_check.sh` exit 0（离线 link check、changed format 与 `linux-release` configure）；`bash -n tools/checks/linux/ci_check.sh tools/checks/linux/pre_commit.sh tools/checks/linux/install_hooks.sh` exit 0；`git diff --check` exit 0；`tools/devenv/linux/run.sh cmake --build --preset linux-release-app-tests --target help` exit 0；`tools/devenv/linux/run.sh python tests/apps/application_json_protocol_tests.py out/build/linux-release/bin/ksj out/build/linux-release/bin/ksj-gateway out/build/linux-release/bin/ksj-recon out/build/linux-release/bin/ksj-research` exit 0。
+- Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, GCC/G++ 14.2.0, CMake 3.31.6, Python 3.13.5；checks 使用 repository-local `.venv` 的 managed tools。
+- Known limitations: 检查器刻意只验证仓内 inline Markdown 文件/路径/heading anchor，不请求外部 URL，也不替代真实远程 CI/branch protection；后者仍在 `P0-007`。当前 Linux 主机无 PowerShell/Windows host，因此 Windows hook 未执行；该事实不替代 P0-002 的 Windows BLOCKED record。历史 architecture/paper 的规范冲突不在本项范围，交由 P0-005 原子处理。
+- Next READY item: `P0-005`。
+
+### 13.7 P0-005 ACCEPTED 证据
+
+- Work item: `P0-005`; requirements/acceptance: `AC-ART-004` 的持续 semantic-negative 证据、`AC-OBS-007`、`AC-REL-007`。
+- Base commit/tree: `8c31b30419ed330688b3f1b90f14a4498503317d` / `4455dc2fb45214952b710fa5519d8d084e9efad5`；工作树包含 P0-001/P0-004 已接受但未提交的改动及用户原有的 `AGENTS.md` 编辑，均未覆盖或回退。
+- Changed public/contract surface: 以不保留 alias 的 pre-release 直接替换，将 `ExecutionProfile`、六份 artifact schema、fixtures、parser、默认值和 Cartesian/non-Cartesian reference artifact 统一为 `offline-reference`、`bounded-reconstruction-graph`、`provider-development`、`embedded-incremental`、`isolated-provider-runtime`；旧 serialized 值被拒绝。`PublicMrdMessageKind`/`session_candidate` 分别直接替换为 `IsmrmrdMessageKind`/`input_candidate`，并澄清 TargetEnvelope/ingress 是调用方提交后的本地语义，不是 scanner/session/relay/网络 transport contract。TypeRegistry 的可读 ingress/egress prose 同步更新并重新生成 C++/C headers，结构 identity digest 未改变。gateway/research help JSON 现在明确输出 `status=scaffold`、`availability=reserved`、`operations=unimplemented`；请求保留操作仍以 JSON `unimplemented` 和 exit 5 失败。Core logger 的 `logging.output_format=text` 唯一支持语义新增回归测试；CLI JSON stdout、metrics、trace、RunRecord/audit 与 plain-text diagnostics 的边界已在 AGENTS、README 和组件说明中一致说明。
+- Authority/scope closure: 本文件第 1.1 节将历史 architecture/paper 明确降为非规范性背景；`schemas/README.md` 将唯一 artifact chain 固定为 `PipelineDefinition -> ResolvedPipeline -> PlanBuildRequest -> ExecutionPlan -> VerificationRecord -> AdmissionRecord -> RunRecord`。七份历史 architecture/paper 记录和 `docs/README.md` 都有显著 historical/non-normative 标记，明确撤回外部 MRD session、gateway/Connector/scanner、network relay/transport 与 structured core logging 的旧提案。
+- Focused validation: `tools/devenv/linux/run.sh out/build/linux-release-unit-tests/bin/ksj_logging_tests --gtest_filter='KSpaceJetLogging.RejectsStructuredDiagnosticOutput'`、`.../ksj_recon_model_tests --gtest_filter='KSpaceJetReconModelExecutionProfile.AcceptsCanonicalNamesAndRejectsLegacyNames'`、`.../ksj_recon_graph_tests --gtest_filter='SynchronousGraphPlan.RejectsSchemaValidPipelineWithUnboundContractPortFixture'` 均 exit 0（各 1/1）。六份 schema 的 `jq` enum 审计均精确等于上述五个值；scope scan 确认七份历史文档均含 non-normative marker、活跃 runtime 不再含 `PublicMrdMessageKind`/`session_candidate`，旧 profile 只出现在历史记录和 explicit rejection test。
+- Complete validation: `tools/devenv/linux/run.sh python tools/type_registry/generate.py --project-root . --check` exit 0；`bash tools/checks/linux/ci_unit.sh` exit 0（35/35）；`tools/devenv/linux/run.sh cmake --build --preset linux-release --target ksj_cli ksj_gateway ksj_recon ksj_research` 与相同 app-test targets 均 exit 0；`tools/devenv/linux/run.sh ctest --test-dir out/build/linux-release-app-tests --output-on-failure -R '^apps[.]json_cli_protocol$'` exit 0（1/1）；`tools/devenv/linux/run.sh python tests/apps/application_json_protocol_tests.py out/build/linux-release/bin/ksj out/build/linux-release/bin/ksj-gateway out/build/linux-release/bin/ksj-recon out/build/linux-release/bin/ksj-research` exit 0；`bash tools/checks/linux/ci_check.sh` exit 0（offline link check、172 C/C++ clang-format、32 CMake file check、linux-release configure）；`tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .` exit 0（75 files、160 local links）；`git diff --check` exit 0。
+- Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, GCC/G++ 14.2.0, CMake 3.31.6, Python 3.13.5, Conan 2.31.2.
+- Known limitations: 本项不使 `provider-development`、`embedded-incremental` 或 `isolated-provider-runtime` 成为已接受能力；当前 in-process runtime 只支持前两个 profile，P4/P5/P7 的独立 acceptance 仍未完成。P0-002 的真实 Windows MSVC host/install evidence 仍 BLOCKED；不作任何 gateway、online/session/transport、isolation、GPU、channel-capacity、clinical 或性能宣称。
+- Next READY item on acceptance: `P0-006`，先收集真实 TargetEnvelope/MachinePolicy 参数或记录精确 BLOCKED 输入。
+
+### 13.8 P0-006 BLOCKED 证据
+
+- Work item: `P0-006`; requirements/acceptance: 第 6.3 节全部参数的 source/owner/review-date 要求，以及本项“缺失参数明确 BLOCKED、不猜测默认值”的验收条件。
+- Base commit/tree: `8c31b30419ed330688b3f1b90f14a4498503317d` / `4455dc2fb45214952b710fa5519d8d084e9efad5`；工作树包含 P0-001/P0-004/P0-005 已接受但未提交的改动，未覆盖或回退它们。本项只更新 canonical ledger；没有写入产品参数、deployment config、schema、runtime 或 public contract。
+- Audit evidence: `rg --files | rg '(^|/)(target-envelope|machine-policy)[^/]*[.]json$'` 的全部命中仅为两份 schema 和四份 unit fixtures；没有非测试 JSON policy。`rg -n 'kMaximumChannels|kMachineBudgetHeadroomBytes|TargetEnvelope::create|MachinePolicy::create' ...cartesian_rss_hdf5.cpp ...noncartesian_rss_hdf5.cpp` 显示两个 reference route 各自有 `kMaximumChannels = 64U`、16 MiB headroom，且只在每次 HDF5 preflight 后派生 `TargetEnvelope`/`MachinePolicy`。这不是 deployment-owned 参数，也不得成为 framework channel cap。
+- Host observation (not policy): `uname -srm` 为 `Linux 6.12.101+deb13-amd64 x86_64`；`nproc` 为 `28`；`lscpu` 显示 i7-14700K、1 socket、1 NUMA node；`free -b` 总内存为 `67077595136` B；`nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader` 为 `NVIDIA GeForce RTX 4060 Ti, 550.163.01, 16380 MiB`。这些是本次 Linux build host 的可重复观察，不是经批准的 target topology；P6-004 仍明确没有 GPU DevicePlan/runtime acceptance。
+- Classification: `org.example` envelope/policy fixtures、reference-route per-input calculations、Gadgetron research manifest 和 native-endian f32 + JSON sidecar 输出均已在第 6.3.1 节归类为 test/reference/research/developer evidence。research case 虽有 pinned source/hash 和 access date，但 license 为 `not stated by source`、redistribution 为 `unclear`，不能提升为产品 case。loader 的 path/root/digest controls 仍只是 trusted in-process ABI boundary，不能替代 release/security policy。
+- Blocking inputs: 必须由具名 case、deployment、performance、data-governance、output、security/release 和 architecture owner 分别提供第 6.3.1 节所列 immutable source、适用范围和 review date。最低需要 approved case manifest（实际 shape/channel/algorithm/concurrency）、target MachinePolicy/topology、SLO measurement protocol/raw artifacts、privacy/retention/access、output/partial/ordering/durability 规则、Provider signing/SBOM/trust tier，以及 JSON/C++ parameter authority 的收口决定。
+- Impact: P1-001、P1-005、P1-007、P2-003、P4-005、P5-001、P6-003/004/006/007 等依赖 P0-006 的工作项不能启动。P0-002 Windows 和 P0-003 remote-branch 阻塞仍独立存在。
+- Unblock and next action: 收到所有必填参数的 source/owner/scope/review inputs 后，将 P0-006 改为 `READY`；重新选中时先改为 `IN_PROGRESS`，再复核其不可变来源及是否误把 channel cap、采集链路或本机观察写入产品 policy。未齐全时保持 `BLOCKED`。
+- Validation: `git diff --check` exit 0；`tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .` exit 0（`75 file(s), 160 local link(s)`）；`rg -n '[[:blank:]]+$' docs/architecture/KSpaceJet_project_plan_and_acceptance.md` exit 1 且无输出（无尾部空白）。这些命令只验证文档完整性，不会把该阻塞转为 acceptance。
+
+### 13.9 P0-008 ACCEPTED 证据
+
+- Work item: `P0-008`; requirements/acceptance: 用户要求的可追踪 Master Plan 视图，以及本项第 10 节的唯一状态来源、一致性检查和可发现入口要求。
+- Base commit/tree: `8c31b30419ed330688b3f1b90f14a4498503317d` / `4455dc2fb45214952b710fa5519d8d084e9efad5`；开始时工作树已含 P0-001、P0-004、P0-005 的已接受未提交改动、P0-002/P0-003/P0-006 的真实阻塞记录及用户已有的 `AGENTS.md` 编辑，均未覆盖或回退。
+- Changed surface: 本文件改为 Codex 主实施计划并新增第 0.4 节 marker-controlled dashboard；其内容从第 12 节生成阶段覆盖度、唯一活动/READY 项、BLOCKED 项、最近三条 ACCEPTED 证据和阻塞恢复动作。新增 `tools/checks/check_execution_plan.py`（标准库、无网络），检查第 10 节任务目录与第 12 节 ID 集合完全一致、合法状态、唯一 READY/活动项、READY/活动项的显式依赖、canonical-plan 三个入口和 dashboard 漂移。它只写入 markers 之间的投影。Linux `ci_check`/`pre_commit` 与 Windows `pre_commit` 已接入；root README、docs README 和 checks README 均说明 canonical route 与更新流程。无 public API/ABI/schema/CLI 或产品能力变更。
+- Focused validation: `tools/devenv/linux/run.sh python -m py_compile tools/checks/check_execution_plan.py` exit 0；`tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --self-test` exit 0（13/13，覆盖 stale-dashboard、ID drift、入口丢失、unsupported status、duplicate ID、multiple active/READY、unsatisfied READY dependency、evidence/blocker projection、write/check 和百分比）；`tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --project-root . --write` 与同命令 `--check` 均 exit 0（54 work items）。
+- Complete validation: `tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .` exit 0（`75 file(s), 165 local link(s)`）；`bash -n tools/checks/linux/ci_check.sh tools/checks/linux/pre_commit.sh` exit 0；`bash tools/checks/linux/ci_check.sh` exit 0（local Markdown links、execution-plan dashboard、172 C/C++ clang-format、32 CMake files 和 `linux-release` configure）；`git diff --check` exit 0；`! rg -n '( {3,}|[[:blank:]]+\\t)$' docs/architecture/KSpaceJet_project_plan_and_acceptance.md` exit 0（允许 Markdown 的两个空格 hard break，未发现意外尾部空白）。
+- Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, GCC/G++ 14.2.0, CMake 3.31.6, Python 3.13.5；checker 只使用 Python 标准库，CI configure 使用已准备的 repository-local developer environment。
+- Known limitations: dashboard 是同一 Markdown 文档中的离线投影，不是远程 issue tracker、CI service 或第二份计划；它不证明任何产品功能。当前 Linux 主机无 PowerShell/Windows host，未执行 Windows pre-commit；这不替代 P0-002 的 Windows acceptance。P0-002、P0-003、P0-006 的既有 BLOCKED 条件保持不变。
+- Next READY item: 无。下一位 Codex 必须先读取第 0.4/12 节；只有 P0-002 的 Windows 主机、P0-003 的远程交付权限/commit 或 P0-006 的必填 owner/source/review inputs 实际到位后，才能按记录的 predicate 恢复相应项。
+
+---
+
+## 14. 需求追踪矩阵
+
+| 功能范围 | 功能 ID | 主工作项 | 关键验收 |
+| --- | --- | --- | --- |
+| 工具链、CI、文件完整性 | FUN-001, FUN-002 | P0-001 至 P0-008, P7-001 至 P7-004 | AC-BLD, AC-TYP, AC-REL-001 至 005 |
+| 数据、FrameSlot、artifact | FUN-003 至 FUN-006 | P1-001 至 P1-007, P2-001 | AC-ART, AC-DAT |
+| Pipeline/resolve/plan/verify | FUN-010 至 FUN-013 | P2-001 至 P2-006 | AC-SCH, AC-PLN |
+| bounded execution/lifecycle | FUN-014 至 FUN-017 | P3-001 至 P3-006, P6-001/002 | AC-SCH, AC-RT, AC-PERF-001 至 004 |
+| Provider SDK 和 reference algorithms | FUN-020 至 FUN-023 | P1-003/004, P4-001 至 P4-005 | AC-PRV, AC-REF |
+| CLI、run artifact、developer experience | FUN-021, FUN-024, FUN-025 | P1-006, P2-005, P4-003/006, optional P5-007 | AC-CLI, AC-OBS-001 至 004 |
+| 可选进程内 ISMRMRD feed/宿主 API | FUN-030 至 FUN-032 | optional P5-001 至 P5-007 | AC-FED |
+| observability, hardware, qualification | FUN-033 至 FUN-035 | P3-006, P6-003 至 P6-007, P7-001 至 P7-007 | AC-OBS, AC-PERF, AC-REL |
+
+每个 pull request、commit 或 autonomous handoff 应至少能指出一条本表中的功能/工作项/验收链。找不到链条的改动应被视为无范围变更，需要先澄清或拆分。
+
+---
+
+## 15. 当前推荐执行路径
+
+在没有新的用户优先级或阻塞前，Codex 按以下顺序推进：
+
+1. P0-001：实际执行可重复基线，而不是重写已存在 runtime。
+2. P0-002：Linux evidence 已完成；仅在真实 Windows MSVC host/runner 上恢复 Windows toolchain 与 test/install evidence。
+3. P0-004：修复断链和过时 claim，并建立文档完整性检查。
+4. P0-005：收口规范冲突，特别是日志、采集/transport/gateway scope 与 profile 宣称。
+5. P0-006：填充或显式阻塞 TargetEnvelope/MachinePolicy 参数。
+6. P0-008：已将第 12 节投影为可校验的 Master Plan 总览；此后每次状态变更均先改第 12 节、再执行 `--write` 和 `--check`。
+7. P1-001 至 P1-006：只有 P0 的强依赖解除后，先让离线 reference 路径具有 fixture、standard output、golden 和 RunRecord。
+8. P2、P3：把已有 graph/runtime 通过独立 verifier、resource/terminal/serial-oracle 证据提升为可信开发基线。
+9. P4：Provider 开发体验、identity 和隔离路线。
+10. P5：只有真实 embedding 需求获确认后才做可选 in-process ISMRMRD feed；绝不做 online service/gateway。
+11. P6/P7：性能、硬件、qualification 作为测量和证据项目，不作为预设承诺。
+
+### 15.1 何时宣布项目完成
+
+只有第 1.4 节的 v1 完成定义和 P7-007 同时满足，才可将本文件状态改为 COMPLETE。任何尚未 ACCEPTED 的强依赖、隐含 compatibility layer、未解释性能结论或未完成平台证据，都意味着项目仍处于进行中。未启用的可选 P5 不阻塞 v1。
+
+---
+
+## 16. 给下一位 Codex 的第一条指令
+
+先阅读第 0.4 节，然后以第 12 节逐项状态为准；本节不是第二份状态来源。当前快照没有 IN_PROGRESS、VERIFYING 或 READY 项，不能编造下一项。
+
+1. 每次有合法状态变更时，只修改第 12 节，然后执行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；若检查失败，先修复第 10/12 节 ID、依赖或入口漂移，不能手改总览。
+2. 保留第 13.2 节 P0-002 的 Windows BLOCKED 记录；只有实际 Windows x64 + VS 2022 v143 + SDK 主机/runner 的 build/install/help evidence 才能恢复它，不能用 Linux evidence 替代。
+3. P0-003 仍需将 `AGENTS.md` 和本文件放入实际仓库、提交并记录 commit/tree；P0-006 仍只能在收齐第 6.3.1/13.8 节的 owner/source/review inputs 后改为 READY。
+4. 以第 1.3、6.1/6.2、17.1 节与 ADR-002/004 为唯一 scope/mode/diagnostics 权威；P0-005 已 ACCEPTED，不回退其 profile、plain-text diagnostics 或 scope-closure 结论，也不得以 dashboard 扩张产品 capability。
+
+---
+
+## 17. 十年架构宪章与项目组合
+
+本节给出未来十年的方向、冻结节奏和激活门槛；它**不是第二份 TODO 或状态台账**。第 12 节仍是唯一可变进度账本，Codex 只能执行其中状态为 READY 的原子工作项。十年规划只解释哪些能力值得投资、何时可以拆成工作项、何时必须停止。
+
+### 17.1 永久产品边界
+
+KSpaceJet 是 ISMRMRD 重建框架，不是采集或传输系统。
+
+- 输入仅是标准 ISMRMRD 数据：当前为 HDF5，未来如有增量输入也必须由同进程宿主先完成 ISMRMRD 归一化。
+- 它不拥有扫描仪、采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备 ring、网络协议、MRD session、gateway、Connector、PACS/DICOM 路由或采集端流控。
+- 它不设框架级通道数上限。`channel_count` 是 ISMRMRD 数据形状，不是准入阈值；256、512 或更大的 case 都必须走同一 generic path。真实字节、设备内存或计算预算不足时，只能返回可审计的本地资源失败。
+- Provider 负责算法，framework 负责 ISMRMRD 校验、数据所有权、frame/completion、plan、资源账本、执行、结果 artifact 与可追溯性。Provider 的算法限制必须写入自己的 contract，不能变成 framework 输入限制。
+- 输出可以是标准 image artifact、本地 writer 或同进程 callback；不负责外部影像系统或站点工作流。
+
+### 17.2 十年内稳定的语义与可替换的实现
+
+| 层 | 需要长期稳定的语义 | 必须保持可替换的实现 |
+| --- | --- | --- |
+| ISMRMRD 边界 | ISMRMRD 字段解释、结构/语义校验、ownership、completion、terminal mapping | HDF5 reader、未来 in-process feed adapter、缓存布局 |
+| MRI semantic core | ScanDescriptor、classification、key、calibration、duplicate/missing/incomplete 和 image order 规则 | FrameSlot 内部字段、bitmap、index 和缓存算法 |
+| Pipeline 与类型 | PipelineDefinition 的逻辑语义、TypeRef identity、Provider contract、terminal/partial 明示规则 | compiler pass、fusion、batch、queue、scheduler 与 C++ 类布局 |
+| Runtime 安全 | host resource ledger、FiringLease、OutputGrant、取消、终态、原子提交 | allocator、thread pool、NUMA 策略、GPU stream/event 实现 |
+| 证据链 | canonical identity、RunRecord、input/plan/Provider/config provenance、reference oracle | artifact store、日志/trace exporter、报告与可视化工具 |
+| 加速 | CPU oracle 与结果一致性要求、DevicePlan 的资源声明原则 | CUDA/HIP/SYCL、FFT/BLAS backend、GPU 厂商和 AI runtime |
+
+`ExecutionPlan`、`DevicePlan`、allocator、scheduler、GPU backend、内部 C++ API 和 CMake target 都是随机器与实现演进的可重建物，绝不是十年稳定 ABI。历史 RunRecord 应保存其 identity 与环境；新 runtime 应从长期语义 artifact 重新编译 plan，而不是永久执行旧物理计划。
+
+### 17.3 证据驱动的十年路线
+
+| Horizon | 时间 | 目标与产物 | 进入/退出门禁 | 明确不承诺 |
+| --- | --- | --- | --- | --- |
+| H0 Foundation | 0–18 个月 | P0–P4：可复现 HDF5 reference、generic bounded CPU runtime、artifact/verifier、Provider SDK、质量与供应链基线。 | Linux/Windows 可构建；Cartesian/non-Cartesian reference 的 golden、异常、取消、RunRecord 和资源证据；独立 Provider conformance。 | 采集集成、网络服务、固定通道上限、GPU 默认路径、临床宣称。 |
+| H1 Embedded runtime | 18–36 个月 | 仅在真实嵌入需求下激活 P5：同进程 ISMRMRD feed、local run API、HDF5/feed 等价性。 | H0 离线语义已 ACCEPTED；ownership/terminal/resource contract 完整；没有 socket 或 source-control 依赖。 | session、gateway、Connector、任何 upstream pause/credit/retry。 |
+| H2 Platform candidate | 3–5 年 | 经过外部使用验证的 Provider SDK、worker isolation、DevicePlan/GPU experiment、任意 channel-count case 的质量与性能证据。 | 两个独立 Provider 或嵌入宿主；clean-machine 支持矩阵；CPU oracle、fault/soak、SBOM 与 ABI/conformance gate。 | 把任意测试 case 宣称为采集能力或医疗产品。 |
+| H3 LTS and ecosystem | 5–7 年 | LTS 分支、Provider capability/conformance registry、签名与供应链、后端可移植性、可复现 benchmark。 | 多个独立使用者与维护者；安全响应、回归、升级与外部复现实验持续通过。 | 插件市场、云控制面、分布式采集系统。 |
+| H4 Sustainable infrastructure | 7–10 年 | 可持续开源核心、长期 evidence archive、硬件换代路径、独立治理与受监管产品的明确分界。 | 非单一维护者可发布、验证、响应漏洞和维护 LTS。 | 框架自动成为扫描仪、采集系统或受监管诊断产品。 |
+
+阶段只由证据推进，不因日历到达自动推进。H1–H4 不得直接变成 READY；每个半年审查后，只有满足 activation gate 的能力才拆为新的原子工作项。
+
+### 17.4 能力包模型与半年审查
+
+未来能力使用 `CapabilityWorkPackage` 描述，但不创建第二状态文件。每个能力包在本文件第 13 节追加 ADR/审查记录；只有拆出的 WorkItem 才进入第 12 节。
+
+| 类型 | 可含内容 | Codex 是否可直接执行 |
+| --- | --- | --- |
+| FOUNDATION | ISMRMRD semantics、fixture、reference path、artifact identity | 仅其中已拆分并 READY 的 WorkItem |
+| RUNTIME | bounded execution、completion、cancel、resource evidence | 同上 |
+| EXPERIMENT | GPU、worker isolation、AI backend | 仅 time-boxed ADR/实验工作项；成功不等于产品功能 |
+| PROVIDER | SDK、conformance、bundle、生态 | 同上 |
+| QUALIFICATION | golden、benchmark、soak、supply-chain | 同上 |
+| LTS/ECOSYSTEM | 兼容、维护、安全、贡献治理 | 同上 |
+
+每半年必须产生一条审查记录，至少回答：
+
+1. 该能力的用户价值、证据和剩余风险是什么？
+2. 哪些语义将变为 `candidate-stable`，哪些仍是 internal？
+3. 若证据不足，是 `defer`、`reject` 还是拆分更小实验？
+4. 是否有新的外部数据、宿主、Provider 或硬件授权改变范围？
+
+### 17.5 ContractClass 与 Codex 长期工作规则
+
+每个非平凡工作项在开始时必须标注一个 `ContractClass`：
+
+| Class | 含义 | 改动要求 |
+| --- | --- | --- |
+| `internal` | 仅内部实现，可以直接替换 | 正确性、资源和回归测试。 |
+| `candidate-stable` | 预期将成为长期语义边界 | ADR、正/负 contract tests、Provider/schema/RunRecord 影响清单。 |
+| `stable-vN` | 已对外冻结的 ABI/schema/API | 兼容性策略、迁移或明确的 major-version 决策、跨平台 evidence。 |
+
+在 v1 冻结前默认采用 pre-release direct replacement：不加入 alias、双 parser、双 schema、版本协商或兼容 shim。只有两个独立外部使用上下文验证了 surface，且有维护预算、conformance、发布与漏洞响应机制，才可将其从 `candidate-stable` 提升为 `stable-vN`。
+
+### 17.6 无通道上限的技术验收规则
+
+这条规则覆盖所有未来 horizon：
+
+1. ISMRMRD schema、reader、CLI、ScanDescriptor、planner、runtime 和 generic buffer accounting 不得有 `max_channels`、`1..64` 或等价硬编码。
+2. 通道数必须使用不截断的通用维度/计数表示；所有乘法、stride 和 allocation 先做 overflow-safe byte/work 计算。
+3. fixture/generator 必须允许任意正整数 channel count，并至少持续覆盖 1、64、256 及大于 256 的非特殊 case；测试不得把 256 当作最大值。
+4. Provider 的算法或布局不能支持某一 case 时，resolver/contract 必须给出该 Provider 的可解释诊断；framework 仍接受该 ISMRMRD 数据并允许选择其他适用 Provider。
+5. 当本地内存、device、线程或 deadline policy 无法满足时，错误必须指向具体 resource/work 预算，不能伪装为“通道数超限”。
+6. 关于某个 channel-count case 的质量、内存、吞吐或 latency 结论必须同时附上数据 identity、算法配置、MachinePolicy、high-water、CPU oracle/quality准则和原始 benchmark 证据；它绝不代表采集端能力。
+
+### 17.7 十年风险与止损
+
+| 风险 | 早期信号 | 强制止损 |
+| --- | --- | --- |
+| 范围膨胀为采集/服务项目 | 出现 socket、gateway、device driver、ACK/credit 或 scanner task | 停止工作项，标记 BLOCKED，并要求单独外部项目授权。 |
+| 偷偷加入通道上限 | parser/CLI/plan 中出现 count threshold | 阻止合并；恢复 generic dimension 与 bytes/work resource accounting。 |
+| 过早冻结 ABI | 只有仓内 Provider 就要求长期兼容 | 保持 pre-release direct replacement，先完成独立使用 conformance。 |
+| GPU/AI 绑死核心 | vendor 类型进入公共语义或无 CPU oracle | 降级为 experiment；不通过证据不进入 default path。 |
+| 物理计划变成公共合同 | 用户开始依赖 queue/thread/stream 字段 | 只发布语义 artifact；ExecutionPlan 继续可重编译。 |
+| 证据腐烂 | 缺数据 hash、转换脚本、机器信息或 raw samples | 拒绝性能/质量 claim，补齐 manifest 与 RunRecord。 |
+
+本节的唯一目标是让 KSpaceJet 在十年内持续替换硬件、调度器、Provider 和算法，同时不牺牲 ISMRMRD 语义、无通道上限、资源正确性、可复现性与产品边界。
+
+---
+
+## 18. 权威的并行、任务调度与资源管理架构
+
+本节是 KSpaceJet 对并行、任务调度和资源管理的**唯一实现权威**。凡是修改 `recon-model`、`recon-graph`、`recon-runtime`、Provider contract、CPU/GPU executor、FrameSlot、KeyShard、buffer pool 或 resource ledger 的工作，必须先阅读本节，并在第 12 节对应工作项中引用它。若旧文档、临时代码或 benchmark 与本节冲突，以本节为准。
+
+### 18.1 决策权边界
+
+| 组件 | 唯一负责的决策 | 明确不得决定 |
+| --- | --- | --- |
+| Provider contract | 算法语义：哪些维度 independent/grouped/ordered/window/collective，哪些 calibration/state 依赖存在，是否可 CPU/GPU、是否可 partial。 | 线程数、队列实现、allocator、GPU stream 数、全局公平策略、未计费后台任务。 |
+| `ExecutionPlanCompiler` | 将实际 ScanDescriptor、ResolvedPipeline、Provider capability 和 MachinePolicy 编译为 WorkKey、依赖、placement、资源 reservation 与 output order。 | 推测未声明的 MRI 独立性，或修改算法的 grouped/ordered 语义。 |
+| Independent verifier | 拒绝不合法 WorkKey、非法笛卡尔积、未闭合 join/terminal、资源超限、ownership 或 capability 不匹配的 plan。 | 选择更快但未经声明的调度策略。 |
+| Runtime scheduler | 仅在**已验证且 ready**的 task 中选择当前运行次序，落实 queue、CPU/GPU executor、取消和资源释放。 | 扩大 partition、打破 KeyShard、绕过 reservation、改变 output order 或让 Provider 自治调度。 |
+| FrameSlot / KeyShard | FrameSlot 决定某个逻辑单元是否 complete/sealed；KeyShard 串行化同一可变状态的 writer。 | 运行重计算、猜测缺失 input 或用资源上限宣布 frame 完成。 |
+| ResourceLedger | 原子预留、提交、实际计费、high-water、释放和 leak 检测。 | 通过 channel count、采集速率或外部硬件协议拒绝输入。 |
+| MachinePolicy | 指定本机资源预算和偏好：CPU、RAM、NUMA、GPU、VRAM、并发 scan、性能 profile。 | 改变 Provider 的 MRI 依赖语义。 |
+
+因此固定执行链为：
+
+```text
+Provider PartitionCapability + ScanDescriptor + MachinePolicy
+    -> ExecutionPlanCompiler
+    -> verified ExecutionPlan
+    -> FrameSlot/KeyShard readiness
+    -> ResourceLedger reservation
+    -> Runtime scheduler / CPU-GPU executor
+    -> ordered result + RunRecord
+```
+
+### 18.2 WorkKey、FrameSlot 和不可变数据边界
+
+每一个可执行重建单元必须有一个可序列化、可比较且可写入 RunRecord 的 `WorkKey`：
+
+```text
+WorkKey = {
+  scan_id,
+  encoding_id,
+  spatial_group_id,      // slice、volume 或 sms-group，三者只能择一
+  contrast_group_id,     // 单 contrast 或联合 contrast group
+  temporal_group_id,     // frame、ordered frame 或 temporal window
+  calibration_epoch,
+  pipeline_digest,
+  provider_identity
+}
+```
+
+- `WorkKey` 不是 ISMRMRD header 字段的机械拼接。它由实际存在的数据组和 Provider contract 导出，未出现的轴使用明确的 singleton/group identity。
+- `channel_count` 不属于 WorkKey 的分区轴，也不应成为 framework 任务数或准入条件。channel/sample/tile block 只是 Provider 在一个合法 WorkKey 内的计算分块。
+- FrameSlot 只在语义 completion 达成后从 `Collecting` 变为 `Sealed`；默认不允许未封口数据进入完整重建。支持 progressive/partial 的 Provider 必须明确声明 checkpoint、增量 identity、最终 seal 和取消规则。
+- 所有异步 task 只接收 host-owned immutable BufferHandle；借用的 ISMRMRD view 绝不能跨 callback 或异步边界。
+
+### 18.3 Provider 必须声明的 PartitionCapability
+
+每个可执行 Provider Operator contract 必须拥有一个 `partition_capability`，其语义属于 Provider contract/schema，而不是 C++ 注释或 CLI 参数。最小形状如下：
+
+```yaml
+partition_capability:
+  encoding: independent | grouped | ordered | collective
+  spatial: slice_independent | volume_collective | sms_grouped
+  contrast: independent | grouped | collective
+  temporal: independent | causal_ordered | windowed | collective
+  calibration: none | shared_readonly | ordered_update
+  channel: reducible | collective
+  partial_execution: unsupported | checkpointed | append_only
+  output_order: work_key | provider_declared_stable
+  backends: [cpu]                 # gpu 仅在 capability/DevicePlan 已启用时出现
+  allowed_partitions: []          # 仅列出实际允许的组合；空即 serial/grouped default
+```
+
+规则：
+
+1. 未声明某轴时，该轴默认 `collective`，不得并行拆分。
+2. `slice_independent` 只适用于独立 2-D slice；3-D volume、through-plane regularization 必须是 `volume_collective`；SMS 必须是 `sms_grouped`。
+3. 多回波、多 TI、多 flip、参数 mapping 或联合正则化的 contrast 必须 `grouped/collective`，不能因为 ISMRMRD 存在 `contrast` 索引就拆开。
+4. temporal regularization、motion estimation、Kalman/causal state 分别使用 `windowed`、`collective`、`causal_ordered`；只有无时间依赖的 frame 才能 `independent`。
+5. channel `reducible` 允许在一个 WorkKey 内按真实 bytes/work 分块并固定归约；它不允许 framework 因通道数拒绝该 ISMRMRD 数据。
+6. Provider 需要 shared calibration 时，只能读取一个 immutable `calibration_epoch`；任何更新必须经过对应 KeyShard。
+
+### 18.4 ExecutionPlanCompiler 的确定性算法
+
+Compiler 必须按以下顺序工作；不得先建线程或队列再反推语义：
+
+1. 从 ISMRMRD header/metadata 形成 `ScanDescriptor`，列出实际 encoding、spatial、contrast、temporal、calibration group 及 completion 规则。
+2. Resolver 固定 Provider identity、Operator contract、config 和 TypeRef，产生不可变 ResolvedPipeline。
+3. 读取每个 Operator 的 `PartitionCapability`；若 capability 缺失、相互冲突或不支持该 ScanDescriptor，拒绝 resolve/compile，不产生半有效 plan。
+4. 从实际存在的 logical group 构造候选 WorkKey，绝不将所有维度做笛卡尔积。
+5. 对 `grouped`、`windowed`、`ordered`、`collective` 轴合并 WorkKey，生成显式 dependency、join 和 terminal node；对 `independent` 轴生成彼此独立但有确定 output order 的 task。
+6. 以实际元素数、bytes/work、Provider cost model 与 MachinePolicy 选择 channel/sample/spatial tile 大小。禁止任何 `max_channels`、`1..64`、`256` 等固定框架阈值。
+7. 为每个 task 生成 placement（CPU/NUMA/GPU）、FiringLease、输入/输出 ownership、资源 reservation、queue 上限、join 和 cancel/failure cleanup。
+8. 对相同输入必须生成相同 ExecutionPlan digest；若策略允许非确定性选择，选择依据、seed 和结果必须进入 plan/RunRecord。
+9. 将 plan 交给 independent verifier；验证通过之前不允许 admission 或 task creation。
+
+### 18.5 Runtime 状态机与调度规则
+
+每个 WorkKey 只能经过下列状态；禁止跳过 reservation 或绕过 terminal：
+
+```text
+Collecting
+  -> Sealed
+  -> WaitingDependencies
+  -> Admitted
+  -> Ready
+  -> Running
+  -> Joining
+  -> Completed | Cancelled | Failed | Rejected
+```
+
+- `Collecting -> Sealed`：仅由 FrameSlot 的真实 completion 触发。
+- `Sealed -> WaitingDependencies`：等待 calibration epoch、ordered predecessor、window 邻居或 collective group。
+- `WaitingDependencies -> Admitted`：ResourceLedger 为 plan 中全部必须资源原子预留成功。
+- `Admitted -> Ready`：输入 BufferHandle/OutputGrant/FiringLease 均已准备；ReadyQueue 中不能出现“等待资源”的 task。
+- `Ready -> Running`：scheduler 从 verified plan 的合法 ready task 中选择；P3 使用确定性的 WorkKey 顺序，P6 才可在不改变语义的前提下启用 DRR/priority/work-stealing。
+- `Running -> Joining`：只接收对应 lease/identity 的完成事件；异步 GPU/worker 必须先完成 fence/token 归属确认。
+- `Joining -> terminal`：显式检查所有 required input、join、flush、output order 和 cleanup；取消/失败不得产生伪 Completed。
+
+调度分工固定为：
+
+| 调度对象 | 正确策略 |
+| --- | --- |
+| 同一 KeyShard 的状态更新 | 单 writer；queued + running 不超过一。 |
+| 无状态 CPU ComputeTask | 固定 worker queue 或 work-stealing；不得共享可变 MRI 状态。 |
+| GPU ComputeTask | 经 DevicePlan 分配 stream/event；CPU worker 不阻塞等待 GPU。 |
+| 多 scan | P6 前只允许确定性单 scan/有限场景；P6 后可用 quota/DRR，但只能重排已 ready 的合法 task。 |
+| 输出 | 可以乱序计算，必须按 `WorkKey` 或 Provider 声明的 stable order 交付。 |
+
+### 18.6 ResourceLedger：资源域、预留与释放
+
+ResourceLedger 至少具备以下 resource domain；所有额度同时具备 plan-time reservation、runtime actual charge 和 high-water：
+
+| 域 | 计费对象 |
+| --- | --- |
+| HostPageableBytes | materialized input、FrameSlot、CPU scratch、image/result buffer |
+| HostPinnedBytes | GPU transfer staging；未启用 GPU 时为零 |
+| DeviceBytes(device_id) | GPU input、scratch、output、quarantine buffer |
+| QueueItems / QueueBytes | 每条 edge、ReadyQueue、reorder/join buffer |
+| CpuConcurrency | host executor 的并发 token，不等同于 OS thread 的永久占用 |
+| DeviceStreams(device_id) | 已分配的 GPU stream / in-flight work token |
+| ArtifactStagingBytes | 尚未原子提交的本地输出 artifact |
+| AsyncTokens | Provider callback、fence、worker request 等未完成异步所有权 |
+
+资源生命周期固定为：
+
+```text
+estimate -> reserve atomically -> materialize/charge -> execute
+         -> seal/commit output -> release exactly once -> recycle
+```
+
+- 任一 reservation 失败时，不可留下部分 task、partial output 或不可回收 BufferHandle。
+- Provider 不得私建未计费 pool、线程池、GPU stream、device buffer 或后台 future。
+- ResourceLedger 只保护 KSpaceJet 已接受后的内部资源；当资源不足时只能返回 local reject/terminal，不定义上游暂停、DMA credit、网络 ACK 或采集流控。
+- 无通道上限不等于无限内存：channel 维度参与 overflow-safe byte/work 计算，但永不参与固定最大值比较。
+- GPU cancel 后的 device buffer 必须进入 quarantine，直到 event/fence 或 device recovery 明确证明安全，才能释放 reservation。
+
+### 18.7 四类 MRI 并行轴的选择规则
+
+| 轴 | 何时可并行 | 何时必须合并/有序 | 推荐 WorkKey 形状 |
+| --- | --- | --- | --- |
+| encoding | 不同 encoding 无联合 reconstruction、phase/velocity 依赖或 shared mutable state。 | multi-encoding joint reconstruction、phase/velocity combination。 | `encoding_id` 或 `encoding_group_id` |
+| spatial | 常规独立 2-D slice。 | 3-D volume、SMS/multiband、cross-slice regularization。 | `slice_id`、`volume_id` 或 `sms_group_id` |
+| contrast | 每个 contrast 独立 IFFT/RSS/Provider path。 | multi-echo fitting、T1/T2 mapping、水脂分离、joint prior。 | `contrast_id` 或 `contrast_group_id` |
+| temporal/frame | 各 frame 无状态、无 temporal prior。 | causal filter、temporal window、motion、dynamic CS。 | `frame_id`、`ordered_frame_id` 或 `temporal_window_id` |
+
+如果一个 unit 太小，Compiler 可以在**已经声明独立的轴**上合并多个 WorkKey 形成 batch；不得为了吞吐把 grouped/ordered 数据拆开。相反，3-D、SMS 或 multi-contrast collective task 内部可按空间 tile、sample block、channel block 并行，但其最终 join 仍属于原 WorkKey。
+
+### 18.8 AI 实现顺序与不可违反检查
+
+AI 必须按以下顺序实现，不得先写 P6 的线程/GPU 优化：
+
+1. **P2-003**：先扩展 Provider contract/model/schema，加入 PartitionCapability、WorkKey、plan fields 和 valid/invalid fixtures。
+2. **P2-004**：让 independent verifier 拒绝未声明并行、虚假笛卡尔积、违反 grouped/ordered、无 join、无 reservation 的 plan。
+3. **P3-001**：实现 ledger 的 reservation/charge/release 原子性与 fault tests。
+4. **P3-003**：实现 FrameSlot seal、KeyShard、calibration epoch、ordered/window dependency 和 terminal state machine。
+5. **P3-002/P3-004**：只执行 verified ready task，FiringLease/OutputGrant 由 host 强制；先保持 deterministic CPU executor。
+6. **P3-005/P3-006**：以 serial oracle、RunRecord、actual high-water、cancel/failure corpus 验收。
+7. **P4-004**：让每个 reference Provider 声明自己的 PartitionCapability，禁止框架硬编码算法并行性。
+8. **P6**：仅在上述证据 ACCEPTED 后，分别启用并行、multi-scan fairness、NUMA、GPU；每个 feature flag 独立验收并可关闭。
+
+实现前的最小问题清单：
+
+- 这个 Operator 的各轴依赖是否已写进 contract？未写则默认 serial/grouped。
+- 当前 WorkKey 是实际存在的数据组吗？是否错误生成了不存在的组合？
+- FrameSlot 是否真的 sealed？calibration epoch / ordered predecessor 是否 ready？
+- 所有 BufferHandle、lease、output、fence 是否已经计费并有唯一 owner？
+- 是否通过 WorkKey/plan 而非硬编码 channel count 决定分块？
+- 取消、Provider failure、device failure 后，ledger 与 terminal 是否可证明闭合？
+
+### 18.9 必须长期保留的测试 corpus
+
+至少维护以下 fixture/property/system tests；新增 scheduler 优化不得删弱任何一项：
+
+| 用例 | 必须证明 |
+| --- | --- |
+| 独立 2-D multi-slice / multi-frame | 实际 slice/frame WorkKey 可并行，输出按确定 order，结果等于 serial oracle。 |
+| 3-D volume | compiler 不得按 slice 拆分；必须在 volume work 内正确 join。 |
+| SMS/multiband | compiler 必须用 sms group，不得在 unalias 前把 slice 当独立 task。 |
+| multi-contrast joint mapping | contrast group 完整后才运行；不得提前生成单 contrast result。 |
+| causal/windowed temporal reconstruction | predecessor/window 未 ready 时 task 不进入 ReadyQueue。 |
+| shared calibration update | 同一 calibration KeyShard 无并发 writer；新的 epoch 不污染活动 task。 |
+| arbitrary channel count | 至少 1、64、256、>256，走同一 generic path；无 channel-cap error。 |
+| reservation failure | 无 task/输出/ledger 泄漏，返回明确 local reject。 |
+| cancel/failure/device fence | 不产生 Completed，所有 host/device/async resource 正确释放或 quarantine。 |
+| parallel versus serial | 每个启用并行模式与 serial oracle 在声明误差规则内等价。 |

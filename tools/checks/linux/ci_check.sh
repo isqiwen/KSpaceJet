@@ -9,6 +9,12 @@ cd "${repo_root}"
 
 preset="${KSJ_CI_CHECK_PRESET:-linux-release}"
 
+ksj_note "checking local Markdown links"
+ksj_run python3 tools/checks/check_markdown_links.py --project-root "${repo_root}"
+
+ksj_note "checking canonical execution-plan dashboard"
+ksj_run python3 tools/checks/check_execution_plan.py --project-root "${repo_root}" --check
+
 if [[ "${KSJ_FORMAT_SCOPE:-changed}" == "all" ]]; then
   bash "${script_dir}/format_check.sh" --all
 elif [[ -n "${KSJ_FORMAT_BASE:-}" ]]; then

@@ -61,7 +61,7 @@ namespace {
 {
   "kind": "PipelineDefinition",
   "pipeline": {"id": "org.example.calibrated-reconstruction", "display_name": "Calibrated reconstruction"},
-  "allowed_profiles": ["offline", "bounded-online"],
+  "allowed_profiles": ["offline-reference", "bounded-reconstruction-graph"],
   "parameters": {},
   "provider_requirements": [
     {"alias": "calibration", "provider_id": "org.example.calibration"},
@@ -190,7 +190,8 @@ TEST(KSpaceJetReconGraphPipelineDefinition, RejectsNonemptyDeferredMergeBinding)
 TEST(KSpaceJetReconGraphPipelineDefinition, CanonicalizesUnorderedProfileLists) {
   const auto original_document = read_fixture("valid/pipeline-minimal.json");
   const auto reordered_document =
-    replace_once(original_document, "\"offline\",\n    \"bounded-online\"", "\"bounded-online\",\n    \"offline\"");
+    replace_once(original_document, "\"offline-reference\",\n    \"bounded-reconstruction-graph\"",
+                 "\"bounded-reconstruction-graph\",\n    \"offline-reference\"");
   auto original = ksj::recon::graph::PipelineDefinition::parse_json(original_document);
   auto reordered = ksj::recon::graph::PipelineDefinition::parse_json(reordered_document);
   ASSERT_TRUE(original.ok()) << original.status();
@@ -220,6 +221,20 @@ TEST(KSpaceJetReconGraphResolvedPipeline, RejectsProviderIdentityMismatch) {
   providers.front().provider_id = "org.example.wrong-provider";
 
   auto resolved = ksj::recon::graph::ResolvedPipeline::resolve(definition.value(), std::move(providers));
+  ASSERT_FALSE(resolved.ok());
+  EXPECT_NE(resolved.status().message().find("does not match"), std::string::npos);
+}
+
+TEST(KSpaceJetReconGraphResolvedPipeline, RejectsSchemaShapedSemanticProviderMismatchFixture) {
+  // The fixture follows pipeline.schema.json: provider_id is only a qualified
+  // identifier structurally. Its absence from the resolved Provider bundle is
+  // instead a semantic resolution error, so schema-shaped input cannot bypass
+  // the resolver's exact identity check.
+  auto definition =
+    ksj::recon::graph::PipelineDefinition::parse_json(read_fixture("invalid/pipeline-semantic-provider-mismatch.json"));
+  ASSERT_TRUE(definition.ok()) << definition.status();
+
+  auto resolved = ksj::recon::graph::ResolvedPipeline::resolve(definition.value(), resolved_providers());
   ASSERT_FALSE(resolved.ok());
   EXPECT_NE(resolved.status().message().find("does not match"), std::string::npos);
 }

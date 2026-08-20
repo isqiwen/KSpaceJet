@@ -1,19 +1,22 @@
 # KSpaceJet
 
-KSpaceJet 是面向高吞吐、低延迟 MRI 重建的开源 C++20 框架。它以
-[ISMRMRD](https://ismrmrd.github.io/) 作为唯一原始采集数据语义：离线输入使用标准
-ISMRMRD HDF5，在线输入和图像交付使用冻结的公开 MRD/ISMRMRD streaming-session
-binding。框架不定义私有 wire protocol，也不包含旧回放格式、私有操作队列或任何
-专有重建算法。
+KSpaceJet 是预发布的开源 C++20 MRI 重建框架。它以
+[ISMRMRD](https://ismrmrd.github.io/) 作为唯一原始采集数据语义；当前可执行的参考
+路径读取标准 ISMRMRD HDF5。框架不定义私有 wire protocol，也不包含旧回放格式、私有
+操作队列或任何专有重建算法。
+
+当前工作项、阶段进度、验收证据和外部阻塞项均在唯一的
+[KSpaceJet 主实施计划](docs/architecture/KSpaceJet_project_plan_and_acceptance.md) 中追踪。
 
 ## 设计重点
 
 - 流式读取 ISMRMRD acquisition，回调内以零额外复制的 `std::span` 暴露样本和轨迹。
-- 以 `KSpaceJet::` CMake target、`ksj` C++ namespace 和 `kspacejet/` public
-  include 根提供稳定基础 API。
+- 使用 `KSpaceJet::` CMake target、`ksj` C++ namespace 和 `kspacejet/` public
+  include 根；项目尚未发布，API、ABI 和安装 surface 均可演进。
 - 使用 Eigen 作为可移植数值基线，并可通过仓库内 Intel IPP/MKL/OpenMP payload
   加速；使用者不必安装 oneAPI。
-- 支持 Linux x86_64 与 Windows x86_64/MSVC。
+- 提供 Linux x86_64 与 Windows x86_64/MSVC 的构建配置；当前仅 Linux toolchain、
+  build 和 install 已有验证证据，Windows 验证仍待实际 Windows 主机完成。
 
 ## 主要模块
 
@@ -22,9 +25,9 @@ binding。框架不定义私有 wire protocol，也不包含旧回放格式、�
 - `libs/core`：内存、线程、日志、平台和进程基础设施。
 - `libs/mri/kspacejet-mri-debug`：与具体重建 provider 无关的 MRI 数据诊断工具。
 - `apps`：统一命名的四个应用工程：`ksj`、`ksj-gateway`、`ksj-recon` 和
-  `ksj-research`；四者均默认构建并安装。`ksj-research` 用于跨框架实验、证据冻结和
-  论文制品，但不进入正常重建 runtime 或数据面依赖。每个扩展重建算法以独立
-  `.so`/`.dll` Provider 插件发布，由 `ksj-recon` 加载。具体边界见
+  `ksj-research`；四者均默认构建并安装。当前 `ksj` 提供 pipeline validation 和
+  Provider scaffold 工具，`ksj-recon` 提供离线 HDF5 reference route；`ksj-gateway`
+  与 `ksj-research` 是已安装但操作尚未实现的 scaffold。具体边界见
   [apps/README.md](apps/README.md)。
 
 ## 构建
@@ -132,16 +135,16 @@ configure：
 安装前缀由匹配的 CMake configure preset 的 `CMAKE_INSTALL_PREFIX` 决定；不要将安装任务
 用作环境准备的替代步骤。
 
-`ksj-research` 是随应用安装的实验工具，但不得成为 `ksj`、`ksj-gateway` 或 `ksj-recon` 的
+`ksj-research` 是随应用安装的研究工具 scaffold；其操作尚未实现，且不得成为其他应用的
 runtime/data-plane 依赖。`KSJ_BUILD_RESEARCH` 仍只控制 `tests/research` 中的测试和实验
 target，不控制这个可执行程序。
 
 ## Provider 输入边界
 
-runtime 拥有 HDF5/在线 source，并将 host-owned `AcquisitionFrame` 传给 Provider
-plugin。底层 reader 的样本布局为 `sample + channel * number_of_samples`；trajectory
-布局为 `sample * trajectory_dimensions + dimension`。借用的 reader view 在 callback
-返回后失效；runtime 会在异步调用 Provider 前将 frame materialize 到 host-managed
-buffer。plugin 不得自行打开 source、保留借用 view 或创建未记账的 buffer pool。
+当前离线 reference runtime 从 HDF5 source 读取并将 host-owned `AcquisitionFrame` 传给
+Provider plugin。底层 reader 的样本布局为 `sample + channel * number_of_samples`；trajectory
+布局为 `sample * trajectory_dimensions + dimension`。借用的 reader view 在 callback 返回后
+失效；runtime 会在异步调用 Provider 前将 frame materialize 到 host-managed buffer。plugin
+不得自行打开 source、保留借用 view 或创建未记账的 buffer pool。
 
 旧私有采集格式和队列格式不属于 KSpaceJet，也没有兼容开关。

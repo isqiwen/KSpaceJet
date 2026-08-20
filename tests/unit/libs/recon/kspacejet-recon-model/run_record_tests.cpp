@@ -13,7 +13,7 @@ constexpr auto kAdmissionDigest = "sha256:33333333333333333333333333333333333333
 ksj::recon::RunRecordSpec admitted_record(const ksj::recon::RunOutcome outcome) {
   return {
     .run_id = "scan.20260812.0001",
-    .execution_profile = ksj::recon::ExecutionProfile::bounded_online,
+    .execution_profile = ksj::recon::ExecutionProfile::bounded_reconstruction_graph,
     .execution_plan_digest = kPlanDigest,
     .verification_record_digest = kVerificationDigest,
     .admission_record_digest = kAdmissionDigest,
@@ -70,7 +70,7 @@ TEST(KSpaceJetRunRecord, PreservesSourceReplayLineageWithoutClaimingCheckpointRe
 TEST(KSpaceJetRunRecord, SeparatesPreAdmissionCancellationAndFailureFromAdmittedOutcomes) {
   ksj::recon::RunRecordSpec cancelled{
     .run_id = "scan.pre-admission.cancelled",
-    .execution_profile = ksj::recon::ExecutionProfile::bounded_online,
+    .execution_profile = ksj::recon::ExecutionProfile::bounded_reconstruction_graph,
     .outcome = ksj::recon::RunOutcome::cancelled_before_admission,
     .primary_cause = {{
       .kind = ksj::recon::RunCauseKind::cancellation,

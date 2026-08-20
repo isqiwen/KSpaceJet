@@ -1,14 +1,20 @@
 # KSpaceJet：面向可预测在线 MRI 重建的扫描专用资源合约流式框架
 
+> **历史 / 非规范性研究记录。** 本文保存已撤回或探索性的论文草稿，不定义当前产品能力、
+> 状态、接口、部署、验收或 artifact authority。其关于公开 MRD/ISMRMRD session、
+> `ksj-gateway`、Connector、scanner/采集集成、网络 relay/transport 或结构化 core logging
+> 的任何表述均已撤回。当前产品边界、artifact authority 与执行状态的唯一权威为
+> [KSpaceJet project plan and acceptance](../architecture/KSpaceJet_project_plan_and_acceptance.md)。
+>
 > English title: **KSpaceJet: Scan-Specialized, Resource-Contracted Streaming for Predictable Online MRI Reconstruction**
 >
 > 稿件状态：预结果论文初稿。
 > 目标体裁：Magnetic Resonance in Medicine 风格 full paper。
 > 重要说明：本文当前描述的是研究设计和待实现方法。所有 `[待实验]`、`N`、`X%` 和图表占位必须由冻结协议产生的真实制品替换；不得把设计目标写成观察结果。
 > 公平对照协议：[KSpaceJet–Gadgetron 公平对照与复现实验协议](kspacejet_gadgetron_comparison_protocol.md)。
-> 产品架构基线：[KSpaceJet 流式重建框架实施规划](../architecture/streaming_reconstruction_framework_plan.md)。
-> Pipeline schema 基线：[PipelineDefinition 与重建流水线设计](../architecture/pipeline_definition.md)。
-> Pipeline 与证明基线：[MRI 流水线、并行模型与可证明执行理论](../architecture/streaming_pipeline_parallelism_theory.md)。论文只摘要 schema、定理及其假设；规范定义以两份架构基线、ADR、schema 和独立 checker 为准。
+> 历史产品架构参考：[KSpaceJet 流式重建框架实施规划](../architecture/streaming_reconstruction_framework_plan.md)。
+> 历史 Pipeline/schema 参考：[PipelineDefinition 与重建流水线设计](../architecture/pipeline_definition.md)。
+> 历史 Pipeline/证明参考：[MRI 流水线、并行模型与可证明执行理论](../architecture/streaming_pipeline_parallelism_theory.md)。论文只保留这些历史材料中的 schema、定理及其假设；当前产品边界、artifact authority 与执行状态只以 [KSpaceJet project plan and acceptance](../architecture/KSpaceJet_project_plan_and_acceptance.md) 为准，受维护的源码、schema 和测试只负责相应的实现与结构语义。
 
 作者：[待填写]
 

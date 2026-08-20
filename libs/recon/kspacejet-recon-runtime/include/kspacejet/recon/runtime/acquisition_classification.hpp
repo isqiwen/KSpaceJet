@@ -8,12 +8,13 @@
 
 namespace ksj::recon::runtime {
 
-// The classifier consumes a normalized, public-MRD view.  Adapters may decode
-// an ISMRMRD header into this type, but public runtime headers deliberately do
-// not expose an ISMRMRD C++ type or a transport-specific message wrapper.
+// The classifier consumes a normalized ISMRMRD input view. An HDF5 reader or
+// future in-process host adapter may decode an ISMRMRD header into this type,
+// but public runtime headers deliberately do not expose an ISMRMRD C++ type
+// or an input-source-specific wrapper.
 inline constexpr std::string_view kAcquisitionClassificationRuleIdentity = "kspacejet.acquisition-classification";
 
-enum class PublicMrdMessageKind : std::uint8_t {
+enum class IsmrmrdMessageKind : std::uint8_t {
   acquisition,
   waveform,
   image,
@@ -43,7 +44,7 @@ enum class AcquisitionClassificationReason : std::uint8_t {
   explicit_rule,
 };
 
-[[nodiscard]] std::string_view to_string(PublicMrdMessageKind kind) noexcept;
+[[nodiscard]] std::string_view to_string(IsmrmrdMessageKind kind) noexcept;
 [[nodiscard]] std::string_view to_string(AcquisitionLane lane) noexcept;
 [[nodiscard]] std::string_view to_string(AcquisitionClassificationReason reason) noexcept;
 
@@ -60,7 +61,7 @@ struct NormalizedAcquisitionFlags {
   bool explicitly_ignored{false};
 };
 
-// Public ISMRMRD acquisition indices normalized to fixed-width values.  The
+// ISMRMRD acquisition indices normalized to fixed-width values. The
 // FrameSlot consumes its Cartesian coordinates separately; retaining the full
 // semantic index here keeps classification records self-contained.
 struct NormalizedAcquisitionIndex {
@@ -80,7 +81,7 @@ struct NormalizedAcquisitionIndex {
 };
 
 struct AcquisitionClassificationInput {
-  PublicMrdMessageKind message_kind{PublicMrdMessageKind::acquisition};
+  IsmrmrdMessageKind message_kind{IsmrmrdMessageKind::acquisition};
   NormalizedAcquisitionFlags flags{};
   NormalizedAcquisitionIndex index{};
 };
@@ -99,7 +100,7 @@ struct AcquisitionClassifierConfig {
 };
 
 // A stateless classifier whose construction validates the rule identity.  The
-// source router must route waveform/image/other messages before calling it;
+// input router must route waveform/image/other messages before calling it;
 // classify() rejects non-acquisition inputs to make that boundary enforceable.
 class AcquisitionClassifier final {
 public:

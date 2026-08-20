@@ -31,7 +31,7 @@ targets remain enabled while unit-test-only configuration stays isolated:
 
 ```bash
 bash tools/devenv/linux/bootstrap.sh --prepare linux-release-app-tests
-tools/devenv/linux/run.sh cmake --build out/build/linux-release-app-tests --preset linux-release-app-tests
+tools/devenv/linux/run.sh cmake --build --preset linux-release-app-tests
 tools/devenv/linux/run.sh ctest --preset linux-release-app-tests
 ```
 

@@ -1,6 +1,6 @@
 # ksj_static_analysis
 
-`tools/ksj_static_analysis` 存放开发期静态分析脚本。工具检查源码树或构建产生的 metadata，不属于 KSpaceJet 运行时，也不参与普通构建。
+`tools/kspacejet_static_analysis` 存放开发期静态分析脚本。工具检查源码树或构建产生的 metadata，不属于 KSpaceJet 运行时，也不参与普通构建。
 
 当前主要能力包括：
 
@@ -44,7 +44,7 @@ Clang analyzer 无法分析的编译单元会列入覆盖缺口，方便区分�
 ## 维护入口
 
 - CMake target 定义在 `cmake/KSpaceJetStaticAnalysis.cmake`。
-- Python 实现是 `tools/ksj_static_analysis/check_memory_leaks.py`。
+- Python 实现是 `tools/kspacejet_static_analysis/check_memory_leaks.py`。
 - 默认报告路径由 CMake 传给脚本，也可以通过脚本参数 `--report` 覆盖。
 
 脚本支持的关键参数包括：
@@ -61,9 +61,10 @@ Clang analyzer 无法分析的编译单元会列入覆盖缺口，方便区分�
 
 ## Numerics 依赖边界检查
 
-`check_numeric_dependency_boundaries.py` 扫描源码中仍然直接使用 legacy `kspacejet-math/include`、`KSpaceJet::math`、Armadillo，以及在
-`libs/numerics` 之外直接使用 MKL/IPP/OpenCV/ITK 的位置。它用于支持逐步把基础计算收敛到 `libs/numerics`，并让 MRI
-业务层只依赖 numerics API。
+`check_numeric_dependency_boundaries.py` 扫描源码中仍然直接使用历史遗留拼写（例如
+`kspacejet-math/include`、`KSpaceJet::math`）、Armadillo，以及在 `libs/numerics` 之外直接使用
+MKL/IPP/OpenCV/ITK 的位置。这些历史拼写是迁移违规，而不是当前模块；检查用于把基础计算收敛到
+`libs/numerics`，并让 MRI 业务层只依赖 numerics API。
 
 支持的入口是 CMake target：
 
@@ -100,6 +101,6 @@ tools/devenv/linux/run.sh python tools/kspacejet_static_analysis/check_numeric_d
 ## 维护范围
 
 - 源码静态分析脚本归本目录维护。
-- 运行时启动脚本归 `scripts/` 目录维护。
+- 开发环境和检查入口归 `tools/devenv/`、`tools/checks/` 等对应目录维护。
 - 编译型工具归对应 `tools/<tool_name>` 目录维护。
 - 静态分析报告属于构建产物，输出到 `out/`，不得提交到源码目录。

@@ -1,9 +1,8 @@
 # `ksj-research`
 
-`ksj-research` is the runner for frozen, reproducible experiments against
-KSpaceJet, Gadgetron, BART Streams, and conditionally MRIReco.jl. It owns baseline
-locks, dataset freezing, deterministic replay schedules, external collection, analysis,
-and claim audits.
+`ksj-research` is an installed KSpaceJet research application scaffold. Its help and JSON
+help report `status: "scaffold"`; listed command names are reserved, and every requested
+operational action currently returns an `unimplemented` error.
 
 When `KSJ_BUILD_APPLICATIONS=ON`, `ksj-research` participates in the default build and,
 when installation rules are enabled, the standard installation. It cannot add fields,

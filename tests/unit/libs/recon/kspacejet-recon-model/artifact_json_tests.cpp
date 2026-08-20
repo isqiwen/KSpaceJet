@@ -49,7 +49,7 @@ constexpr auto kAdmissionDigest = "sha256:33333333333333333333333333333333333333
 [[nodiscard]] ksj::recon::RunRecord representative_run_record() {
   auto record = ksj::recon::RunRecord::create({
     .run_id = "scan.20260812.0002",
-    .execution_profile = ksj::recon::ExecutionProfile::bounded_online,
+    .execution_profile = ksj::recon::ExecutionProfile::bounded_reconstruction_graph,
     .execution_plan_digest = kPlanDigest,
     .verification_record_digest = kVerificationDigest,
     .admission_record_digest = kAdmissionDigest,
@@ -113,7 +113,7 @@ TEST(KSpaceJetReconModelArtifactJson, RunRecordRoundTripsToStableCanonicalJson) 
   ASSERT_TRUE(second.ok()) << second.status();
 
   constexpr std::string_view kExpected =
-    R"json({"admission_record_digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333","egress_visibility":"partial","execution_plan_digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","execution_profile":"bounded-online","kind":"RunRecord","last_committed_ordinal":7,"outcome":"failed","primary_cause":{"code":"SOURCE_IO_FAILURE","kind":"failure"},"recovery_class":"source_replay_new_run","replay_of_run_id":"scan.20260812.0001","run_id":"scan.20260812.0002","secondary_causes":[{"code":"OPERATOR_CANCEL_REQUESTED","kind":"cancellation"}],"verification_record_digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222"})json";
+    R"json({"admission_record_digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333","egress_visibility":"partial","execution_plan_digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","execution_profile":"bounded-reconstruction-graph","kind":"RunRecord","last_committed_ordinal":7,"outcome":"failed","primary_cause":{"code":"SOURCE_IO_FAILURE","kind":"failure"},"recovery_class":"source_replay_new_run","replay_of_run_id":"scan.20260812.0001","run_id":"scan.20260812.0002","secondary_causes":[{"code":"OPERATOR_CANCEL_REQUESTED","kind":"cancellation"}],"verification_record_digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222"})json";
   EXPECT_EQ(kExpected, first.value());
   EXPECT_EQ(first.value(), second.value());
   EXPECT_EQ(std::string::npos, first.value().find("\"digest\":"));

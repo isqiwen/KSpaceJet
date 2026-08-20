@@ -1,268 +1,222 @@
 # KSpaceJet agent guide
 
-KSpaceJet is a C++20 open-source framework for high-throughput online streaming MRI
-reconstruction. ISMRMRD is its only raw-acquisition data semantics: offline replay uses
-standard ISMRMRD HDF5, while online acquisition and image delivery use a frozen public
-MRD/ISMRMRD streaming-session binding. Do not define a KSpaceJet-private wire protocol.
+KSpaceJet is a C++20 open-source MRI reconstruction framework. ISMRMRD is its only input-data semantics: current reference routes use standard ISMRMRD HDF5, and any future incremental input must be submitted in-process by a host that has already normalized it to ISMRMRD. KSpaceJet does not implement scanner, acquisition, gateway, Connector, MRD session, network relay, or transport functionality, and it does not define a private wire protocol.
+
+This repository is pre-release. It has substantial offline/synchronous development foundations, but a directory, CMake target, schema, README claim, partial test, or scaffold does not by itself prove a feature is accepted, online-capable, isolated, or production-ready.
 
 ## Repository map
 
-- `libs/core/`: logging, threading, memory, platform and process primitives.
-- `libs/numerics/`: general numerical APIs and backend implementations.
-- `libs/io/kspacejet-ismrmrd/`: public ISMRMRD streaming reader.
-- `libs/io/kspacejet-matio/`: MAT I/O support for diagnostics and interoperability.
-- `libs/mri/kspacejet-mri-debug/`: reusable MRI inspection utilities.
-- `libs/recon/kspacejet-recon-model/`: immutable reconstruction artifacts,
-  planning inputs, execution records, resource model, and Provider-owned
-  `OperatorContract` declarations.
-- `apps/kspacejet-cli/`: the public `ksj` command-line interface.
-- `apps/kspacejet-gateway/`: the integration gateway service for external systems.
-- `apps/kspacejet-recon/`: the bounded reconstruction service.
-- `apps/kspacejet-research/`: the installed experiment-oriented research runner.
-- `third_party/intel/`: Git-LFS Intel IPP/MKL/OpenMP payload and its local Conan recipe.
-- `tests/unit/`: focused unit tests.
+- libs/core: logging, threading, memory, platform, process and performance primitives.
+- libs/numerics: general numerical APIs and backend implementations.
+- libs/io/kspacejet-ismrmrd: public ISMRMRD reader and offline replay foundation.
+- libs/io/kspacejet-matio: MAT I/O for diagnostics/interoperability.
+- libs/mri/kspacejet-mri-debug: reusable MRI inspection utilities.
+- libs/recon/kspacejet-recon-model: immutable reconstruction artifacts, planning inputs, execution records, resource model and Provider contracts.
+- libs/recon/kspacejet-recon-graph: PipelineDefinition parsing, compiler and independent verifier.
+- libs/recon/kspacejet-recon-runtime: bounded runtime primitives, FrameSlot, synchronous executor and reference data paths.
+- libs/recon/kspacejet-provider-sdk: C ABI and generated type registry for Providers.
+- libs/recon/kspacejet-provider-loader: explicit dynamic Provider loader; it is in-process unless a separately verified isolation mode is active.
+- providers: independently shipped Provider plugins, catalog, contracts and planned interfaces.
+- apps/kspacejet-cli: public ksj command-line interface.
+- apps/kspacejet-gateway: installed application scaffold; it is not an external-system integration capability.
+- apps/kspacejet-recon: offline reference reconstruction today; service/online claims require dedicated acceptance evidence.
+- apps/kspacejet-research: installed research application scaffold; planned evidence-freezing and paper-artifact workflows are currently unimplemented. It must not become a runtime/data-plane dependency.
+- sdk/templates/provider: starting point for a third-party Provider.
+- schemas: structural artifact schemas only; resolver/compiler/verifier/runtime own semantic safety.
+- types/registry.json: single source of truth for executable payload types.
+- tests/unit: focused unit and component tests.
+- tests/apps: application and CLI JSON protocol tests.
+- tests/benchmarks and tests/research: Linux-only benchmark/research targets.
+- third_party/intel: Git-LFS Intel IPP/MKL/OpenMP payload and local Conan recipe.
 
-The current repository is the portable foundation; the approved implementation roadmap in
-`docs/architecture/streaming_reconstruction_framework_plan.md` adds the four application
-projects `ksj`, `ksj-gateway`, `ksj-recon`, and `ksj-research`, plus the
-runtime, Provider SDK, and minimal open reference providers. Providers are independently
-shipped dynamic-library plugins loaded by `ksj-recon`. Do not reintroduce legacy DPC
-applications, obsolete private formats, proprietary queue tables,
-private protocols, BRF/ComQ compatibility, or proprietary reconstruction algorithms.
-Providers own substantive reconstruction algorithms. Reference providers and paper
-matched kernels must remain minimal, open, independently verifiable, and outside the
-private historical algorithm surface.
+## Naming and product boundaries
 
-When `KSJ_BUILD_APPLICATIONS=ON`, all four application targets are built and installed.
-`ksj-research` remains an experiment-oriented outer runner: it must not become a
-runtime or data-plane dependency of `ksj`, `ksj-gateway`, or `ksj-recon`.
-`KSJ_BUILD_RESEARCH` remains the independent switch for `tests/research` only.
+- Project/display name: KSpaceJet.
+- C++ namespace and internal CMake target prefix: ksj / KSJ_.
+- Public CMake aliases: KSpaceJet::feature.
+- Public include root: kspacejet/.
+- Directories: kspacejet-*; executable names: ksj or ksj-*.
 
-## Naming
+Do not reintroduce legacy DPC applications, proprietary queue tables, private protocols, BRF/ComQ compatibility, old replay formats, or proprietary reconstruction algorithms. Providers own substantive reconstruction algorithms. Host ingress, buffering, ordering, admission, egress and sink delivery are runtime facilities, not Provider Operators.
 
-- Project/display name: `KSpaceJet`.
-- C++ namespace and internal CMake target prefix: `ksj` / `KSJ_`.
-- Public CMake aliases: `KSpaceJet::feature`.
-- Public include root: `kspacejet/`.
-- Directory names: `kspacejet-*`; executable output names: `ksj` or `ksj-*`.
+Do not claim the following without an ACCEPTED work item in the canonical plan: public online service, gateway relay, Provider isolation, strict-online, deadline-qualified behavior, GPU scheduling, 256-channel capacity, clinical/diagnostic use, or throughput/latency guarantees.
 
 ## Pre-release evolution
 
-KSpaceJet is actively under development, incomplete, and unreleased. Treat
-every project-owned ABI, API, artifact, schema, CMake target, installation
-path, and source-layout decision as mutable.
+KSpaceJet is incomplete and unreleased. Treat every project-owned ABI, API, artifact, schema, CMake target, installation path and source-layout decision as mutable.
 
-**Default rule for every future change:** replace the old shape with the one
-current shape everywhere in the repository. Do not implement forward
-compatibility or backward compatibility. Do not add migration shims,
-deprecated spellings, aliases, adapters, version negotiation, dual
-parsers/serializers, or parallel formats unless the user explicitly requests
-that compatibility in the current task.
+Default rule: replace the old shape with the one current shape everywhere. Do not add forward/backward compatibility, migration shims, deprecated spellings, aliases, adapters, version negotiation, dual parsers/serializers, dual JSON fields or parallel formats unless the user explicitly asks for compatibility in the current task.
 
-- Prefer one accurate name over aliases, deprecated spellings, compatibility
-  headers, dual JSON fields, or transitional adapters.
-- When a term is wrong or overly broad, rename it consistently across source
-  directories, CMake targets, public headers, schemas, canonical JSON,
-  compiler/verifier logic, fixtures, tests, documentation, and diagnostic
-  text in the same change.
-- Do not preserve an old name merely because it appears in the working tree.
-  Current project-owned APIs, schemas, artifacts, TypeRefs, contract files,
-  and generated symbols are intentionally unversioned. Do not introduce
-  numbered release suffixes, ABI-major fields, compatibility aliases, or
-  parallel versioned files while the project remains unreleased.
+- Prefer one accurate name over aliases.
+- Rename consistently across source, CMake targets, headers, schemas, canonical JSON, compiler/verifier logic, fixtures, tests, docs and diagnostics.
+- Do not introduce numbered ABI/API generations, compatibility headers or transitional formats simply because old code exists.
+
+## Autonomous delivery and progress tracking
+
+docs/architecture/KSpaceJet_project_plan_and_acceptance.md is the canonical execution ledger for this repository. It owns the active roadmap, stable work-item IDs, dependencies, scope, acceptance criteria, required validation, evidence, handoff state and completion status. Existing architecture documents remain technical references; they do not independently change work-item status.
+
+Read this AGENTS.md and the canonical plan at the start of every non-trivial task. Resume from its IN_PROGRESS, BLOCKED and READY entries; do not rely on conversation history and do not create a competing TODO list, status file or unchecked implementation plan.
+
+### State machine
+
+Use only PLANNED, READY, IN_PROGRESS, VERIFYING, ACCEPTED, BLOCKED, NOT_APPLICABLE, SUPERSEDED and REOPENED.
+
+- Start only a READY item whose dependencies are ACCEPTED, or whose documented activation predicate has made a dependency NOT_APPLICABLE.
+- Change an item to IN_PROGRESS before its first source edit and record base commit/tree plus the next exact action.
+- Use VERIFYING only after implementation, focused tests, fixtures, registration and documentation are present.
+- Move to ACCEPTED only after every stated acceptance criterion and required validation command passes and exact evidence is in the ledger. Compilation, schema validation, a source directory or a partial test is never enough.
+- If a required platform, CI, fixture, device, decision, credential or public binding is absent, use BLOCKED. Record the exact command/output, missing input, impact and what unblocks it.
+- NOT_APPLICABLE requires its predeclared deterministic activation predicate and evidence. SUPERSEDED requires successor ID and rationale.
+- A regression or invalidated evidence record changes an accepted item to REOPENED. Never edit history or weaken an acceptance rule just to retain ACCEPTED.
+
+### Autonomous work loop
+
+1. Inspect the canonical ledger, current worktree and relevant source/tests. Preserve unrelated user changes.
+2. Select the highest-priority READY item in dependency order. There may be exactly one active IN_PROGRESS item in a worktree.
+3. Confirm scope and contract impact, then mark the item IN_PROGRESS in the ledger.
+4. Implement only that item, including focused tests, fixtures, CMake/registry/catalog registration and docs.
+5. Run the smallest meaningful validation first, then every task-mandated gate. Fix failures within scope; do not weaken tests or criteria.
+6. Review diff, diff check, generated files, schema/type/ABI consistency and allowed-path compliance.
+7. Record exact commands, platform, results, artifacts, limitations and next action; then set ACCEPTED or BLOCKED.
+8. After an accepted item, autonomously select the next READY item. Ask the user only for a material product decision, missing authority, unsafe expansion, unavailable required evidence or conflicting normative requirements.
+
+Never reset, revert, overwrite or discard unrelated user work. Do not commit, push, create a pull request, mutate remote issues, alter repository settings, contact external systems, use credentials, connect a real scanner or change production configuration unless the current user explicitly authorizes that action.
 
 ## Build
 
-Inspect `CMakePresets.json` before configuring. Bootstrap the repository-local developer
-environment before running a VS Code task or any command-line build:
+Inspect CMakePresets.json before configuring. Bootstrap the repository-local developer environment before a VS Code task or a direct build:
 
-```bash
-bash tools/devenv/linux/bootstrap.sh
-```
+    bash tools/devenv/linux/bootstrap.sh
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
-```
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 
-The host prerequisites are Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS,
-Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. `uv`, managed Python,
-and the project tools are repository-local; compilers, Git, and Git LFS are not virtual-
-environment tools. See [tools/devenv/README.md](tools/devenv/README.md) for the ownership and
-offline policy.
+Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. UV, managed Python and project tools are repository-local. Compilers, Git and Git LFS are host tools.
 
-On a minimal Linux host, first bootstrap additionally needs `curl` or `wget`, `tar`, and
-`sha256sum` or `shasum`. VS Code Linux debugging needs host `gdb`; only the optional
-`linux-release-static-analysis` preset needs host `clang++`.
+On minimal Linux, bootstrap also needs curl or wget, tar and sha256sum or shasum. Linux VS Code debugging needs host gdb. The optional linux-release-static-analysis preset needs host clang++.
 
-For direct terminal use, always call the platform runner instead of an arbitrary system
-`conan` or `cmake`. Export local recipes first:
+For direct terminal use, always call the platform runner. Export local recipes before the matching Conan install:
 
-```bash
-tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
-```
+    tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
+    tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export third_party/intel --user=kspacejet --channel=stable
-```
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export third_party/intel --user=kspacejet --channel=stable
 
-Linux uses `conan/profiles/linux-gcc14-release` and `linux-release`; Windows uses
-`conan/profiles/windows-msvc2022-release` and `windows-vs2022-release`. Build the
-smallest affected target through the same runner, for example `ksj_ismrmrd`, `ksj_array` or
-`ksj_mri_debug`.
+Linux product builds use conan/profiles/linux-gcc14-release and linux-release. Windows product builds use conan/profiles/windows-msvc2022-release and windows-vs2022-release. Build the smallest affected target through the runner.
 
-## VS Code build workflow
+Product application builds and unit/benchmark/research test builds are separate CMake trees. Never configure KSJ_BUILD_APPLICATIONS together with KSJ_BUILD_UNIT_TESTS, KSJ_BUILD_BENCHMARKS or KSJ_BUILD_RESEARCH.
 
-In VS Code, first run the visible `KSJ: bootstrap developer environment` task; then, before
-the first application build for a platform/configuration, run its matching preparation task:
+## VS Code workflow
 
-- `KSJ: prepare Linux Debug environment`
-- `KSJ: prepare Linux Release environment`
-- `KSJ: prepare Windows Debug environment`
-- `KSJ: prepare Windows Release environment`
+First run KSJ: bootstrap developer environment. Before the first application build for a platform/configuration, run the matching preparation task:
 
-A preparation task calls the same project bootstrap used by the command line: it verifies the
-Intel payload, exports local recipes, runs `conan install`, and configures CMake for that one build
-directory. Re-run it only when that build directory is absent, or when
-dependencies, local recipes or Intel payloads, CMake configuration/presets, or Conan
-profiles change.
+- KSJ: prepare Linux Debug environment
+- KSJ: prepare Linux Release environment
+- KSJ: prepare Windows Debug environment
+- KSJ: prepare Windows Release environment
 
-The VS Code application build tasks each build all four executables:
-`KSJ: build Linux Debug applications`, `KSJ: build Linux Release applications`,
-`KSJ: build Windows Debug applications`, and `KSJ: build Windows Release applications`.
-They must remain incremental-build-only tasks: do not make them depend on preparation,
-Conan export/install, or CMake configure. F5 uses the same incremental build path and
-does not prepare an environment; prepare the selected configuration first when needed.
+Preparation verifies Intel payload, exports recipes, runs Conan install and configures CMake. Re-run it only after deleting its build directory or changing dependencies, recipes, payload, CMake/preset or profile.
 
-The visible VS Code application install tasks are `KSJ: install Linux Debug applications`,
-`KSJ: install Linux Release applications`, `KSJ: install Windows Debug applications`, and
-`KSJ: install Windows Release applications`. Each install task must depend only on its
-matching incremental application-build task, never on preparation, Conan export/install,
-or CMake configure. It runs the matching CMake install preset and installs to that
-preset's `CMAKE_INSTALL_PREFIX`: respectively `out/install/linux-debug`,
-`out/install/linux-release`, `out/install/windows-vs2022-debug`, and
-`out/install/windows-vs2022-release`.
+Application build tasks build all four executables incrementally:
 
-Do not use `KSJ_BUILD_RESEARCH` to enable `ksj-research`; that option controls only
-`tests/research`.
+- KSJ: build Linux Debug applications
+- KSJ: build Linux Release applications
+- KSJ: build Windows Debug applications
+- KSJ: build Windows Release applications
+
+They must not implicitly run bootstrap, Conan export/install or configure. F5 uses the same incremental path. Application install tasks must depend only on their matching incremental application build task.
+
+KSJ_BUILD_RESEARCH controls tests/research only; it does not control the installed ksj-research executable.
 
 ## Engineering rules
 
-- Every application executable parses its command line with `CLI11::CLI11`.
-  Define each supported command, subcommand, option, positional argument, and
-  validation rule declaratively in CLI11; do not add hand-written `argv`
-  scanning, token loops, fallback parsers, or undocumented command aliases.
-  `--help`/`-h` and `--version` are the standard global surface. A command that
-  needs machine-readable results exposes its documented `--format text|json`
-  option; JSON command output is a protocol for callers, not a log format.
-  Keep command-specific validation in the application or its owning library
-  rather than duplicating a parser in a separate utility target.
-- `ksj provider init <provider-slug> <operator-id> --output <directory>` is
-  the canonical way to start a Provider. It copies the installed Provider
-  template into a new, non-existing directory, validates names, and never
-  overwrites or silently adds a project to the catalog. Complete the explicit
-  typed ports, configuration grammar, CMake registration, and tests after
-  scaffolding; do not turn the generated skeleton into a compatibility
-  template.
-- Put project-owned cross-platform behavior in `libs/core/kspacejet-platform`.
-  Applications, Providers, and domain libraries call a semantic platform API;
-  they do not include OS headers or carry `#ifdef _WIN32`/`__linux__` branches
-  for filesystem, process, dynamic-library, socket, or system operations.
-  Keep the operating-system headers and conditional implementation private to
-  the platform layer, with focused platform tests for its shared behavior.
-- Treat `libs/core/` as the canonical home for project-wide foundation
-  capabilities. Before adding a cross-cutting facility to an application,
-  Provider, or domain library, first use the existing core component; if its
-  semantic API is insufficient, extend that core component with a focused
-  public API and tests instead of duplicating the facility at a leaf.
-  In particular, all production diagnostic logging uses
-  `<kspacejet/logging/logging.hpp>` and `KSJ_LOG_*`/`ksj::logging`; no
-  application, Provider, or domain library may introduce a direct `spdlog`
-  dependency or a private logger. Configure the process-global logger once at
-  a process entrypoint; dynamically loaded Providers only emit through that
-  already-configured logger. Core diagnostic records and configured log files
-  use plain text; console diagnostics use `stderr`. A CLI running with
-  `--format json` emits its structured success or failure report on `stdout`,
-  leaving `stderr` available for core diagnostics; text-mode errors may use
-  `stderr`. Neither stream is an internal logging substitute. The sole
-  exception is core crash/signal handling: its
-  async-signal-safe emergency write may use the minimal platform/stdio path
-  and must never call the normal logger from a signal context.
-- A Provider is one independently loadable dynamic-library, trust, and
-  lifecycle boundary. An Operator is one single-purpose pipeline callable
-  owned by that Provider. Group Operators only when they share a coherent
-  domain, ABI, resource/lifecycle model, and release/trust boundary; do not
-  turn a Provider into an unrelated algorithm grab bag.
-- Every Provider uses the functional source layout: `src/provider_entry.cpp`
-  contains only the exported `ksj_provider_query` ABI boundary;
-  `src/provider_api.hpp` declares the Provider API boundary used by that
-  entrypoint; `src/provider_api.cpp` owns Provider descriptor construction,
-  Operator registration, and Provider-level dispatch; and
-  `src/provider_state.hpp` contains only Provider-shared private state and the
-  concrete definitions of ABI-opaque handles. Every Operator, including the
-  first and only Operator in a Provider, has both
-  `src/operators/<operator>.hpp` (its private descriptor/lifecycle
-  declarations) and `src/operators/<operator>.cpp` (its implementation).
-  A single-Operator Provider binds the API table directly to its Operator
-  callbacks instead of adding forwarding wrappers. Reuse the SDK-private
-  `<kspacejet/provider/detail/provider_support.hpp>` utilities for generic ABI
-  validation and error handling. Code genuinely shared by several Operators
-  lives under `src/support/<meaningful-domain>.{hpp,cpp}` and is named for its
-  function; never use a catch-all `provider_internal.*` or
-  `provider_common.*`. Namespaces follow the same functional boundary:
-  `api`, `operators`, `state`, or a meaningful domain name—never
-  `provider_internal`. No algorithm belongs in the ABI entrypoint or a
-  catch-all Provider source file.
-- `types/registry.json` is the single source of truth for every executable
-  payload type. Provider-owned OperatorContract ports author only a readable
-  `type_ref`; Provider C/C++ code obtains the complete ABI descriptor through
-  the generated `<kspacejet/provider/type_registry.h>` factories and matchers.
-  Never hand-copy a type layout, type identity digest, or schema digest into a
-  Provider, contract, test, or runtime call site. A semantic type change
-  requires a new distinct TypeRef and regenerated headers; run
-  `python3 tools/type_registry/generate.py --project-root . --check` before
-  handing off a type-registry change.
-- Start new Providers from `sdk/templates/provider/` and, for every Operator
-  intended for Pipeline resolution, keep one Provider-owned OperatorContract
-  JSON file under `contracts/`. A pure ABI conformance fixture may omit a
-  pipeline contract only when its README explicitly says it is not
-  resolvable. Add focused tests for every Operator and update its Provider
-  descriptor, CMake source list, contract installation list, and
-  documentation in the same change.
-- `providers/catalog.json` is the canonical product map of Provider and
-  Operator identities. Use it before adding an Operator: group it with an
-  existing Provider only when its data domain, ABI, lifecycle, resource model,
-  and release/trust boundary are genuinely the same; otherwise reserve a new
-  Provider. Host ingress, buffering, ordering, admission, egress, and sink
-  delivery are runtime facilities, never Provider Operators.
-- `providers/interfaces/` reserves planned Operator boundaries. An
-  `OperatorInterface` is deliberately non-executable: it is not an
-  `OperatorContract`, bundle manifest, loader descriptor, or Pipeline input.
-  Never add a planned-only Operator to a compiled Provider descriptor, CMake
-  module, ResolvedPipeline, or ExecutionPlan. Promote it atomically only when
-  its exact contract, ABI implementation, resource/terminal semantics, tests,
-  and catalog state are ready; then remove the planned interface entry rather
-  than retaining an alias or duplicate source of truth.
-- Keep raw acquisition handling streaming. `AcquisitionView` spans are valid only during
-  their callback; do not retain them past that point.
-- Keep HDF5 replay and the selected public MRD session semantically equivalent at the
-  runtime-frame boundary. Backpressure/resource accounting is process-internal and must
-  not create private wire messages.
-- Favor buffer reuse, contiguous traversal and benchmark-backed backend selection in hot
-  paths. Avoid avoidable allocations, copies and thread oversubscription.
-- Eigen is the general numerical baseline. Intel, FFTW, OpenCV, ITK and MATIO stay behind
-  private implementation boundaries when possible.
-- Public headers expose mathematical semantics and KSpaceJet views/types, not vendor types.
+### CLI and output
+
+- Every application parses command lines with CLI11. Define every command, subcommand, option, positional argument and validation rule declaratively. Do not hand-scan argv or add undocumented aliases.
+- Help and version are global. Machine-readable results use documented format text or json options.
+- CLI JSON success/failure output goes only to stdout. Core diagnostics go to stderr. Do not mix log records into JSON stdout.
+- A command that is only a scaffold must state that in help and JSON; it must not return a success that callers could interpret as an implemented service.
+- Keep command-specific semantics in its owning app/library, not in a duplicate utility runtime.
+
+### Platform, core and logging
+
+- Put project-owned cross-platform behavior in libs/core/kspacejet-platform. Apps, Providers and domain libraries call semantic platform APIs, not OS headers or local platform ifdefs.
+- Reuse an existing core capability before adding a cross-cutting leaf implementation. If the core API is insufficient, extend core with tests.
+- Production diagnostics use kspacejet/logging/logging.hpp and KSJ_LOG or ksj::logging. Do not introduce direct spdlog use outside the logging layer.
+- Core diagnostics and configured log files are plain text. Console diagnostics use stderr. CLI JSON output is a caller protocol, not a log format.
+- Machine-readable observability belongs in metrics, trace, audit artifacts, RunRecord and documented CLI JSON. Do not make a second conflicting structured-log policy.
+- Crash/signal emergency writes may use only async-signal-safe minimal paths; they must not call the normal logger.
+
+### Data, runtime and resource semantics
+
+- Keep raw acquisition handling streaming. An AcquisitionView or span is valid only inside its callback; do not retain it across an asynchronous boundary.
+- Runtime materializes host-owned data before an async Provider call. Providers must not open sources, retain borrowed reader views or create unaccounted pools.
+- HDF5 replay and any future host-submitted normalized ISMRMRD input must be semantically equivalent at the runtime-frame boundary. Process-internal backpressure accounting must not create a private wire message.
+- Every queue, pool, frame slot, batch, spool and device buffer needs item and charged-byte bounds. No unbounded queue, hidden buffer or silent raw acquisition drop.
+- Maximum acquisition count is a resource bound, not a frame completion predicate. Completion must be scan/plan-specific and explicit.
+- A Provider cannot bypass host output grants, resource ledger, plan or lifecycle. All fan-out, merge, reorder, partial output and terminal behavior must be explicit and verified.
+- Do not claim GPU/NUMA/parallel behavior without the corresponding accepted DevicePlan, MachinePolicy, capability and fault/cancel evidence.
+
+### Providers
+
+- A Provider is one independently loadable dynamic-library, trust and lifecycle boundary. An Operator is one single-purpose pipeline callable.
+- Group Operators only when data domain, ABI, lifecycle, resource model and release/trust boundary genuinely match.
+- Provider entry layout is mandatory: src/provider_entry.cpp only exports ksj_provider_query; src/provider_api.hpp declares the API boundary; src/provider_api.cpp owns descriptors/registration/dispatch; src/provider_state.hpp contains Provider-shared private state and ABI-opaque handles.
+- Every Operator, including a single-Operator Provider, has src/operators/name.hpp and src/operators/name.cpp. Shared code belongs in a meaningful src/support domain file; never use provider_internal or provider_common catch-alls.
+- Reuse provider_support.hpp for generic ABI validation/error handling. No algorithm belongs in the ABI entrypoint.
+- types/registry.json is the sole source of executable payload types. Provider contracts use readable type_ref; Provider C/C++ gets layouts and matchers from generated type registry factories. Never hand-copy type layout or digest.
+- A type semantic change creates a distinct TypeRef and updates registry, generated headers, schema, contracts, fixtures, tests and callers together. Run:
+
+    python3 tools/type_registry/generate.py --project-root . --check
+
+- Start new Providers from sdk/templates/provider. Every resolvable Operator has one Provider-owned contract under contracts, focused tests, catalog entry, CMake source/install registration and documentation.
+- providers/catalog.json is the canonical product map. Planned interfaces in providers/interfaces are non-executable reservations; do not put them in an executable descriptor, CMake module, ResolvedPipeline or ExecutionPlan until promotion is atomically complete.
+- The current in-process loader is not a fault boundary. Do not claim that untrusted, crashing or hanging Providers have a qualified isolation boundary until worker/supervisor isolation has separately passed its plan task.
+
+### Numerical and performance work
+
+- Favor buffer reuse, contiguous traversal, bounded allocation and benchmark-backed backend selection in hot paths.
+- Avoid unnecessary copies, allocations and thread oversubscription.
+- Eigen is the public numerical baseline. Intel, FFTW, OpenCV, ITK and MATIO stay behind private implementation boundaries where possible; public headers expose KSpaceJet semantics, not vendor types.
+- Correctness and resource bounds precede performance claims. A microbenchmark, an unrecorded run or a non-target machine is not a service latency/throughput proof.
+- Any capacity claim, including 256 channels, must cite TargetEnvelope, MachinePolicy, input case, resource model, actual high-water and benchmark evidence.
+
+### ABI, schema and change control
+
 - Consider Linux shared-library and Windows DLL symbol boundaries for every CMake change.
-- Use `apply_patch` for manual edits; do not revert unrelated worktree changes.
+- JSON Schema validates structure. Resolver/compiler/verifier/runtime tests prove semantic safety. Always provide both valid and schema-valid/semantic-invalid fixtures when relevant.
+- Any public API, C ABI, schema, TypeRef, CMake install surface, CLI JSON or artifact digest change must be recorded as contract impact in the active work item, with all direct registrations, docs and tests updated in the same change.
+- Do not add a compatibility shim to hide an incomplete migration. Replace the old shape throughout the repository.
 
-## Validation
+## Validation matrix
 
-- Documentation: `git diff --check`.
-- CMake: configure the relevant preset or a clean equivalent build directory.
-- ISMRMRD reader: build/run `ksj_ismrmrd_tests` when dependencies are available.
-- Intel recipe: create it with Linux and Windows Conan profiles; no system oneAPI install
-  should be required.
+Choose the smallest relevant test first and then the complete acceptance gates from the active work item.
 
-Do not commit `out/`, generated reports, cache files or reconstruction outputs.
+| Change | Minimum validation |
+| --- | --- |
+| Markdown or plan document | git diff --check, path/link check and matching ledger update. |
+| C++ unit implementation | relevant linux-release-unit-tests configure/build and ctest -R; full unit suite before phase acceptance. |
+| Application or CLI | independent linux-release-app-tests tree, JSON protocol test and help/format contract. |
+| Schema, pipeline or graph | valid/invalid fixtures, parser/graph tests and semantic verifier tests. Schema syntax alone is insufficient. |
+| TypeRegistry | registry plus generated headers and generator check. |
+| Provider | catalog/identity validation, contract, CMake registration and loader/provider focused tests. |
+| CMake, Conan or install | formatter, relevant preset configure and Linux/Windows installation/dynamic-dependency evidence where applicable. |
+| Runtime/concurrency | resource bounds, normal/cancel/error terminal tests, serial oracle and sanitizer/TSAN when required by the work item. |
+| Host-submitted incremental input | normalized in-process ISMRMRD vectors, admission/cancel/callback and bounded-backpressure tests. No socket, session, relay or private wire message. |
+| Performance | correctness first; record hardware, preset, threads, input, baseline, raw samples and statistics. |
+
+Useful standard checks:
+
+    git diff --check
+    bash tools/checks/linux/format_check.sh --changed HEAD^
+    bash tools/checks/linux/ci_unit.sh
+    bash tools/checks/linux/ci_check.sh
+    bash tools/checks/linux/ci_full.sh
+
+Do not commit out/, generated reports, cache files, benchmark output or reconstruction output.
+
+## Final handoff discipline
+
+At the end of a task, report the completed work-item ID, changed public behavior, exact validation performed, evidence location, remaining limitations and next READY item. Do not state that a phase, mode or project is complete unless the canonical ledger shows every required task ACCEPTED.
+
+Use apply_patch for manual edits. Do not revert unrelated worktree changes.

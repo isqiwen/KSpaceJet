@@ -1,7 +1,7 @@
 {
   "kind": "VerificationRecord",
   "execution_plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "execution_profile": "bounded-online",
+  "execution_profile": "bounded-reconstruction-graph",
   "verified_resource_vector": {
     "host_normal_bytes": 33554432,
     "host_pinned_bytes": 0,

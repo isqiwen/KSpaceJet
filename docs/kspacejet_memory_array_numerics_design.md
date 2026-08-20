@@ -6,13 +6,13 @@
 
 ```mermaid
 flowchart TB
-    mriMathLayer["libs/mri/kspacejet-math：MRI 数学与历史兼容"]
+    mriDomainLayer["MRI/reconstruction domain modules：业务语义（不承载通用 numerics）"]
     numericsLayer["libs/numerics/kspacejet-numerics：聚合能力域 target 和 umbrella header"]
     domainLayer["数值能力域：公开算法、后端派发与 benchmark policy"]
     arrayLayer["libs/numerics/kspacejet-array：row-major Pooled/View 对象"]
     memoryLayer["libs/core/kspacejet-memory：NUMA 内存池、placement、生命周期与诊断"]
 
-    mriMathLayer --> numericsLayer --> domainLayer --> arrayLayer --> memoryLayer
+    mriDomainLayer --> numericsLayer --> domainLayer --> arrayLayer --> memoryLayer
 ```
 
 核心职责可以概括为：
@@ -24,7 +24,7 @@ flowchart LR
     responsibility --> arrayRole["kspacejet-array：池化内存的 row-major Pooled/View 语义"]
     responsibility --> domainRole["数值能力域：数学运算与最快后端选择"]
     responsibility --> numericsRole["kspacejet-numerics：统一依赖入口"]
-    responsibility --> mriMathRole["kspacejet-math：MRI 业务数学与历史兼容"]
+    responsibility --> mriDomainRole["MRI/reconstruction domain：业务语义，调用 numerics"]
 ```
 
 设计目标不是把所有能力塞进一个巨大的数学类，而是把内存、数据视图和算法调度拆成可组合的底层能力。上层 MRI 模块可以基于这些能力表达 k-space、image、coil、slice、echo、workspace 等业务概念，但这些业务语义不进入 `libs/core` 或 `libs/numerics`。
@@ -116,7 +116,8 @@ flowchart TB
   column-major View 入口。
 - `kspacejet-memory` 只负责内存生命周期、NUMA placement 和诊断，不解释 shape 或矩阵语义。
 - `kspacejet-linalg`、`kspacejet-fft` 等算法模块只依赖公开的池化对象接口，不感知 MRI 语义。
-- MRI 业务层可以在靠近业务的位置定义更具体的别名，但不应把通用转发头放回 `libs/mri/kspacejet-math/include/linear_algebra`。
+- MRI 业务层可以在靠近业务的位置定义更具体的别名，但不应恢复历史
+  `libs/mri/kspacejet-math/include/linear_algebra` 通用转发头。
 
 ## kspacejet-memory
 
@@ -320,7 +321,7 @@ tools/devenv/linux/run.sh python tools/ksj_numerics_benchmark/run.py \
 
 ## MRI 侧使用边界
 
-`libs/mri/kspacejet-math/include/linear_algebra` 不再放以下通用头文件：
+已移除的历史 `libs/mri/kspacejet-math/include/linear_algebra` 不应恢复以下通用头文件：
 
 - `array_algorithms.hpp`
 - `array_backend.hpp`
@@ -386,13 +387,12 @@ MRI 代码如果只是调用通用算法，也应优先包含：
 
 ### 第二阶段：业务别名靠近业务
 
-MRI 侧如果需要 `KSpace4D`、`CoilImageCube` 这类业务名字，应放在对应 reconstruction/domain 模块中。通用池化对象属于 `kspacejet/array/array.hpp`，不要放回 `libs/mri/kspacejet-math/include/linear_algebra`。
+MRI 侧如果需要 `KSpace4D`、`CoilImageCube` 这类业务名字，应放在对应 reconstruction/domain 模块中。通用池化对象属于 `kspacejet/array/array.hpp`，不要在 MRI 层恢复历史 `libs/mri/kspacejet-math/include/linear_algebra` 路径。
 
 ### 第三阶段：避免新增 MRI generic 转发
 
 `linear_algebra/array_algorithms.hpp`、`array_backend.hpp`、`sparse_array_bridge.hpp` 和 `pooled_array.hpp`
-这类通用 numerics 转发头不应继续放回 `libs/mri/kspacejet-math/include/linear_algebra`。旧
-`kspacejet-math` 实现保持原样；新调用点和已经完成验证的调用点应直接使用 `kspacejet/array` 或对应能力域模块的正式入口。
+这类通用 numerics 转发头不应在 MRI 层恢复。历史 `kspacejet-math` 模块已移除；新调用点和已经完成验证的调用点应直接使用 `kspacejet/array` 或对应能力域模块的正式入口。
 
 ### 第四阶段：用 benchmark 扩展后端
 

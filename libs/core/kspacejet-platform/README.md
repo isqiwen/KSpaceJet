@@ -16,7 +16,7 @@
 - 同一文件系统内、绝不替换目标目录的原子目录发布。
 - 环境变量默认值设置。
 
-Linux 是完整测试和运行治理主平台。Windows VS2022 构建用于 `apps/` 下四个进程和 `tools/batch_recon_studio`；新增平台 API 时必须同时说明 Linux 语义和 Windows fallback 行为。
+Linux 是完整测试和运行治理主平台。Windows VS2022 构建覆盖 `apps/` 下四个应用 target；新增平台 API 时必须同时说明 Linux 语义和 Windows fallback 行为。
 
 ## Public API
 

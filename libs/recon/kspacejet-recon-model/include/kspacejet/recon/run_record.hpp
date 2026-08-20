@@ -84,7 +84,7 @@ private:
 
 struct RunRecordSpec {
   std::string run_id;
-  ExecutionProfile execution_profile = ExecutionProfile::bounded_online;
+  ExecutionProfile execution_profile = ExecutionProfile::bounded_reconstruction_graph;
 
   // A pre-admission terminal record may legitimately be created before the
   // corresponding plan or verifier artifact exists.  Once a later identity

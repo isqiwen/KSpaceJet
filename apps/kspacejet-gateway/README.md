@@ -1,16 +1,9 @@
 # `ksj-gateway`
 
-`ksj-gateway` is the integration boundary between KSpaceJet and real deployment
-systems. It authenticates and supervises external connections, applies site routing,
-coordinates with reconstruction-service admission, and routes standard images to the configured
-external connector.
+`ksj-gateway` is an installed KSpaceJet application scaffold. Its help and JSON help report
+`status: "scaffold"`; `--version` is available, while a requested `--config` operation returns
+an `unimplemented` error.
 
-The gateway does not own reconstruction algorithms, Provider buffers, resource
-admission, or the reconstruction scheduler. Its data-plane contract is the frozen
-public MRD/ISMRMRD streaming-session binding; it must not introduce a private
-KSpaceJet raw-data envelope. Proprietary scanner or hospital-system adaptation belongs
-in separately deployed site connectors upstream or downstream of this process.
-
-When a scanner can connect directly with the public MRD binding, deployment may bypass
-the gateway for the lowest possible latency. Gateway-mode copy and hop costs are measured as
-end-to-end deployment behavior rather than attributed to the core runtime.
+It does not implement external-system integration, authentication, connection supervision,
+routing, image delivery, a data-plane service, session forwarding, Connector management, or
+scanner integration. It must not be treated as evidence of a gateway or transport capability.

@@ -252,7 +252,8 @@ Toeplitz/preconditioner 或 FINUFFT/MKL 候选后端，也必须放在 detail/so
 
 ## 迁移原则
 
-`libs/mri/kspacejet-math` 中已有很多纯数学实现，但迁移时不直接改旧实现。新模块应在 `libs/numerics` 下基于池化对象和现代后端重新实现同等数学能力，然后通过测试和 benchmark 验证后，再逐步让调用侧迁移。
+已移除的历史 `kspacejet-math` 模块曾承载许多纯数学实现，但迁移时不直接恢复旧实现。新模块应在
+`libs/numerics` 下基于池化对象和现代后端重新实现同等数学能力，然后通过测试和 benchmark 验证后，再逐步让调用侧迁移。
 
 可以迁入：
 

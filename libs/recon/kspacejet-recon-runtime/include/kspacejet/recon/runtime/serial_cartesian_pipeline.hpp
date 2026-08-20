@@ -20,10 +20,10 @@ namespace ksj::recon::runtime {
 inline constexpr std::size_t kSerialCartesianAcquisitionLaneCount =
   static_cast<std::size_t>(AcquisitionLane::ignored_explicitly) + 1U;
 
-// Facts observed at public-ingress materialization.  These values are kept
-// vendor-free so every public MRD/ISMRMRD adapter can present the same runtime
-// boundary.  `complete` distinguishes a real zero-valued field from an
-// adapter that did not obtain the public acquisition header facts at all.
+// Facts observed at host-owned ISMRMRD input materialization. These values are
+// vendor-free so every supported input path can present the same runtime
+// boundary. `complete` distinguishes a real zero-valued field from an input
+// path that did not obtain acquisition header facts at all.
 struct NormalizedAcquisitionIngressFacts {
   std::uint64_t samples_per_acquisition{0};
   std::uint64_t active_channels{0};
@@ -32,8 +32,8 @@ struct NormalizedAcquisitionIngressFacts {
 };
 
 // A normalized Cartesian acquisition is an in-process runtime value, not a
-// wire message.  Public ISMRMRD/MRD adapters decode their input into this
-// view before calling submit().  `payload` is copied synchronously into a
+// wire message. An HDF5 reader or future in-process host adapter decodes its
+// input into this view before calling submit(). `payload` is copied synchronously into a
 // FrameSlot and is never retained by the pipeline.
 struct NormalizedCartesianAcquisitionFrame {
   AcquisitionClassificationInput classification_input{};
@@ -95,7 +95,7 @@ struct SerialFrameTerminalRecord {
 struct SerialCartesianPipelineConfig {
   AcquisitionClassifierConfig classifier{};
 
-  // An admitted plan supplies its scanner/site-owned envelope here.  It is
+  // An admitted plan supplies its caller-owned envelope here. It is
   // optional only to retain the standalone M1 primitive for tests and for
   // callers that have not yet constructed a plan.  When present, create()
   // validates FrameSlot storage before allocation and submit() requires
@@ -122,7 +122,7 @@ struct SerialCartesianPipelineConfig {
 };
 
 struct SerialCartesianPipelineSnapshot {
-  ScanState state{ScanState::session_candidate};
+  ScanState state{ScanState::input_candidate};
   TerminalCause terminal_cause{TerminalCause::none};
   std::size_t active_frames{0};
   std::size_t terminal_frames{0};
@@ -159,7 +159,7 @@ public:
   // produce an auditable bounded record.
   [[nodiscard]] ksj::base::Result<SerialIngressReceipt> submit(const NormalizedCartesianAcquisitionFrame& frame);
 
-  // Allocation-free ingress validation for an already materialized public
+  // Allocation-free ingress validation for an already materialized
   // acquisition.  It does not change scan lifecycle state or reserve a
   // FrameSlot, so an adapter may invoke it before resolving a frame context.
   // submit() invokes the same check before classification, audit retention,

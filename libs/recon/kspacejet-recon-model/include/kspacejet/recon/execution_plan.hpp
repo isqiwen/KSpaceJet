@@ -583,9 +583,9 @@ private:
 struct ExecutionPlanSpec {
   PlanInputDigestSpec inputs;
   std::vector<OperatorPlanBindingSpec> operator_plan_bindings;
-  ExecutionProfile execution_profile = ExecutionProfile::bounded_online;
-  // Each node has named input and output bindings; dynamic transport and
-  // static calibration are explicit distinct source kinds.
+  ExecutionProfile execution_profile = ExecutionProfile::bounded_reconstruction_graph;
+  // Each node has named input and output bindings; dynamic in-process handoff
+  // and static calibration are explicit distinct source kinds.
   std::vector<SynchronousNodePlanSpec> synchronous_node_plans;
   std::vector<SynchronousBufferPoolPlanSpec> synchronous_buffer_pool_plans;
   std::vector<SynchronousDataEdgePlanSpec> synchronous_data_edge_plans;
@@ -666,7 +666,7 @@ private:
 
 struct VerificationRecordSpec {
   std::string execution_plan_digest;
-  ExecutionProfile execution_profile = ExecutionProfile::bounded_online;
+  ExecutionProfile execution_profile = ExecutionProfile::bounded_reconstruction_graph;
   ResourceVectorSpec verified_resource_vector;
   Quantity verified_terminal_occurrences = 0;
   std::vector<std::string> verified_obligations;

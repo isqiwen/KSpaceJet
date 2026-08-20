@@ -6,6 +6,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -17,6 +20,13 @@ namespace {
   auto parsed = ksj::recon::ArtifactDigest::parse(value, "test digest");
   EXPECT_TRUE(parsed.ok()) << parsed.status();
   return std::move(parsed).value();
+}
+
+[[nodiscard]] std::string read_fixture(const std::string_view relative_path) {
+  const auto path = std::filesystem::path(KSJ_RECON_FIXTURE_DIR) / relative_path;
+  std::ifstream stream(path, std::ios::binary);
+  EXPECT_TRUE(stream.is_open()) << "Unable to open fixture: " << path;
+  return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
 }
 
 [[nodiscard]] ksj::recon::ScanDescriptor scan_descriptor() {
@@ -86,7 +96,7 @@ namespace {
                           .host_total_cap_bytes = 1U << 20U},
     .numa_domain_count = 1U,
     .allowed_memory_domains = {ksj::recon::MemoryDomain::host},
-    .allowed_profiles = {ksj::recon::ExecutionProfile::bounded_online},
+    .allowed_profiles = {ksj::recon::ExecutionProfile::bounded_reconstruction_graph},
     .scheduler_policy = ksj::recon::SchedulerPolicy::fifo,
   });
   EXPECT_TRUE(result.ok()) << result.status();
@@ -236,12 +246,12 @@ struct TestInputs final {
   std::vector<ksj::recon::NodePlanningRequirementsBinding> requirements;
 };
 
-[[nodiscard]] TestInputs test_inputs() {
-  constexpr std::string_view pipeline_json = R"json(
+[[nodiscard]] TestInputs test_inputs(const std::string_view pipeline_document = {}) {
+  constexpr std::string_view default_pipeline_json = R"json(
 {
   "kind":"PipelineDefinition",
   "pipeline":{"id":"org.example.noncartesian","display_name":"Non-Cartesian join"},
-  "allowed_profiles":["bounded-online"],
+  "allowed_profiles":["bounded-reconstruction-graph"],
   "parameters":{},
   "provider_requirements":[{"alias":"recon","provider_id":"org.example.recon"}],
   "nodes":[
@@ -262,7 +272,8 @@ struct TestInputs final {
   "annotations":{}
 }
 )json";
-  auto definition = ksj::recon::graph::PipelineDefinition::parse_json(pipeline_json);
+  const auto document = pipeline_document.empty() ? default_pipeline_json : pipeline_document;
+  auto definition = ksj::recon::graph::PipelineDefinition::parse_json(document);
   EXPECT_TRUE(definition.ok()) << definition.status();
   auto resolved = ksj::recon::graph::ResolvedPipeline::resolve(std::move(definition).value(), {provider()});
   EXPECT_TRUE(resolved.ok()) << resolved.status();
@@ -280,7 +291,7 @@ struct TestInputs final {
 
 [[nodiscard]] ksj::recon::graph::PlanBuildRequest request_for(const TestInputs& inputs) {
   return {.resolved_pipeline = inputs.resolved_pipeline,
-          .requested_profile = ksj::recon::ExecutionProfile::bounded_online,
+          .requested_profile = ksj::recon::ExecutionProfile::bounded_reconstruction_graph,
           .scan_descriptor = inputs.scan,
           .target_envelope = inputs.envelope,
           .machine_policy = inputs.policy,
@@ -404,6 +415,17 @@ TEST(SynchronousGraphPlan, RejectsAnUnboundDeclaredInputInsteadOfTreatingItAsOpt
   const auto build_request = request_for(inputs);
   auto compiled = ksj::recon::graph::ExecutionPlanCompiler::compile(build_request);
   EXPECT_FALSE(compiled.ok());
+}
+
+TEST(SynchronousGraphPlan, RejectsSchemaValidPipelineWithUnboundContractPortFixture) {
+  // pipeline.schema.json deliberately cannot know a Provider's typed ports.
+  // Parsing and resolution therefore succeed, while the compiler must reject
+  // the fixture's ingress endpoint because no resolved contract owns it.
+  auto inputs = test_inputs(read_fixture("invalid/pipeline-semantic-unbound-contract-port.json"));
+  const auto build_request = request_for(inputs);
+  auto compiled = ksj::recon::graph::ExecutionPlanCompiler::compile(build_request);
+  ASSERT_FALSE(compiled.ok());
+  EXPECT_NE(compiled.status().message().find("Ingress 'unbound'"), std::string::npos);
 }
 
 } // namespace

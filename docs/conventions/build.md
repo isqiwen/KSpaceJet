@@ -100,9 +100,9 @@ The normal application presets build and install all four executables: `ksj`,
 `ksj-gateway`, `ksj-recon`, and `ksj-research`. Their CMake targets are respectively
 `ksj_cli`, `ksj_gateway`, `ksj_recon`, and `ksj_research`.
 
-`ksj-research` is an installed experiment runner for reproducible cross-framework work;
-it must not become a runtime or data-plane dependency of the CLI, gateway, or
-reconstruction service. The VS Code application build tasks each build all four executables:
+`ksj-research` is an installed research-application scaffold; its experiment operations are not
+implemented. It must not become a runtime or data-plane dependency of the other applications.
+The VS Code application build tasks each build all four executables:
 
 - `KSJ: build Linux Debug applications`
 - `KSJ: build Linux Release applications`

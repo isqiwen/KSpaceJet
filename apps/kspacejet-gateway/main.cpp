@@ -11,14 +11,13 @@ namespace {
 
 constexpr int kExitSuccess = 0;
 constexpr int kExitUsage = 2;
-constexpr int kExitServiceFailure = 5;
+constexpr int kExitOperationUnavailable = 5;
 
 constexpr std::string_view kProgramName{"ksj-gateway"};
-constexpr std::string_view kProgramRole{"KSpaceJet external-system integration gateway"};
-constexpr std::string_view kProgramUsage{"ksj-gateway --config <gateway.json> [--format text|json]"};
+constexpr std::string_view kProgramRole{"KSpaceJet installed scaffold"};
+constexpr std::string_view kProgramUsage{"ksj-gateway [--config <reserved.json>] [--format text|json]"};
 constexpr std::string_view kProgramCommands{
-  "Responsibilities: external-session authentication, connector supervision, routing, and transparent "
-  "public MRD/ISMRMRD session forwarding"};
+  "Reserved scaffold operation: --config <reserved.json> reports an unimplemented result"};
 
 enum class OutputFormat {
   text,
@@ -66,15 +65,15 @@ void print_help(const OutputFormat format) {
     print_json_string(std::cout, kProgramUsage);
     std::cout << ",\"commands\":";
     print_json_string(std::cout, kProgramCommands);
-    std::cout << ",\"status\":\"scaffold\"}\n";
+    std::cout << ",\"status\":\"scaffold\",\"availability\":\"reserved\",\"operations\":\"unimplemented\"}\n";
     return;
   }
 
   std::cout << kProgramName << " — " << kProgramRole << "\n\n"
             << "Usage: " << kProgramUsage << "\n\n"
             << kProgramCommands << "\n\n"
-            << "This executable is a KSpaceJet application skeleton. Use --version or --help; "
-               "operational commands are enabled as their shared runtime contracts are implemented.\n";
+            << "This executable is an installed scaffold. The reserved --config operation is "
+               "unimplemented.\n";
 }
 
 void print_version(const OutputFormat format) {
@@ -128,7 +127,7 @@ int main(int argc, char* argv[]) {
   app.add_option("--format", format, "Output format: text or json")
     ->check(CLI::IsMember({"text", "json"}))
     ->take_last();
-  const auto* config_option = app.add_option("--config", config_path, "Gateway configuration JSON file");
+  const auto* config_option = app.add_option("--config", config_path, "Reserved scaffold operation input");
 
   try {
     app.parse(argc, argv);
@@ -148,9 +147,8 @@ int main(int argc, char* argv[]) {
     return kExitSuccess;
   }
   if (config_option->count() != 0U) {
-    print_error(format_value, "unimplemented",
-                "the requested operational behavior is not available until its shared runtime is implemented");
-    return kExitServiceFailure;
+    print_error(format_value, "unimplemented", "the requested reserved scaffold operation is unimplemented");
+    return kExitOperationUnavailable;
   }
 
   print_help(format_value);

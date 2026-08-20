@@ -12,37 +12,19 @@ own owning framework library, not in a second command-line parser target.
 
 | Source directory | CMake target | Executable | Role |
 | --- | --- | --- | --- |
-| `kspacejet-cli` | `ksj_cli` | `ksj` | User, developer and operations CLI. |
-| `kspacejet-gateway` | `ksj_gateway` | `ksj-gateway` | Integration gateway for external systems and site connectors. |
-| `kspacejet-recon` | `ksj_recon` | `ksj-recon` | Admission, bounded runtime and Provider execution service. |
-| `kspacejet-research` | `ksj_research` | `ksj-research` | Cross-framework experiment runner. |
+| `kspacejet-cli` | `ksj_cli` | `ksj` | Pipeline validation and Provider-scaffold tools. |
+| `kspacejet-gateway` | `ksj_gateway` | `ksj-gateway` | Installed application scaffold; operations are unimplemented. |
+| `kspacejet-recon` | `ksj_recon` | `ksj-recon` | Offline HDF5 Cartesian/non-Cartesian RSS reference executable. |
+| `kspacejet-research` | `ksj_research` | `ksj-research` | Installed research application scaffold; operations are unimplemented. |
 
-```mermaid
-flowchart LR
-    externalSystem["Scanner, PACS or external service"] --> siteConnector["separately deployed site Connector"]
-    siteConnector --> gateway["ksj-gateway"]
-    gateway -->|"public MRD/ISMRMRD session"| recon["ksj-recon"]
-    recon --> runtime["bounded runtime and Provider Operators"]
-    runtime --> recon
-    recon --> gateway
-    gateway --> siteConnector
-    siteConnector --> externalSystem
-    directClient["conforming MRD client or ksj replay"] --> recon
-    cli["ksj"] -.->|"configure, diagnose, replay and operate"| gateway
-    cli -.->|"configure, diagnose and operate"| recon
-    research["ksj-research"] -.->|"external experiment orchestration only"| cli
-```
+`ksj-gateway` and `ksj-research` currently provide only scaffold help/version behavior; a
+requested gateway configuration or research operation reports `unimplemented`. They do not
+implement external-system integration, a data-plane service, session forwarding, Connector
+management, scanner integration, routing, or relay behavior.
 
-`ksj-gateway` does not define or translate a KSpaceJet-private raw-data protocol. It
-accepts or forwards only the selected public MRD/ISMRMRD streaming-session binding;
-site-specific proprietary adaptation must remain in a separately deployed connector.
-`ksj-recon` alone owns scan admission, the resource ledger, backpressure, pipeline
-execution and Provider scheduling. The gateway never chooses an algorithm or directly
-owns Provider buffers.
-
-Each reconstruction extension is a dynamically loaded Provider library (a shared
-library on Linux or DLL on Windows), not a separate KSpaceJet executable. The reconstruction service
-loads compatible trusted Providers in-process through the Provider ABI.
+The current `ksj-recon` reference routes receive caller-selected HDF5 input together with
+explicit Provider modules and OperatorContracts. Provider loading is in-process and is not a
+fault-isolation claim.
 
 The default application build creates and installs `ksj`, `ksj-gateway`, `ksj-recon`,
 and `ksj-research`. The four executables share the same application build and installation
@@ -51,9 +33,9 @@ remains reserved for `tests/research` and does not control any application execu
 
 Each executable implements CLI11 `--help`/`-h`, `--version`, and its documented
 `--format text|json` behavior. JSON is a machine-readable command-result protocol;
-core logging records and log files remain plain text. Operational behavior is added
-only through shared framework libraries; applications must not grow independent
-copies of the planner, runtime, Provider ABI, or MRD data plane.
+core logging records and log files remain plain text. Operational behavior is added only through
+shared framework libraries; applications must not grow independent copies of the planner,
+runtime, or Provider ABI.
 
 When an application is asked for `--format json`, its complete structured command
 report—success or failure—is written to stdout. Runtime diagnostics use the core

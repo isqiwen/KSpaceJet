@@ -20,7 +20,7 @@ namespace {
 [[nodiscard]] AcquisitionClassificationInput
 normalize_classification_input(const ksj::ismrmrd::AcquisitionHeader& header) noexcept {
   return {
-    .message_kind = PublicMrdMessageKind::acquisition,
+    .message_kind = IsmrmrdMessageKind::acquisition,
     .flags =
       {
         .noise_measurement = is_set(header.flags, ISMRMRD::ISMRMRD_ACQ_IS_NOISE_MEASUREMENT),

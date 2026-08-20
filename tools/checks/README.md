@@ -41,6 +41,41 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\checks\windows\pre_c
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\checks\windows\pre_push.ps1
 ```
 
+The pre-commit and Linux CI checks also run the offline Markdown link checker and the
+canonical execution-plan checker. The link checker validates repository-local inline links
+and Markdown heading fragments without fetching external URLs:
+
+```bash
+tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_markdown_links.py --project-root .
+```
+
+Use `--self-test` to run the hermetic checker regression tests, including the negative case
+where a missing relative path must fail the normal command with a nonzero result. The check
+excludes local environments, generated output, and the vendored Intel payload.
+
+The execution-plan checker keeps the progress dashboard in the canonical plan as a generated,
+read-only projection of section 12; it never creates a second status file. After changing a
+work-item state, update section 12 and then regenerate and verify the dashboard:
+
+```bash
+tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --project-root . --write
+tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --project-root . --check
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_execution_plan.py --project-root . --write
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_execution_plan.py --project-root . --check
+```
+
+`--self-test` exercises its parser, section-10/section-12 task-set equality, canonical-plan
+entrypoint references, dashboard regeneration, stale-dashboard rejection, duplicate-ID and
+status rejection, READY dependency validation, and the one-active/one-READY-work-item
+invariants.
+
 Before invoking a CMake-based check, export the local Conan recipes and run `conan install`
 for the matching preset output directory. Use the platform runner for direct terminal
 commands, for example `tools/devenv/linux/run.sh conan install ...` or

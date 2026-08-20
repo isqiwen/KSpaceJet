@@ -11,9 +11,10 @@
 5. [Test Convention](testing.md)
 6. [Benchmark Convention](benchmark.md)
 7. [Numerics API Convention](numerics_api.md)
-8. [Reconstruction State Ownership](reconstruction_state.md)
-9. [Parallelism Convention](parallelism.md)
-10. [Release Convention](release.md)
+8. [Parallelism Convention](parallelism.md)
+
+重建状态所有权由 [PipelineDefinition 与重建流水线设计](../architecture/pipeline_definition.md) 规定；发布和验收状态以
+[canonical execution ledger](../architecture/KSpaceJet_project_plan_and_acceptance.md) 为准。
 
 本目录关注“团队如何协作”和“仓库如何保持一致”。如果某条规则已经被本地 hook 或 CI 自动检查，文档会说明对应脚本入口。
 

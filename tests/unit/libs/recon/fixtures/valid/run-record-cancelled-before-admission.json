@@ -1,7 +1,7 @@
 {
   "kind": "RunRecord",
   "run_id": "scan.pre-admission.cancelled",
-  "execution_profile": "bounded-online",
+  "execution_profile": "bounded-reconstruction-graph",
   "outcome": "cancelled_before_admission",
   "recovery_class": "fail_stop_no_resume",
   "egress_visibility": "none",

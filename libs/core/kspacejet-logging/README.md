@@ -62,6 +62,7 @@ include/kspacejet/logging/logging.hpp
 - 格式化失败时应保持容错，不应因为日志 format error 中断业务路径。
 - 日志初始化应由进程启动层完成，库代码不应随意重新配置全局 logger。
 - 控制台日志统一写入 `stderr`，保留 `stdout` 给 CLI 或其他机器可读协议；结构化命令输出不得与日志混流。
+- Core diagnostic sinks currently accept only `logging.output_format = text`。JSON 是 CLI stdout、metrics、trace、RunRecord 或 audit artifact 的协议，不是第二种 core log 格式。
 - `KSJ_LOG_*` 是诊断路径，格式化、分配或 sink 失败不会向调用方抛出异常，因此可安全用于 `noexcept` 的 Provider ABI 回调和错误处理路径。
 - 普通 `KSJ_LOG_INFO`、`KSJ_LOG_WARN` 和 `KSJ_LOG_ERROR` 调用不应再套同级 `ShouldLog()`；日志宏内部已经检查级别，重复判断只会增加锁和分支。
 - 高频 `KSJ_LOG_DEBUG`/`KSJ_LOG_TRACE` 路径，或日志参数需要昂贵计算、分配和遍历时，应先用对应级别的 `ShouldLog()` 保护参数构造和日志调用。

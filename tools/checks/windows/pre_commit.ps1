@@ -28,6 +28,12 @@ if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE
 }
 
+Write-KSpaceJetNote "checking local Markdown links"
+Invoke-KSpaceJetCommand python tools/checks/check_markdown_links.py --project-root $repoRoot
+
+Write-KSpaceJetNote "checking canonical execution-plan dashboard"
+Invoke-KSpaceJetCommand python tools/checks/check_execution_plan.py --project-root $repoRoot --check
+
 $cmakeFiles = @()
 foreach ($path in $stagedFiles) {
   $fileName = [System.IO.Path]::GetFileName($path)

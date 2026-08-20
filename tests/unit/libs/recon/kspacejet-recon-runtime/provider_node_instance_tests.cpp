@@ -146,7 +146,7 @@ make_edge(const std::string_view edge_id, const std::string_view source_pool_id,
                           .scan_descriptor = std::string(kScanDigest),
                           .target_envelope = std::string(kEnvelopeDigest),
                           .machine_policy = std::string(kMachinePolicyDigest)};
-  specification.execution_profile = ExecutionProfile::bounded_online;
+  specification.execution_profile = ExecutionProfile::bounded_reconstruction_graph;
   specification.operator_plan_bindings = {
     OperatorPlanBindingSpec{.node_id = "node", .canonical_config_digest = config_digest.value().value()}};
   specification.synchronous_buffer_pool_plans = {std::move(input_pool).value(), std::move(output_pool).value()};

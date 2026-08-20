@@ -56,6 +56,9 @@ private:
 };
 
 struct SinkServiceAssumptionSpec {
+  // These are local result-consumer assumptions. `transport_staging_bytes`
+  // accounts only for an in-process materialized handoff; it does not define
+  // a socket, session, relay, or external transport contract.
   Quantity minimum_drain_items_per_second = 0;
   Quantity max_pause_us = 0;
   SlowSinkPolicy slow_sink_policy = SlowSinkPolicy::externally_blocked;
@@ -103,8 +106,10 @@ struct TargetEnvelopeSpec {
   SinkServiceAssumptionSpec sink_service_assumption;
 };
 
-// Scanner/site-owned input bounds.  These are validation limits, not a
-// promise that every Provider contract can be admitted within them.
+// Caller-declared local input and result-delivery bounds. These validation
+// limits start after ISMRMRD input has been submitted; they are neither a
+// scanner/acquisition contract nor a promise that every Provider contract can
+// be admitted within them.
 class TargetEnvelope final {
 public:
   [[nodiscard]] static Result<TargetEnvelope> create(const TargetEnvelopeSpec& specification);
@@ -173,8 +178,8 @@ private:
 
 struct MachinePolicySpec {
   // A deployment capacity is multi-domain.  A scalar process-memory number
-  // cannot safely admit pinned/device/transport work, so it is intentionally
-  // not part of the current policy surface.
+  // cannot safely admit pinned/device/in-process handoff work, so it is
+  // intentionally not part of the current policy surface.
   ResourceVectorCapacitySpec resource_capacity;
   Quantity numa_domain_count = 0;
   std::vector<MemoryDomain> allowed_memory_domains;

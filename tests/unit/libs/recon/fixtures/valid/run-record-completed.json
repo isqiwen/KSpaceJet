@@ -1,7 +1,7 @@
 {
   "kind": "RunRecord",
   "run_id": "scan.20260812.0001",
-  "execution_profile": "bounded-online",
+  "execution_profile": "bounded-reconstruction-graph",
   "execution_plan_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
   "verification_record_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
   "admission_record_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",

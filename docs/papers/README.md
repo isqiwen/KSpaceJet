@@ -1,18 +1,24 @@
 # KSpaceJet papers
 
-本目录存放由 KSpaceJet 架构、实现和公开实验共同支撑的论文材料。论文文档不是产品规范的替代品：稳定接口和实现约束仍以 `docs/architecture/`、ADR、schema 和测试为准；论文负责提出可证伪的研究问题，并把实现证据组织成可复现的论证。
+> **历史 / 非规范性研究记录。** 本目录保存已撤回或探索性的论文与比较材料，不定义当前
+> 产品能力、状态、接口、部署、验收或 artifact authority。其关于公开 MRD/ISMRMRD session、
+> `ksj-gateway`、Connector、scanner/采集集成、网络 relay/transport 或结构化 core logging
+> 的任何表述均已撤回。当前产品边界、artifact authority 与执行状态的唯一权威为
+> [KSpaceJet project plan and acceptance](../architecture/KSpaceJet_project_plan_and_acceptance.md)。
 
-## 架构与理论基线
+本目录存放 KSpaceJet 的历史论文材料。它们不是产品规范或实施依据：当前边界、artifact authority、工作状态与验收证据只以 canonical execution ledger 为准；受维护的源码、schema 和测试只负责相应的实现与结构语义。本目录及所链接的历史架构文档仅供研究追溯。
 
-- [PipelineDefinition 与重建流水线设计](../architecture/pipeline_definition.md)：定义声明图、OperatorContract、ISMRMRD scan 编译、CalibrationReady、join/reorder、EndOfInput 与终态语义。
-- [MRI 流水线、并行模型与可证明执行理论](../architecture/streaming_pipeline_parallelism_theory.md)：定义 scan-specific `ExecutionPlan`、OperatorInstance 内部 `KeyShard`、校准进展条件、资源/并行模型、条件性定理、机器可验证证书和实现轨迹精化边界。
+## 历史架构与理论参考
 
-## 当前稿件
+- [PipelineDefinition 与重建流水线设计（历史、非规范性）](../architecture/pipeline_definition.md)：保留声明图、OperatorContract、ISMRMRD scan 编译、CalibrationReady、join/reorder、EndOfInput 与终态语义的早期设想。
+- [MRI 流水线、并行模型与可证明执行理论（历史、非规范性）](../architecture/streaming_pipeline_parallelism_theory.md)：保留 scan-specific `ExecutionPlan`、OperatorInstance 内部 `KeyShard`、校准进展条件、资源/并行模型、条件性定理、机器可验证证书和实现轨迹精化的早期设想。
+
+## 历史稿件
 
 - [KSpaceJet 资源合约流式重建论文初稿](kspacejet_resource_contract_streaming_paper_draft.md)：面向 Magnetic Resonance in Medicine 风格 full paper 的预结果初稿。
 - [KSpaceJet 多基线公平对照与复现实验协议](kspacejet_gadgetron_comparison_protocol.md)：覆盖 Gadgetron 主基线、BART Streams 次级矩阵和 MRIReco.jl claim gate 的数据冻结、匹配算法、压力实验、消融、统计与公开制品协议。
 
-## 对照证据层级
+## 历史对照证据层级
 
 论文框架固定为“Gadgetron 完整主对照 + BART Streams 针对性次级实测 + MRIReco.jl 相关工作定位”。层级在实验前冻结，不能根据结果好坏互换：
 
@@ -22,11 +28,11 @@
 | BART Streams | 与实时模块化 streaming、网络传输和端到端 latency 直接重叠的工作 | 强烈建议完成 passthrough、一个公开 radial workload、slow sink/burst 三类次级实测 |
 | MRIReco.jl | 高性能、易扩展的离线算法开发框架 | 默认只作相关工作；仅由算法速度、工具箱覆盖或开发便利性主张触发独立实验 |
 
-BART Streams 复现实验以 code tag `v0.1` 和数据 DOI [`10.5281/zenodo.17671124`](https://doi.org/10.5281/zenodo.17671124) 为冻结入口；该数据记录当前声明 CC BY 4.0，但 license 证据、派生物/再分发和人体数据隐私仍作为独立冻结门禁。公开输入只执行一次确定性转换，并冻结源 hash、转换工具/命令、输出 hash 和 metadata 映射。BS-00、BS-01、BS-02 默认均为 `comparison_class=product-level`、`evidence_role=secondary-contextual`；只有 BS-00 逐项通过完整 logical-event、wire/path、serialization、adapter-copy、kernel/backend/thread、output 和 timed-boundary 门禁后才可把 class 升为 `framework-isolation`，其 evidence role 不变；BS-01/BS-02 固定不升级。KSpaceJet 的生产在线 wire contract 始终是公开 MRD/ISMRMRD session，内部 resource ledger 不编码为私有 flow-control extension。MRIReco.jl 不进入默认在线排名，也不与 Gadgetron/BART Streams 组成四框架性能竞赛。
+BART Streams 复现实验以 code tag `v0.1` 和数据 DOI [`10.5281/zenodo.17671124`](https://doi.org/10.5281/zenodo.17671124) 为历史冻结入口；该数据记录曾声明 CC BY 4.0，但 license 证据、派生物/再分发和人体数据隐私仍会是任何重新立项研究的独立门禁。其余比较分类、wire/path 和 timed-boundary 条件仅保留为历史研究设计；其中假定 KSpaceJet 使用公开 MRD/ISMRMRD session 的生产在线 wire contract 已撤回。MRIReco.jl 的排名或比较范围不在当前产品或执行台账中定义。
 
-## 产品部署与论文计时边界
+## 历史产品部署与论文计时边界
 
-KSpaceJet 的产品部署分为 `ksj-gateway`（站点/外部系统集成）和
+以下是已撤回的论文计时/部署提案，不表示当前产品拓扑：KSpaceJet 的产品部署曾分为 `ksj-gateway`（站点/外部系统集成）和
 `ksj-recon`（重建 runtime）。独立部署的站点 Connector 先将专有系统适配为
 公开 session；Connector、gateway 和 reconstruction service 之间只使用冻结的公开
 MRD/ISMRMRD streaming session。Gadgetron 的 framework-isolation 与 matched
@@ -36,7 +42,7 @@ reconstruction 主比较默认由合规 client 直连 `ksj-recon`，避免把 Co
 重要的 product-integration 证据，但必须单列 Connector/gateway hop、staging、
 serialization 和 copy。
 
-论文 runner `ksj-research` 与其余三个应用一样默认构建并安装；它只承担外层实验编排，
+历史提案中的论文 runner `ksj-research` 与其余三个应用一样默认构建并安装；它只承担外层实验编排，
 绝不构成任何被测 runtime/data-plane 路径、Provider ABI 或私有 wire shortcut。VS Code 的
 `KSJ: build Linux Debug applications`、`KSJ: build Linux Release applications`、
 `KSJ: build Windows Debug applications` 和 `KSJ: build Windows Release applications`

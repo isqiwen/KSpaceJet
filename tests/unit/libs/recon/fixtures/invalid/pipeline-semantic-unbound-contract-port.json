@@ -1,0 +1,24 @@
+{
+  "kind": "PipelineDefinition",
+  "pipeline": {"id": "org.example.noncartesian-unbound-port", "display_name": "Unbound contract port"},
+  "allowed_profiles": ["bounded-reconstruction-graph"],
+  "parameters": {},
+  "provider_requirements": [{"alias": "recon", "provider_id": "org.example.recon"}],
+  "nodes": [
+    {"id": "noise_estimate", "operator": {"provider": "recon", "id": "noise_model_estimate"}, "config": {}},
+    {"id": "reconstruct", "operator": {"provider": "recon", "id": "noncartesian_reconstruct"}, "config": {}}
+  ],
+  "edges": [],
+  "bindings": {
+    "ingress": [
+      {"id": "noise", "type": "ksj.noise-calibration-frame", "to": {"node": "noise_estimate", "port": "noise_calibration"}},
+      {"id": "kspace", "type": "ksj.kspace-frame", "to": {"node": "reconstruct", "port": "kspace"}},
+      {"id": "trajectory", "type": "ksj.trajectory-frame", "to": {"node": "reconstruct", "port": "trajectory"}},
+      {"id": "unbound", "type": "ksj.kspace-frame", "to": {"node": "reconstruct", "port": "unbound_input"}}
+    ],
+    "egress": [{"id": "images", "type": "ksj.image-frame", "from": {"node": "reconstruct", "port": "image"}}],
+    "calibration": [{"id": "noise-model", "producer": {"node": "noise_estimate", "port": "noise_model"}, "consumers": [{"node": "reconstruct", "port": "noise_model"}]}],
+    "merge": []
+  },
+  "annotations": {}
+}

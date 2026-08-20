@@ -65,7 +65,7 @@ TEST(KSpaceJetAcquisitionClassifier, RoutesOnlyAcquisitionsAndRecordsExplicitIgn
   ASSERT_TRUE(classifier.ok()) << classifier.status();
 
   const auto waveform = classifier.value().classify({
-    .message_kind = ksj::recon::runtime::PublicMrdMessageKind::waveform,
+    .message_kind = ksj::recon::runtime::IsmrmrdMessageKind::waveform,
   });
   EXPECT_FALSE(waveform.ok());
   EXPECT_EQ(ksj::base::StatusCode::invalid_argument, waveform.status().code());

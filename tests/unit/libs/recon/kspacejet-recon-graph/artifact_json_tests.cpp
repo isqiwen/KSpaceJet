@@ -56,7 +56,7 @@ constexpr ksj::recon::Quantity kDataEdgeControlBytes = 128U;
       .node_id = "process",
       .canonical_config_digest = "sha256:6666666666666666666666666666666666666666666666666666666666666666",
     }},
-    .execution_profile = ExecutionProfile::bounded_online,
+    .execution_profile = ExecutionProfile::bounded_reconstruction_graph,
     .synchronous_node_plans = {{
       .node_id = "process",
       .provider_id = "org.example.image",
@@ -187,7 +187,7 @@ constexpr ksj::recon::Quantity kDataEdgeControlBytes = 128U;
 [[nodiscard]] ksj::recon::VerificationRecordSpec representative_verification_record_spec() {
   return {
     .execution_plan_digest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    .execution_profile = ksj::recon::ExecutionProfile::bounded_online,
+    .execution_profile = ksj::recon::ExecutionProfile::bounded_reconstruction_graph,
     .verified_resource_vector = resources(8192U, 8U),
     .verified_terminal_occurrences = 1U,
     .verified_obligations = {"M0.profile_attestation", "M0.machine_resource_capacity"},

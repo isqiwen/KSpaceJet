@@ -1,8 +1,14 @@
 # KSpaceJet MRI 流水线、并行模型与可证明执行理论
 
-> 状态：架构提案与形式化研究基线
+> **历史 / 非规范性记录。** 本文保存已撤回或探索性的并行与证明模型，不定义当前产品
+> 能力、状态、接口、部署、验收或 artifact authority。其关于公开 MRD/ISMRMRD session、
+> `ksj-gateway`、Connector、scanner/采集集成、网络 relay/transport 或结构化 core logging
+> 的任何表述均已撤回。当前产品边界、artifact authority 与执行状态的唯一权威为
+> [KSpaceJet project plan and acceptance](KSpaceJet_project_plan_and_acceptance.md)。
 >
-> 适用范围：KSpaceJet 在线公开 MRD/ISMRMRD streaming session 与离线标准 ISMRMRD HDF5 重建 runtime；Linux x86_64 与 Windows x86_64；C++20。
+> 状态：历史架构提案与形式化研究记录；非当前基线。
+>
+> 历史适用范围：KSpaceJet 在线公开 MRD/ISMRMRD streaming session 与离线标准 ISMRMRD HDF5 重建 runtime；Linux x86_64 与 Windows x86_64；C++20。
 >
 > 相关文档：[流式重建框架实施规划](streaming_reconstruction_framework_plan.md)、[并行开发规范](../conventions/parallelism.md)、[论文初稿](../papers/kspacejet_resource_contract_streaming_paper_draft.md)、[公平对照协议](../papers/kspacejet_gadgetron_comparison_protocol.md)。
 >

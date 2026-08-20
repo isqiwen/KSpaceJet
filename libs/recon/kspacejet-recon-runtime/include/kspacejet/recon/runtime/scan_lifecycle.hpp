@@ -6,10 +6,10 @@
 
 namespace ksj::recon::runtime {
 
-// This is the scan-level state machine.  Connection/session state belongs to a
-// public MRD/ISMRMRD adapter; this object begins once a candidate scan exists.
+// This is the scan-level state machine. Source acquisition belongs to the
+// caller; this object begins once an in-process candidate scan exists.
 enum class ScanState {
-  session_candidate,
+  input_candidate,
   describing,
   planning,
   verifying,
@@ -75,7 +75,7 @@ private:
   [[nodiscard]] ksj::base::Status require_one_of(ScanState first, ScanState second, std::string_view operation) const;
   void raise_cause(TerminalCause cause) noexcept;
 
-  ScanState state_{ScanState::session_candidate};
+  ScanState state_{ScanState::input_candidate};
   TerminalCause terminal_cause_{TerminalCause::none};
   bool admitted_{false};
 };

@@ -738,7 +738,7 @@ struct CalibrationRoute final {
 
   const auto pipeline_document =
     "{\"kind\":\"PipelineDefinition\",\"pipeline\":{\"id\":\"org.kspacejet.cartesian-rss\","
-    "\"display_name\":\"Cartesian RSS reconstruction\"},\"allowed_profiles\":[\"offline\"],"
+    "\"display_name\":\"Cartesian RSS reconstruction\"},\"allowed_profiles\":[\"offline-reference\"],"
     "\"parameters\":{},\"provider_requirements\":[" +
     provider_requirements + "],\"nodes\":[" + nodes + "],\"edges\":[" + edges + "],\"bindings\":{\"ingress\":[" +
     ingress +
@@ -1097,7 +1097,7 @@ make_cartesian_planning_bindings(const ResolvedGraphInputs& graph_inputs, const 
                                                              .host_total_cap_bytes = host_budget.value()},
                                        .numa_domain_count = 1U,
                                        .allowed_memory_domains = {MemoryDomain::host},
-                                       .allowed_profiles = {ExecutionProfile::offline},
+                                       .allowed_profiles = {ExecutionProfile::offline_reference},
                                        .scheduler_policy = SchedulerPolicy::fifo});
   if (!policy.ok())
     return policy.status();
@@ -1129,7 +1129,7 @@ make_cartesian_planning_bindings(const ResolvedGraphInputs& graph_inputs, const 
   if (!target_digest.ok())
     return target_digest.status();
   const auto machine_document =
-    "{\"allowed_memory_domains\":[\"host\"],\"allowed_profiles\":[\"offline\"],"
+    "{\"allowed_memory_domains\":[\"host\"],\"allowed_profiles\":[\"offline-reference\"],"
     "\"host_total_cap_bytes\":" +
     std::to_string(host_budget.value()) +
     ",\"numa_domain_count\":1,\"resources\":{\"async_token_count\":0,\"backend_gang_permits\":0,"
@@ -1832,7 +1832,7 @@ reconstruct_cartesian_rss_hdf5(const CartesianRssHdf5ReconstructionConfig& confi
 
     const graph::PlanBuildRequest request{
       .resolved_pipeline = graph_inputs.value().pipeline,
-      .requested_profile = ExecutionProfile::offline,
+      .requested_profile = ExecutionProfile::offline_reference,
       .scan_descriptor = preflight.value().scan_descriptor,
       .target_envelope = planning.value().target_envelope,
       .machine_policy = planning.value().machine_policy,

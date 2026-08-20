@@ -1,23 +1,30 @@
 # KSpaceJet documentation
 
-KSpaceJet is an ISMRMRD-only, streaming MRI reconstruction framework. The
+KSpaceJet is a pre-release, ISMRMRD-only MRI reconstruction framework. The
 repository contains framework infrastructure and numerical primitives; providers
 own reconstruction algorithms and their deployment configuration.
+
+Current product boundaries, artifact authority, executable work status, and
+acceptance evidence are defined only by the [KSpaceJet master implementation plan](architecture/KSpaceJet_project_plan_and_acceptance.md).
+The architecture and paper links below are retained historical, non-normative
+design and research records. In particular, they do not revive proposals for
+external MRD sessions, `ksj-gateway`, Connector, scanner or acquisition integration,
+network transport/relay, structured core logging, or a competing artifact authority.
 
 ## Executable topology
 
 The project has four deliberately separate executable projects. All four belong to
 the normal application build and install:
 
-- `ksj`: the single user-facing CLI.
-- `ksj-gateway`: site/external-system integration gateway service.
-- `ksj-recon`: online reconstruction service and runtime owner.
-- `ksj-research`: experiment orchestration, evidence freezing, statistics, and paper
-  artifacts.
+- `ksj`: the current pipeline-validation and Provider-scaffold CLI.
+- `ksj-gateway`: an installed application scaffold; no gateway operation is implemented.
+- `ksj-recon`: an offline HDF5 Cartesian/non-Cartesian RSS reference executable.
+- `ksj-research`: an installed research application scaffold; its operational commands are
+  unimplemented.
 
-`ksj-research` is installed as an experiment tool, not a runtime or data-plane dependency
-of the CLI, gateway, or reconstruction service. It remains separate from the existing
-`KSJ_BUILD_RESEARCH` test/research switch. In VS Code, first run the visible
+`ksj-research` is installed as a research-tool scaffold, not a runtime or data-plane dependency
+of the other applications. It remains separate from the existing `KSJ_BUILD_RESEARCH`
+test/research switch. In VS Code, first run the visible
 `KSJ: bootstrap developer environment` task, which calls the matching project-local
 bootstrap; then, before the first build or F5 debug session for a platform/configuration,
 run its matching `KSJ: prepare <platform> <config> environment` task. The application build
@@ -31,23 +38,21 @@ matching visible install tasks are `KSJ: install Linux Debug applications`,
 `KSJ: install Windows Release applications`. Each install task depends only on its
 matching incremental application build, not on preparation; it uses that preset's
 `CMAKE_INSTALL_PREFIX` under `out/install/`.
-`ksj-gateway` and `ksj-recon` exchange only the frozen public MRD/ISMRMRD
-streaming session; proprietary adaptation remains in a separately deployed
-site Connector and there is no KSpaceJet-private wire protocol. The detailed
-ownership and deployment rules are in the framework plan below.
+No external session, Connector, transport, gateway service, or scanner integration is a current
+KSpaceJet product capability. KSpaceJet does not define a private wire protocol.
 
 - [Build](conventions/build.md)
 - [Developer environment](../tools/devenv/README.md)
 - [Testing](conventions/testing.md)
 - [Numerics API](conventions/numerics_api.md)
 - [Coding convention](conventions/coding.md)
-- [Streaming reconstruction framework plan](architecture/streaming_reconstruction_framework_plan.md)
-- [Optimized PipelineDefinition and reconstruction implementation baseline](architecture/KSpaceJet_pipeline_review_optimized.md)
-- [PipelineDefinition design record](architecture/pipeline_definition.md)
-- [MRI streaming pipeline, parallelism and proof model](architecture/streaming_pipeline_parallelism_theory.md)
-- [Paper drafts and reproducible research](papers/README.md)
-- [KSpaceJet resource-contracted streaming paper draft](papers/kspacejet_resource_contract_streaming_paper_draft.md)
-- [KSpaceJet multi-baseline comparison protocol](papers/kspacejet_gadgetron_comparison_protocol.md)
+- [Historical streaming reconstruction framework plan (non-normative)](architecture/streaming_reconstruction_framework_plan.md)
+- [Historical PipelineDefinition and reconstruction design review (non-normative)](architecture/KSpaceJet_pipeline_review_optimized.md)
+- [Historical PipelineDefinition design record (non-normative)](architecture/pipeline_definition.md)
+- [Historical MRI pipeline, parallelism and proof model (non-normative)](architecture/streaming_pipeline_parallelism_theory.md)
+- [Historical paper drafts and research material (non-normative)](papers/README.md)
+- [Historical resource-contracted streaming paper draft (non-normative)](papers/kspacejet_resource_contract_streaming_paper_draft.md)
+- [Historical multi-baseline comparison protocol (non-normative)](papers/kspacejet_gadgetron_comparison_protocol.md)
 
 Documentation for obsolete private data formats and protocols was removed with
 the corresponding product code.

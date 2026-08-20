@@ -11,14 +11,15 @@ namespace {
 
 constexpr int kExitSuccess = 0;
 constexpr int kExitUsage = 2;
-constexpr int kExitServiceFailure = 5;
+constexpr int kExitOperationUnavailable = 5;
 
 constexpr std::string_view kProgramName{"ksj-research"};
-constexpr std::string_view kProgramRole{"KSpaceJet reproducible-research runner"};
+constexpr std::string_view kProgramRole{"KSpaceJet installed research scaffold"};
 constexpr std::string_view kProgramUsage{
   "ksj-research <lock|dataset|schedule|case|run|report|claims> [options] [--format text|json]"};
 constexpr std::string_view kProgramCommands{
-  "Commands: lock verify, dataset freeze, schedule compile, case compile, run, report, and claims audit"};
+  "Reserved command groups: lock, dataset, schedule, case, run, report, and claims; every operation is "
+  "unimplemented"};
 enum class OutputFormat {
   text,
   json,
@@ -65,15 +66,15 @@ void print_help(const OutputFormat format) {
     print_json_string(std::cout, kProgramUsage);
     std::cout << ",\"commands\":";
     print_json_string(std::cout, kProgramCommands);
-    std::cout << ",\"status\":\"scaffold\"}\n";
+    std::cout << ",\"status\":\"scaffold\",\"availability\":\"reserved\",\"operations\":\"unimplemented\"}\n";
     return;
   }
 
   std::cout << kProgramName << " — " << kProgramRole << "\n\n"
             << "Usage: " << kProgramUsage << "\n\n"
             << kProgramCommands << "\n\n"
-            << "This executable is a KSpaceJet application skeleton. Use --version or --help; "
-               "operational commands are enabled as their shared runtime contracts are implemented.\n";
+            << "This executable is an installed scaffold. The listed commands are reserved and every "
+               "operational action is unimplemented.\n";
 }
 
 void print_version(const OutputFormat format) {
@@ -127,35 +128,35 @@ int main(int argc, char* argv[]) {
     ->check(CLI::IsMember({"text", "json"}))
     ->take_last();
 
-  auto* lock = app.add_subcommand("lock", "Verify baseline locks");
+  auto* lock = app.add_subcommand("lock", "Reserved scaffold command group");
   lock->fallthrough();
-  auto* lock_verify = lock->add_subcommand("verify", "Verify a frozen baseline lock");
+  auto* lock_verify = lock->add_subcommand("verify", "Reserved scaffold action (unimplemented)");
   lock_verify->fallthrough();
 
-  auto* dataset = app.add_subcommand("dataset", "Freeze benchmark datasets");
+  auto* dataset = app.add_subcommand("dataset", "Reserved scaffold command group");
   dataset->fallthrough();
-  auto* dataset_freeze = dataset->add_subcommand("freeze", "Freeze a benchmark dataset");
+  auto* dataset_freeze = dataset->add_subcommand("freeze", "Reserved scaffold action (unimplemented)");
   dataset_freeze->fallthrough();
 
-  auto* schedule = app.add_subcommand("schedule", "Compile deterministic replay schedules");
+  auto* schedule = app.add_subcommand("schedule", "Reserved scaffold command group");
   schedule->fallthrough();
-  auto* schedule_compile = schedule->add_subcommand("compile", "Compile a replay schedule");
+  auto* schedule_compile = schedule->add_subcommand("compile", "Reserved scaffold action (unimplemented)");
   schedule_compile->fallthrough();
 
-  auto* case_command = app.add_subcommand("case", "Compile experiment cases");
+  auto* case_command = app.add_subcommand("case", "Reserved scaffold command group");
   case_command->fallthrough();
-  auto* case_compile = case_command->add_subcommand("compile", "Compile an experiment case");
+  auto* case_compile = case_command->add_subcommand("compile", "Reserved scaffold action (unimplemented)");
   case_compile->fallthrough();
 
-  auto* run = app.add_subcommand("run", "Run a frozen experiment case");
+  auto* run = app.add_subcommand("run", "Reserved scaffold action (unimplemented)");
   run->fallthrough();
 
-  auto* report = app.add_subcommand("report", "Generate a reproducible report");
+  auto* report = app.add_subcommand("report", "Reserved scaffold action (unimplemented)");
   report->fallthrough();
 
-  auto* claims = app.add_subcommand("claims", "Audit paper claims against frozen evidence");
+  auto* claims = app.add_subcommand("claims", "Reserved scaffold command group");
   claims->fallthrough();
-  auto* claims_audit = claims->add_subcommand("audit", "Audit a paper claim");
+  auto* claims_audit = claims->add_subcommand("audit", "Reserved scaffold action (unimplemented)");
   claims_audit->fallthrough();
 
   try {
@@ -179,12 +180,11 @@ int main(int argc, char* argv[]) {
                              static_cast<bool>(*schedule_compile) || static_cast<bool>(*case_compile) ||
                              static_cast<bool>(*run) || static_cast<bool>(*report) || static_cast<bool>(*claims_audit);
   if (has_operation) {
-    print_error(format_value, "unimplemented",
-                "the requested operational behavior is not available until its shared runtime is implemented");
-    return kExitServiceFailure;
+    print_error(format_value, "unimplemented", "the requested reserved scaffold operation is unimplemented");
+    return kExitOperationUnavailable;
   }
   if (!app.get_subcommands().empty()) {
-    print_error(format_value, "invalid_argument", "the selected research command requires an action");
+    print_error(format_value, "invalid_argument", "the selected reserved scaffold command requires an action");
     return kExitUsage;
   }
 

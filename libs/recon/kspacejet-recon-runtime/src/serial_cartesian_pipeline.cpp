@@ -217,7 +217,7 @@ ksj::base::Status SerialCartesianPipeline::start() {
   if (!callback_status.ok()) {
     return callback_status;
   }
-  if (lifecycle_.state() != ScanState::session_candidate) {
+  if (lifecycle_.state() != ScanState::input_candidate) {
     return ksj::base::Status::StateError("SerialCartesianPipeline start is valid only before admission");
   }
 

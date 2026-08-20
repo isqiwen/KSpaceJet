@@ -54,11 +54,11 @@ namespace {
 
 [[nodiscard]] constexpr bool is_valid(const ExecutionProfile value) noexcept {
   switch (value) {
-    case ExecutionProfile::offline:
-    case ExecutionProfile::bounded_online:
-    case ExecutionProfile::isolated_strict_online:
-    case ExecutionProfile::deadline_qualified_online:
-    case ExecutionProfile::research_unbounded:
+    case ExecutionProfile::offline_reference:
+    case ExecutionProfile::bounded_reconstruction_graph:
+    case ExecutionProfile::provider_development:
+    case ExecutionProfile::embedded_incremental:
+    case ExecutionProfile::isolated_provider_runtime:
       return true;
   }
   return false;

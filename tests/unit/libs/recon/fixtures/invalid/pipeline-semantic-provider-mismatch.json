@@ -12,7 +12,7 @@
   "provider_requirements": [
     {
       "alias": "cartesian",
-      "provider_id": "org.kspacejet.cartesian-recon"
+      "provider_id": "org.example.unavailable-cartesian"
     },
     {
       "alias": "coilcombine",

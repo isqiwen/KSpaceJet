@@ -30,6 +30,12 @@ fi
 
 "${script_dir}/format_check.sh" --staged
 
+ksj_note "checking local Markdown links"
+ksj_run python3 tools/checks/check_markdown_links.py --project-root "${repo_root}"
+
+ksj_note "checking canonical execution-plan dashboard"
+ksj_run python3 tools/checks/check_execution_plan.py --project-root "${repo_root}" --check
+
 cmake_files=()
 for path in "${staged_files[@]}"; do
   case "${path}" in

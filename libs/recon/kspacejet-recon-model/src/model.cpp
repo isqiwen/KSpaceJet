@@ -293,11 +293,11 @@ to_operator_plan_bindings(const std::vector<OperatorPlanBindingSpec>& specificat
 
 [[nodiscard]] bool is_valid(const ExecutionProfile value) noexcept {
   switch (value) {
-    case ExecutionProfile::offline:
-    case ExecutionProfile::bounded_online:
-    case ExecutionProfile::isolated_strict_online:
-    case ExecutionProfile::deadline_qualified_online:
-    case ExecutionProfile::research_unbounded:
+    case ExecutionProfile::offline_reference:
+    case ExecutionProfile::bounded_reconstruction_graph:
+    case ExecutionProfile::provider_development:
+    case ExecutionProfile::embedded_incremental:
+    case ExecutionProfile::isolated_provider_runtime:
       return true;
   }
   return false;
@@ -835,45 +835,45 @@ Result<Capacity> Capacity::create(const Quantity max_items, const Quantity max_c
 
 std::string_view to_string(const ExecutionProfile profile) noexcept {
   switch (profile) {
-    case ExecutionProfile::offline:
-      return "offline";
-    case ExecutionProfile::bounded_online:
-      return "bounded-online";
-    case ExecutionProfile::isolated_strict_online:
-      return "isolated-strict-online";
-    case ExecutionProfile::deadline_qualified_online:
-      return "deadline-qualified-online";
-    case ExecutionProfile::research_unbounded:
-      return "research-unbounded";
+    case ExecutionProfile::offline_reference:
+      return "offline-reference";
+    case ExecutionProfile::bounded_reconstruction_graph:
+      return "bounded-reconstruction-graph";
+    case ExecutionProfile::provider_development:
+      return "provider-development";
+    case ExecutionProfile::embedded_incremental:
+      return "embedded-incremental";
+    case ExecutionProfile::isolated_provider_runtime:
+      return "isolated-provider-runtime";
   }
   return "unknown";
 }
 
 Result<ExecutionProfile> parse_execution_profile(const std::string_view value) {
-  if (value == "offline") {
-    return ExecutionProfile::offline;
+  if (value == "offline-reference") {
+    return ExecutionProfile::offline_reference;
   }
-  if (value == "bounded-online") {
-    return ExecutionProfile::bounded_online;
+  if (value == "bounded-reconstruction-graph") {
+    return ExecutionProfile::bounded_reconstruction_graph;
   }
-  if (value == "isolated-strict-online") {
-    return ExecutionProfile::isolated_strict_online;
+  if (value == "provider-development") {
+    return ExecutionProfile::provider_development;
   }
-  if (value == "deadline-qualified-online") {
-    return ExecutionProfile::deadline_qualified_online;
+  if (value == "embedded-incremental") {
+    return ExecutionProfile::embedded_incremental;
   }
-  if (value == "research-unbounded") {
-    return ExecutionProfile::research_unbounded;
+  if (value == "isolated-provider-runtime") {
+    return ExecutionProfile::isolated_provider_runtime;
   }
   return invalid("Unknown execution profile '" + std::string(value) + "'.");
 }
 
 bool requires_provider_isolation(const ExecutionProfile profile) noexcept {
-  return profile == ExecutionProfile::isolated_strict_online || profile == ExecutionProfile::deadline_qualified_online;
+  return profile == ExecutionProfile::isolated_provider_runtime;
 }
 
 bool is_currently_supported_in_process(const ExecutionProfile profile) noexcept {
-  return profile == ExecutionProfile::offline || profile == ExecutionProfile::bounded_online;
+  return profile == ExecutionProfile::offline_reference || profile == ExecutionProfile::bounded_reconstruction_graph;
 }
 
 Result<IndexLimit> IndexLimit::create(const Quantity minimum, const Quantity maximum, const Quantity center,

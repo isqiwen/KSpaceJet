@@ -131,7 +131,8 @@ channel/real-imag 边界。它不分配、不拷贝，也不是 layout 转换接
   `dim0/dim1/dim2/dim3`，不在 numerics API 中编码 MRI 的 channel/slice 语义。
 - `rectangular_to_polar` 当前输出是 interleaved `std::complex{magnitude, phase}`；IPP 的 `CartToPolar` 输出是两个连续实数数组，因此不能零拷贝接入现有 API。除非新增双输出 View API，否则不接 Intel candidate。
 
-后端阈值和开启条件必须来自 `tests/benchmarks/kspacejet-array/array_backend_benchmark.cpp` 的结果。新增后端时，应同时提供：
+后端阈值和开启条件必须来自 `ksj_array_backend_benchmark` 的正式结果（target 定义见
+`tests/benchmarks/kspacejet-array/CMakeLists.txt`）。新增后端时，应同时提供：
 
 - `detail/<backend>/<backend>_array_<feature>.hpp` 中的后端声明和
   `src/<backend>/<backend>_array_<feature>.cpp` 中的 View 输入输出实现。例如

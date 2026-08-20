@@ -5,7 +5,7 @@
 
 namespace ksj::recon::runtime {
 
-std::string_view to_string(const PublicMrdMessageKind kind) noexcept {
+std::string_view to_string(const IsmrmrdMessageKind kind) noexcept {
   static constexpr std::array names{"acquisition", "waveform", "image", "other"};
   return names.at(static_cast<std::size_t>(kind));
 }
@@ -39,9 +39,9 @@ ksj::base::Result<AcquisitionClassifier> AcquisitionClassifier::create(Acquisiti
 
 ksj::base::Result<AcquisitionClassification>
 AcquisitionClassifier::classify(const AcquisitionClassificationInput& input) const {
-  if (input.message_kind != PublicMrdMessageKind::acquisition) {
+  if (input.message_kind != IsmrmrdMessageKind::acquisition) {
     return ksj::base::Status::InvalidArgument(
-      "acquisition classifier accepts only acquisition messages; route public MRD message kinds first");
+      "acquisition classifier accepts only acquisition messages; route non-acquisition ISMRMRD message kinds first");
   }
 
   const auto& flags = input.flags;
