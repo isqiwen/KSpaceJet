@@ -132,11 +132,6 @@ site/
 !third_party/intel/payload/
 !third_party/intel/payload/**
 
-# Public MRI reconstruction inputs are acquired locally for research and must
-# never be committed implicitly.  Their manifests, source evidence and fetcher
-# remain versioned under research/benchmarks/datasets/.
-/research/benchmarks/datasets/raw/
-/research/benchmarks/datasets/canonical/
-/research/benchmarks/datasets/derived/
-/research/benchmarks/datasets/.download-state/
-/research/benchmarks/artifacts/
+# Raw MRI reconstruction payloads belong only in the sibling
+# KSpaceJet-ismrmrd-data repository. They are intentionally not ignored here:
+# the workspace checker must make an accidental local payload visible and fail.

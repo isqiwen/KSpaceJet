@@ -34,6 +34,9 @@ Invoke-KSpaceJetCommand python tools/checks/check_markdown_links.py --project-ro
 Write-KSpaceJetNote "checking canonical execution-plan dashboard"
 Invoke-KSpaceJetCommand python tools/checks/check_execution_plan.py --project-root $repoRoot --check
 
+Write-KSpaceJetNote "checking paired KSpaceJet data workspace"
+Invoke-KSpaceJetCommand python tools/checks/check_workspace_layout.py --project-root $repoRoot
+
 $cmakeFiles = @()
 foreach ($path in $stagedFiles) {
   $fileName = [System.IO.Path]::GetFileName($path)

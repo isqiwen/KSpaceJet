@@ -41,6 +41,20 @@ Do not reintroduce legacy DPC applications, proprietary queue tables, private pr
 
 Do not claim the following without an ACCEPTED work item in the canonical plan: public online service, gateway relay, Provider isolation, strict-online, deadline-qualified behavior, GPU scheduling, 256-channel capacity, clinical/diagnostic use, or throughput/latency guarantees.
 
+## External raw-data workspace
+
+KSpaceJet contains framework source, contracts, small synthetic fixtures, and generated development output only. It must not contain original MRI reconstruction payloads. Raw ISMRMRD/HDF5 data belongs exclusively to the sibling [KSpaceJet-ismrmrd-data](https://github.com/isqiwen/KSpaceJet-ismrmrd-data) repository, including its provenance, licence, checksum, and Git-LFS policy.
+
+Every development checkout must use this exact sibling layout (the parent directory name itself is arbitrary):
+
+```text
+<workspace>/
+  KSpaceJet/
+  KSpaceJet-ismrmrd-data/
+```
+
+Do not copy, symlink, vendor, Git-LFS-track, or create a project-internal raw-data directory in KSpaceJet. Data-dependent development must pass an explicit path under the sibling data repository. Before committing, the platform pre-commit hook runs `tools/checks/check_workspace_layout.py`; it verifies the sibling repository identity and rejects `.mrd`, `.h5`, `.hdf5`, and `.ismrmrd` payloads anywhere in the KSpaceJet working tree. The checker does not fetch data or substitute for `KSpaceJet-ismrmrd-data/tools/verify-data.sh`.
+
 ## Pre-release evolution
 
 KSpaceJet is incomplete and unreleased. Treat every project-owned ABI, API, artifact, schema, CMake target, installation path and source-layout decision as mutable.

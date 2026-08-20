@@ -4,6 +4,30 @@ This directory provisions the repository's development tools reproducibly on Lin
 Windows x86_64. It does not install anything with `sudo`, `apt`, `dnf`, `yum`, `winget`, or a
 machine-wide Python package manager.
 
+## Required paired data workspace
+
+KSpaceJet does not store original MRI reconstruction data. Before development, clone
+[KSpaceJet-ismrmrd-data](https://github.com/isqiwen/KSpaceJet-ismrmrd-data) beside this
+repository, never inside it:
+
+```text
+<workspace>/
+  KSpaceJet/
+  KSpaceJet-ismrmrd-data/
+```
+
+The sibling data repository owns raw `.mrd`, `.h5`, `.hdf5`, and `.ismrmrd` payloads,
+provenance, licenses, checksums, and Git-LFS policy. After bootstrap, check the layout with:
+
+```bash
+tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --project-root .
+```
+
+The Linux and Windows pre-commit hooks run the same offline check. It validates only the
+paired workspace and does not download or hash datasets; run
+`../KSpaceJet-ismrmrd-data/tools/verify-data.sh` from the sibling repository when a full data
+integrity check is required.
+
 ## Entry points
 
 Linux:

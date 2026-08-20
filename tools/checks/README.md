@@ -1,8 +1,9 @@
 # KSpaceJet checks
 
 The scripts in this directory validate the open KSpaceJet framework only. They
-do not launch a private product runtime, process obsolete private formats, or require sibling `common`
-or external third-party toolchain checkouts.
+do not launch a private product runtime or process obsolete private formats. Development does require
+the sibling `KSpaceJet-ismrmrd-data` checkout described below; no `common` or other third-party
+toolchain checkout is required.
 
 ## First-time setup
 
@@ -75,6 +76,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.p
 entrypoint references, dashboard regeneration, stale-dashboard rejection, duplicate-ID and
 status rejection, READY dependency validation, and the one-active/one-READY-work-item
 invariants.
+
+## Paired data-workspace check
+
+Raw MRI payloads do not belong in KSpaceJet. Local development must place this repository and
+the canonical data repository side by side:
+
+```text
+<workspace>/
+  KSpaceJet/
+  KSpaceJet-ismrmrd-data/
+```
+
+Both platform pre-commit hooks run this offline gate. It verifies the sibling repository's Git
+origin and required data-contract paths, and rejects tracked or physical `.mrd`, `.h5`, `.hdf5`,
+and `.ismrmrd` payloads in KSpaceJet. It intentionally is not part of self-contained CI, because
+CI must explicitly check out the sibling repository before it can claim workspace verification.
+
+```bash
+tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --project-root .
+tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --self-test
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_workspace_layout.py --project-root .
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_workspace_layout.py --self-test
+```
+
+The checker never fetches or hashes datasets. Run `tools/verify-data.sh` from inside the sibling
+data repository for its manifest and checksum verification.
 
 Before invoking a CMake-based check, export the local Conan recipes and run `conan install`
 for the matching preset output directory. Use the platform runner for direct terminal

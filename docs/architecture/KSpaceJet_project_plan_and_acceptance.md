@@ -4,7 +4,7 @@
 > 状态权威：第 12 节唯一执行台账；顶部总览只是可再生成的只读投影
 > 适用仓库：`isqiwen/KSpaceJet`
 > 文档状态：ACTIVE
-> 版本：0.3
+> 版本：0.4
 > 建立日期：2026-08-19
 > 基线分支与提交：main / `8c31b30419ed330688b3f1b90f14a4498503317d`
 > 项目阶段：Pre-release；接口、ABI、schema 和源代码布局均可直接演进，不保留兼容层，除非当前任务明确要求。
@@ -93,14 +93,14 @@ ready_items: []
 blocked_items:
   - P0-002
   - P0-006
-accepted: 5
-applicable: 54
-coverage: 9.3%
+accepted: 6
+applicable: 55
+coverage: 10.9%
 ```
 
 | 阶段 | 目标 | 已接受 | 适用项 | 覆盖度 | 状态分布 |
 | --- | --- | ---: | ---: | ---: | --- |
-| P0 | 规范、基线和工程治理 | 5 | 8 | 62.5% | ACCEPTED: 5 · BLOCKED: 2 · PLANNED: 1 |
+| P0 | 规范、基线和工程治理 | 6 | 9 | 66.7% | ACCEPTED: 6 · BLOCKED: 2 · PLANNED: 1 |
 | P1 | 可信离线 reference 基线 | 0 | 7 | 0% | PLANNED: 7 |
 | P2 | 图、artifact、compiler、verifier 和 CLI 计划工具 | 0 | 6 | 0% | PLANNED: 6 |
 | P3 | 有界 generic CPU runtime | 0 | 6 | 0% | PLANNED: 6 |
@@ -113,9 +113,9 @@ coverage: 9.3%
 
 | 工作项 | 证据记录 |
 | --- | --- |
+| P0-009 | [13.11 P0-009 ACCEPTED 证据](#1311-p0-009-accepted-证据) |
 | P0-003 | [13.10 P0-003 ACCEPTED 证据](#1310-p0-003-accepted-证据) |
 | P0-008 | [13.9 P0-008 ACCEPTED 证据](#139-p0-008-accepted-证据) |
-| P0-005 | [13.7 P0-005 ACCEPTED 证据](#137-p0-005-accepted-证据) |
 
 #### 当前阻塞项（自动生成）
 
@@ -163,6 +163,7 @@ KSpaceJet 是一个面向 MRI 重建的开源 C++20 框架。框架的责任是�
 | BND-006 | 所有长期异步数据必须由 host 管理、被资源账本计费且具有清晰所有权；借用的 AcquisitionView 不能跨回调保留。 |
 | BND-007 | 项目未发布；默认直接替换旧形状，不增加兼容 alias、双格式、迁移 shim 或版本协商。 |
 | BND-008 | 数值基线为 Eigen；Intel、FFTW、OpenCV、ITK、MATIO 等仅在私有实现边界出现，不暴露 vendor 类型。 |
+| BND-009 | KSpaceJet 不保存原始 MRI 重建 payload。`.mrd`、`.h5`、`.hdf5`、`.ismrmrd` 原始数据及其 provenance/licence/checksum/Git-LFS policy 只属于同级 `KSpaceJet-ismrmrd-data` 仓库；开发 checkout 必须验证该双仓库布局，且不得以 project-internal raw directory、copy、symlink 或 submodule 代替它。 |
 
 ### 1.4 v1 完成定义
 
@@ -695,6 +696,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P0-006 | 建立 MachinePolicy 和 ISMRMRD reconstruction-case 参数登记：数据形状、算法配置、CPU/NUMA/GPU、SLO、隐私、Provider trust 和输出 policy；不得登记框架 channel 上限或采集链路参数。 | schemas、docs/architecture、本文件第 6.3 节、部署 config。 | P0-001。 | 参数均有 source/owner/review date；缺失参数明确 BLOCKED，不猜测默认值。 |
 | P0-007 | 建立远程 CI 和分支保护计划；若用户授权，实际创建 CI workflow/现有 runner pipeline 和 required checks。 | .github 或现有 CI 目录、tools/checks、GitHub settings。 | P0-002。 | AC-REL-001、002；无远程写入授权时只产出设计和 BLOCKED 证据。 |
 | P0-008 | 将本文件升级为可快速查看的 Master Plan：从唯一台账派生阶段完成度、当前项、READY/阻塞项和最近证据，并以离线检查器阻止其与台账漂移。 | 本文件、README、docs/README、tools/checks。 | P0-001。 | 总览只读派生自第 12 节，不复制单项状态；检查器验证第 10/12 节 ID 集合、状态、唯一 READY/活动项、READY 依赖、入口链接和总览一致性。 |
+| P0-009 | 固化双仓库数据边界：KSpaceJet 不保存 MRI 原始重建数据；开发工作区必须与同级 `KSpaceJet-ismrmrd-data` 仓库配套，后者是唯一 raw ISMRMRD dataset 归属。删除旧 project-internal research raw-data 目录及专用 downloader/test，不迁入数据仓库。 | AGENTS、README、tools/devenv、tools/checks、research/benchmarks、canonical plan。 | P0-003。 | 离线检查必须拒绝 KSpaceJet 已跟踪或物理存在的 `.mrd`、`.h5`、`.hdf5`、`.ismrmrd` payload，并验证同级数据仓库、origin 与 manifest 结构；Linux/Windows pre-commit 都必须执行该检查，所有旧 local-data 引用必须清除，文档给出可复制布局。 |
 
 ### P1：可信离线 reference 基线
 
@@ -819,7 +821,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 
 ## 12. 唯一执行台账
 
-**更新时间**：2026-08-20，P0-003、P0-004、P0-005、P0-008 已 ACCEPTED；P0-002 仍等待 Windows 主机，P0-006 仍等待产品参数 authority
+**更新时间**：2026-08-20，P0-003、P0-004、P0-005、P0-008、P0-009 已 ACCEPTED；P0-002 仍等待 Windows 主机，P0-006 仍等待产品参数 authority
 **当前可执行任务**：无；第 12 节没有 READY、IN_PROGRESS 或 VERIFYING 项。不得伪造下一项；只在外部阻塞解除后按本节状态机恢复。
 **状态权威**：本节是本文件中唯一允许修改任务状态的位置。任务目录第 10 节不维护重复状态。
 
@@ -835,6 +837,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P0-006 | BLOCKED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含 P0-001/P0-004/P0-005 的未提交改动。第 6.3.1/13.8 节证明没有 committed、deployment-owned TargetEnvelope 或 MachinePolicy；fixture、reference defaults、research case 和本机硬件均已明确降级为非产品证据。 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture owner 的 source/scope/review inputs；收到后重新打开 P0-006 并按每项复核。 | 不得猜测 channel 上限、SLO 或 GPU 配置；不把 test fixture、reference-route value 或当前 Linux host 自动提升为产品 envelope。 |
 | P0-007 | PLANNED | P0-002 | main 无 GitHub Actions/.gitlab CI 文件和 required status evidence。 | 先制定最小 CI matrix；外部 repo settings 改动仅在被授权时执行。 | remote workflow/branch protection 尚未配置。 |
 | P0-008 | ACCEPTED | P0-001 | 用户要求的 Master Plan 视图已在第 0.4 节作为受控派生总览落地：显示阶段覆盖度、当前/READY/阻塞项、最近验收证据和阻塞恢复动作；完整证据见第 13.9 节。第 12 节仍是唯一状态权威。 | 后续状态变更只改第 12 节，然后运行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；无 READY 时保持无下一项。 | 总览不能直接改变状态。P0-002 的 Windows 与 P0-006 的参数 authority BLOCKED 均不因本项解除；当前 Linux 主机无法执行 Windows hook。 |
+| P0-009 | ACCEPTED | P0-003 | 已确立并验证双仓库 raw-data contract：KSpaceJet 无原始 MRI payload，唯一外部数据归属为同级 `KSpaceJet-ismrmrd-data`。旧 `research/benchmarks/datasets/`、专用 downloader/test 已按用户授权删除（先移入 Trash）；完整证据见第 13.11 节。 | 无 READY 项；后续开发保持 sibling workspace，预提交自动检查 `check_workspace_layout.py`，数据仓库完整性在 sibling 中运行 `tools/verify-data.sh`。 | Windows PowerShell hook 未在本 Linux host 执行；其静态接线已与 Linux 同步，实际 Windows toolchain/host 证据仍只属于 P0-002。 |
 
 ### 12.1.1 P0-001 基线能力矩阵（2026-08-20，ACCEPTED）
 
@@ -949,6 +952,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | 2026-08-20 | 完成 Linux toolchain、LFS、application install 与 check-script 验证。 | P0-002 | Linux/Windows Intel manifest 全量 hash、Git LFS pointer/object fsck、Linux bootstrap、35/35 unit、application build/install、clean-prefix four-app help、format/configure check 全部通过；Windows host probe 失败。 | P0-002 BLOCKED，等待真实 Windows MSVC 2022 runner；P0-004 READY。 |
 | 2026-08-20 | 将唯一执行台账升级为可校验的 Master Plan 视图。 | P0-008 | 第 0.4 节从第 12 节生成阶段覆盖度、当前/READY/阻塞项、最近验收证据和恢复动作；离线 checker 与本地 document gates 已接入。 | P0-008 ACCEPTED；当前无 READY/IN_PROGRESS 项，P0-002、P0-003、P0-006 保持独立 BLOCKED。 |
 | 2026-08-20 | 将 canonical governance/contract 交付提交到当前实际仓库。 | P0-003 | commit `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` / tree `01c12fcd1b52fe45a86a3a26691bcfbf264e6589`，pre-commit gate 通过。 | P0-003 ACCEPTED；P0-002 与 P0-006 保持 BLOCKED，当前无 READY 项。 |
+| 2026-08-20 | 固化双仓库 raw-data 边界并删除旧 KSpaceJet local-data 工作流。 | P0-009 | 用户明确要求所有原始数据只留在同级 `KSpaceJet-ismrmrd-data`；旧 local raw data、metadata、downloader 与 test 已移除，离线 workspace checker、两端 pre-commit 接线和数据仓库 verifier 均已验证。 | P0-009 ACCEPTED；当前无 READY 项，P0-002/P0-006 的既有外部 BLOCKED 条件不变。 |
 
 ### 13.1 P0-001 ACCEPTED 证据
 
@@ -1074,13 +1078,25 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 - Known limitations: 未创建或推送远程 branch；此前 GitHub integration 403 仍是历史远程操作失败证据，但 P0-003 的明确本地 repository delivery/commit 条件已经满足。远程 CI、branch protection 和 release 仍属于 P0-007/P7。
 - Next READY item: 无。P0-002 需要 Windows host，P0-006 需要产品参数 authority；两者保持 BLOCKED。
 
+### 13.11 P0-009 ACCEPTED 证据
+
+- Work item: `P0-009`; requirements/acceptance: 用户明确的双仓库工作区约束、`BND-009`，以及本项第 10 节的 raw-payload、sibling identity、hook、旧 local-data cleanup 和文档要求。
+- Base commit/tree: `fc40fc278825de68323563adea09196e81d44295` / `b5209f56d60afe14768a7e43202bf76bc35ec01b`。本项尚未创建新 commit；仅改动本项的边界、检查、文档、hook 与删除路径。
+- Changed surface: 新增标准库 `tools/checks/check_workspace_layout.py`。它要求真实（非 symlink）的同级 `../KSpaceJet-ismrmrd-data` Git worktree、canonical GitHub origin、`catalog.yaml`、`datasets/` 与 `tools/verify-data.sh`；它拒绝 KSpaceJet index 或物理工作树中的 `.mrd`、`.h5`、`.hdf5`、`.ismrmrd` payload（排除 `.git`、`out`、`build`、`.venv`、`.kspacejet`）。Linux/Windows pre-commit 均接入该 check；AGENTS、root README、developer/check 文档和 BND-009 明确同级布局。删除历史 `research/benchmarks/datasets/` 的 manifest/license evidence 和三个 local Gadgetron raw payload，以及仅服务该目录的 `research/benchmarks/tools/fetch_dataset.py` 与 `research/benchmarks/tests/test_fetch_dataset.py`；未修改 data repo。
+- User-authorized removal: 用户在本任务中明确回复“都删除”。先精确确认旧目录仅含三个 raw 文件与三个 tracked metadata 文件；tracked metadata/downloader/test 通过本变更的 Git deletion 删除，三个未跟踪 raw payload 所在目录以 `gio trash -f /home/qiwen/Workspace/KSpaceJet/research/benchmarks/datasets` 移入本机 Trash，并将仅含该 downloader bytecode 的 `research/benchmarks` 残余目录同样移入 Trash。结果：`test ! -e research/benchmarks/datasets`、`test ! -e research/benchmarks/tools`、`test ! -e research/benchmarks/tests` 均成立；未使用不可恢复的 recursive delete。旧 payload 如有需要可通过桌面环境 Trash 恢复，tracked 文件则可在该变更提交前通过 Git 恢复，但二者均不得重新放入 KSpaceJet。
+- Focused validation: `tools/devenv/linux/run.sh python -B -m py_compile tools/checks/check_workspace_layout.py` exit 0；`tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --self-test` exit 0（6/6，覆盖 valid sibling、missing contract path、wrong origin、symlinked sibling、tracked/untracked raw payload）；同 checker `--project-root .` exit 0。`bash tools/verify-data.sh` 在 `../KSpaceJet-ismrmrd-data` exit 0（`Verified 6 dataset directories.`）；该 repo 仍为 clean，HEAD `8a5e1dec165e55e17e5afeed0f85af7f831c4668`，origin 为 `git@github.com:isqiwen/KSpaceJet-ismrmrd-data.git`。
+- Complete validation: `tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .` exit 0（73 Markdown files、162 local links）；`tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --self-test` exit 0（13/13）；同 checker `--write` / `--check` exit 0（55 work items）；`bash -n tools/checks/linux/pre_commit.sh tools/checks/linux/ci_check.sh`、`git diff --check`、tracked raw suffix scan、live legacy-reference scan 和 deleted-path assertions 均 exit 0；`bash tools/checks/linux/ci_check.sh` exit 0（link/dashboard/format scope 与 `linux-release` configure）。
+- Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, Python 3.13.5；checker 只用 Python standard library、Git 与本地 filesystem，不访问网络、不下载/复制 raw data。
+- Known limitations: 当前 Linux host 无 `powershell` / `pwsh`，所以 Windows pre-commit runtime 未执行；其明确的 `Invoke-KSpaceJetCommand python tools/checks/check_workspace_layout.py --project-root $repoRoot` 接线已静态审查。该限制不改变 P0-002 对真实 Windows toolchain/install 的 BLOCKED 事实。checker 按当前项目的 raw ISMRMRD suffix contract 识别 payload，不替代 data repo 的完整 manifest/checksum verifier。
+- Next READY item: 无。只有 P0-002 收到真实 Windows x64 + VS 2022 + SDK runner，或 P0-006 收到完整产品参数 authority 后，才能按第 12 节重新选择工作项。
+
 ---
 
 ## 14. 需求追踪矩阵
 
 | 功能范围 | 功能 ID | 主工作项 | 关键验收 |
 | --- | --- | --- | --- |
-| 工具链、CI、文件完整性 | FUN-001, FUN-002 | P0-001 至 P0-008, P7-001 至 P7-004 | AC-BLD, AC-TYP, AC-REL-001 至 005 |
+| 工具链、CI、文件完整性 | FUN-001, FUN-002 | P0-001 至 P0-009, P7-001 至 P7-004 | AC-BLD, AC-TYP, AC-REL-001 至 005 |
 | 数据、FrameSlot、artifact | FUN-003 至 FUN-006 | P1-001 至 P1-007, P2-001 | AC-ART, AC-DAT |
 | Pipeline/resolve/plan/verify | FUN-010 至 FUN-013 | P2-001 至 P2-006 | AC-SCH, AC-PLN |
 | bounded execution/lifecycle | FUN-014 至 FUN-017 | P3-001 至 P3-006, P6-001/002 | AC-SCH, AC-RT, AC-PERF-001 至 004 |
@@ -1103,11 +1119,12 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 4. P0-005：收口规范冲突，特别是日志、采集/transport/gateway scope 与 profile 宣称。
 5. P0-006：填充或显式阻塞 TargetEnvelope/MachinePolicy 参数。
 6. P0-008：已将第 12 节投影为可校验的 Master Plan 总览；此后每次状态变更均先改第 12 节、再执行 `--write` 和 `--check`。
-7. P1-001 至 P1-006：只有 P0 的强依赖解除后，先让离线 reference 路径具有 fixture、standard output、golden 和 RunRecord。
-8. P2、P3：把已有 graph/runtime 通过独立 verifier、resource/terminal/serial-oracle 证据提升为可信开发基线。
-9. P4：Provider 开发体验、identity 和隔离路线。
-10. P5：只有真实 embedding 需求获确认后才做可选 in-process ISMRMRD feed；绝不做 online service/gateway。
-11. P6/P7：性能、硬件、qualification 作为测量和证据项目，不作为预设承诺。
+7. P0-009：已固定 KSpaceJet 与 `KSpaceJet-ismrmrd-data` 的同级数据边界；每次开发/提交均维持该 workspace check，不把 raw payload 放回本仓库。
+8. P1-001 至 P1-006：只有 P0 的强依赖解除后，先让离线 reference 路径具有 fixture、standard output、golden 和 RunRecord。
+9. P2、P3：把已有 graph/runtime 通过独立 verifier、resource/terminal/serial-oracle 证据提升为可信开发基线。
+10. P4：Provider 开发体验、identity 和隔离路线。
+11. P5：只有真实 embedding 需求获确认后才做可选 in-process ISMRMRD feed；绝不做 online service/gateway。
+12. P6/P7：性能、硬件、qualification 作为测量和证据项目，不作为预设承诺。
 
 ### 15.1 何时宣布项目完成
 
@@ -1122,7 +1139,8 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 1. 每次有合法状态变更时，只修改第 12 节，然后执行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；若检查失败，先修复第 10/12 节 ID、依赖或入口漂移，不能手改总览。
 2. 保留第 13.2 节 P0-002 的 Windows BLOCKED 记录；只有实际 Windows x64 + VS 2022 v143 + SDK 主机/runner 的 build/install/help evidence 才能恢复它，不能用 Linux evidence 替代。
 3. P0-003 已由本地 commit `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` 接受；P0-006 仍只能在收齐第 6.3.1/13.8 节的 owner/source/review inputs 后改为 READY。
-4. 以第 1.3、6.1/6.2、17.1 节与 ADR-002/004 为唯一 scope/mode/diagnostics 权威；P0-005 已 ACCEPTED，不回退其 profile、plain-text diagnostics 或 scope-closure 结论，也不得以 dashboard 扩张产品 capability。
+4. P0-009 已 ACCEPTED：KSpaceJet 与 `KSpaceJet-ismrmrd-data` 必须是同级真实 Git worktree；不得将 raw `.mrd`/`.h5`/`.hdf5`/`.ismrmrd` payload、旧 downloader 或 project-internal data directory 放回本仓库。先运行 workspace checker，再在 sibling data repo 运行其 own verifier。
+5. 以第 1.3、6.1/6.2、17.1 节与 ADR-002/004 为唯一 scope/mode/diagnostics 权威；P0-005 已 ACCEPTED，不回退其 profile、plain-text diagnostics 或 scope-closure 结论，也不得以 dashboard 扩张产品 capability。
 
 ---
 

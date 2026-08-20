@@ -8,6 +8,31 @@ KSpaceJet 是预发布的开源 C++20 MRI 重建框架。它以
 当前工作项、阶段进度、验收证据和外部阻塞项均在唯一的
 [KSpaceJet 主实施计划](docs/architecture/KSpaceJet_project_plan_and_acceptance.md) 中追踪。
 
+## 必需的双仓库数据工作区
+
+KSpaceJet **不保存原始 MRI 重建数据**（包括 `.mrd`、`.h5`、`.hdf5` 和
+`.ismrmrd` payload）。原始数据、其来源、许可、校验和与 Git-LFS 管理只属于
+[KSpaceJet-ismrmrd-data](https://github.com/isqiwen/KSpaceJet-ismrmrd-data)。开发时两个
+仓库必须是同级目录：
+
+```text
+<workspace>/
+  KSpaceJet/
+  KSpaceJet-ismrmrd-data/
+```
+
+例如，在同一个父目录中分别 clone 两个仓库；不要把数据仓库作为 submodule、复制品或
+KSpaceJet 内的 symlink。数据相关命令应显式传入 sibling 数据仓库下的路径。完成 bootstrap
+后，可运行以下离线检查；Linux/Windows pre-commit 也会自动执行它：
+
+```bash
+tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --project-root .
+```
+
+该检查只验证同级布局、数据仓库 identity/结构和 KSpaceJet 中不存在 raw payload；它不下载
+或校验数据内容。需要完整校验数据仓库时，在 sibling 仓库中运行
+`bash tools/verify-data.sh`。
+
 ## 设计重点
 
 - 流式读取 ISMRMRD acquisition，回调内以零额外复制的 `std::span` 暴露样本和轨迹。
