@@ -192,7 +192,8 @@ TEST(KSpaceJetConfigRuntimeConfig, RejectsPartialMemoryPoolConfiguration) {
 }
 
 TEST(KSpaceJetConfigRuntimeConfig, RejectsMemoryPoolBlockCountsWithoutSizeClasses) {
-  auto parsed = ksj::config::parse_runtime_config("memory.pool.size_class_block_counts=1024,64\n", "kspacejet_runtime.conf");
+  auto parsed =
+    ksj::config::parse_runtime_config("memory.pool.size_class_block_counts=1024,64\n", "kspacejet_runtime.conf");
 
   ASSERT_FALSE(parsed.ok());
   EXPECT_EQ(ksj::base::StatusCode::parse_error, parsed.status().code());
@@ -208,7 +209,8 @@ TEST(KSpaceJetConfigRuntimeConfig, RejectsMismatchedMemoryPoolBlockCounts) {
 }
 
 TEST(KSpaceJetConfigRuntimeConfig, RejectsZeroMemoryPoolBlockCount) {
-  auto parsed = ksj::config::parse_runtime_config("memory.pool.size_class_block_counts=1024,0\n", "kspacejet_runtime.conf");
+  auto parsed =
+    ksj::config::parse_runtime_config("memory.pool.size_class_block_counts=1024,0\n", "kspacejet_runtime.conf");
 
   ASSERT_FALSE(parsed.ok());
   EXPECT_EQ(ksj::base::StatusCode::parse_error, parsed.status().code());

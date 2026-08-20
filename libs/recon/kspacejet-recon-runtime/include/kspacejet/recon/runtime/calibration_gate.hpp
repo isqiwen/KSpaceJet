@@ -40,10 +40,9 @@ class CalibrationGate {
 public:
   explicit CalibrationGate(CalibrationGateLimits limits);
 
-  [[nodiscard]] ksj::base::Result<CalibrationDisposition> await_or_pass(std::string key,
-                                                                          PendingCalibrationFrame frame);
+  [[nodiscard]] ksj::base::Result<CalibrationDisposition> await_or_pass(std::string key, PendingCalibrationFrame frame);
   [[nodiscard]] ksj::base::Result<std::vector<PendingCalibrationFrame>> publish_ready(std::string key,
-                                                                                         CalibrationToken token);
+                                                                                      CalibrationToken token);
   [[nodiscard]] ksj::base::Result<CalibrationToken> token_for(const std::string& key) const;
 
   // Called after EndOfInput.  It returns every key that still has retained

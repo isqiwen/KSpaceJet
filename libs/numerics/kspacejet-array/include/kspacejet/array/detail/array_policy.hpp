@@ -139,8 +139,8 @@ struct ArrayDispatchPolicy {
   static constexpr std::size_t eigen_vector_minmax_double_min_elements = disabled_backend_min_elements;
 
   // Extended vector elementwise policy is intentionally operation-specific. The benchmark matrix in
-  // tests/benchmarks/kspacejet-array compares manual/public/eigen/intel rows; only operations with a stable backend win are
-  // enabled here.
+  // tests/benchmarks/kspacejet-array compares manual/public/eigen/intel rows; only operations with a stable backend win
+  // are enabled here.
   static constexpr std::size_t intel_vector_sqrt_float_min_elements = 64U;
   static constexpr std::size_t intel_vector_sqrt_double_min_elements = 1U;
   static constexpr std::size_t intel_vector_exp_float_min_elements = 1U;
@@ -189,8 +189,8 @@ struct ArrayDispatchPolicy {
   static constexpr std::size_t mkl_vml_vector_hypot_double_max_elements = enabled_backend_max_elements;
 
   // Complex elementwise policy is intentionally operation-specific. Tuned by
-  // docs/benchmark_reports/2026-07-23/kspacejet-array/xeon-silver-4410y-avx512-linux/benchmark_report.md. Benchmark results
-  // show IPP is the clear winner for complex subtract/multiply/scale and complex-double divide. MKL VML wins
+  // docs/benchmark_reports/2026-07-23/kspacejet-array/xeon-silver-4410y-avx512-linux/benchmark_report.md. Benchmark
+  // results show IPP is the clear winner for complex subtract/multiply/scale and complex-double divide. MKL VML wins
   // complex-float divide from 128 elements and selected complex-double magnitude/conjugate ranges on the benchmark
   // host.
   static constexpr std::size_t intel_vector_add_complex_float_min_elements = 128U;

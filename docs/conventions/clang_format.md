@@ -11,8 +11,8 @@ clang-format --dry-run --Werror <files>
 格式检查脚本入口：
 
 ```text
-tools/checks/linux/format_check.sh
-tools/checks/linux/pre_commit.sh
+tools/devenv/linux/run.sh just format-staged
+tools/devenv/linux/run.sh just pre-commit
 ```
 
 ## 适用范围
@@ -461,13 +461,13 @@ void run() {
 检查暂存文件：
 
 ```bash
-tools/checks/linux/format_check.sh --staged
+tools/devenv/linux/run.sh just format-staged
 ```
 
 检查全仓非 legacy 范围：
 
 ```bash
-tools/checks/linux/format_check.sh --all
+tools/devenv/linux/run.sh just format-all
 ```
 
 只格式化一个文件：
@@ -487,4 +487,5 @@ clang-format --dry-run --Werror path/to/file.cpp
 - `.clang-format` 变化会影响全仓格式，应单独提交，避免和业务改动混在一起。
 - 大规模格式化应单独 commit。
 - legacy 排除目录如需纳入格式门禁，必须先由模块 owner 确认。
+- `third_party/intel/payload/` 是 checksum-verified vendor payload，不属于项目格式化范围；其完整性由 Intel manifest verifier 和 Git LFS 检查负责。
 - 新增格式规则时，应同步更新本文档和 [coding.md](coding.md)。

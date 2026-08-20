@@ -30,6 +30,48 @@ if ($mode -eq "--changed") {
 $repoRoot = Get-KSpaceJetRepoRoot
 Set-Location $repoRoot
 
+function Invoke-FormatterBatches {
+  param(
+    [Parameter(Mandatory = $true)][string]$Executable,
+    [Parameter(Mandatory = $true)][string[]]$Options,
+    [Parameter(Mandatory = $true)][string[]]$Paths
+  )
+
+  # Keep each native invocation below the Windows CreateProcess command-line
+  # limit. The shared `just format-all` recipe has more paths than one Windows
+  # command line can safely carry, even though each path is valid.
+  $maximumPathCharacters = 24000
+  $prefixLength = $Executable.Length + 1 + (($Options -join " ").Length)
+  $batch = @()
+  $batchLength = $prefixLength
+
+  foreach ($path in $Paths) {
+    $pathLength = $path.Length + 1
+    if ($prefixLength + $pathLength -gt $maximumPathCharacters) {
+      throw "formatter path is too long for a portable command line: $path"
+    }
+    if ($batch.Count -gt 0 -and $batchLength + $pathLength -gt $maximumPathCharacters) {
+      $formatterArguments = $Options + $batch
+      & $Executable @formatterArguments
+      if ($LASTEXITCODE -ne 0) {
+        throw "$Executable failed with exit code $LASTEXITCODE"
+      }
+      $batch = @()
+      $batchLength = $prefixLength
+    }
+    $batch += $path
+    $batchLength += $pathLength
+  }
+
+  if ($batch.Count -gt 0) {
+    $formatterArguments = $Options + $batch
+    & $Executable @formatterArguments
+    if ($LASTEXITCODE -ne 0) {
+      throw "$Executable failed with exit code $LASTEXITCODE"
+    }
+  }
+}
+
 $files = @()
 if ($mode -eq "--staged") {
   $files = @(& git diff --cached --name-only --diff-filter=ACMR | Where-Object { $_ })
@@ -56,6 +98,12 @@ if ($mode -eq "--staged") {
 $cppFiles = @()
 $cmakeFiles = @()
 foreach ($path in $files) {
+  # The Intel payload is checksum-verified third-party binary/source material;
+  # it is not KSpaceJet-maintained C/C++ and must never be rewritten or made a
+  # project formatting gate.
+  if ($path -like "third_party/intel/payload/*") {
+    continue
+  }
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
     continue
   }
@@ -74,13 +122,13 @@ if ($cppFiles.Count -gt 0) {
     Stop-KSpaceJetCheck "clang-format is required for C/C++ format checks"
   }
   Write-KSpaceJetNote "checking $($cppFiles.Count) C/C++ file(s) with clang-format"
-  Invoke-KSpaceJetCommand clang-format --dry-run --Werror @cppFiles
+  Invoke-FormatterBatches -Executable "clang-format" -Options @("--dry-run", "--Werror") -Paths $cppFiles
 }
 
 if ($cmakeFiles.Count -gt 0) {
   if (Test-KSpaceJetCommand cmake-format) {
     Write-KSpaceJetNote "checking $($cmakeFiles.Count) CMake file(s) with cmake-format"
-    Invoke-KSpaceJetCommand cmake-format --check @cmakeFiles
+    Invoke-FormatterBatches -Executable "cmake-format" -Options @("--check") -Paths $cmakeFiles
   } elseif ($env:KSJ_REQUIRE_CMAKE_FORMAT -eq "1") {
     Stop-KSpaceJetCheck "cmake-format is required for CMake format checks"
   } else {

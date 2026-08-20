@@ -26,11 +26,10 @@
     {
       "label": "KSJ: prepare Linux Debug environment",
       "type": "process",
-      "command": "bash",
+      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
       "args": [
-        "${workspaceFolder}/tools/devenv/linux/bootstrap.sh",
-        "--prepare",
-        "linux-debug"
+        "just",
+        "prepare-debug"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -42,15 +41,8 @@
       "type": "process",
       "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
       "args": [
-        "cmake",
-        "--build",
-        "--preset",
-        "linux-debug",
-        "--target",
-        "ksj_cli",
-        "ksj_gateway",
-        "ksj_recon",
-        "ksj_research"
+        "just",
+        "build-debug-applications"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -64,10 +56,8 @@
       "type": "process",
       "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
       "args": [
-        "cmake",
-        "--build",
-        "--preset",
-        "linux-debug-install"
+        "just",
+        "install-debug-applications"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -80,11 +70,10 @@
     {
       "label": "KSJ: prepare Linux Release environment",
       "type": "process",
-      "command": "bash",
+      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
       "args": [
-        "${workspaceFolder}/tools/devenv/linux/bootstrap.sh",
-        "--prepare",
-        "linux-release"
+        "just",
+        "prepare-release"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -96,15 +85,8 @@
       "type": "process",
       "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
       "args": [
-        "cmake",
-        "--build",
-        "--preset",
-        "linux-release",
-        "--target",
-        "ksj_cli",
-        "ksj_gateway",
-        "ksj_recon",
-        "ksj_research"
+        "just",
+        "build-release-applications"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -118,10 +100,8 @@
       "type": "process",
       "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
       "args": [
-        "cmake",
-        "--build",
-        "--preset",
-        "linux-release-install"
+        "just",
+        "install-release-applications"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -140,9 +120,9 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\tools\\devenv\\windows\\bootstrap.ps1",
-        "-Prepare",
-        "windows-vs2022-debug"
+        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
+        "just",
+        "prepare-debug"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -159,15 +139,8 @@
         "Bypass",
         "-File",
         "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "cmake",
-        "--build",
-        "--preset",
-        "windows-vs2022-debug",
-        "--target",
-        "ksj_cli",
-        "ksj_gateway",
-        "ksj_recon",
-        "ksj_research"
+        "just",
+        "build-debug-applications"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -186,10 +159,8 @@
         "Bypass",
         "-File",
         "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "cmake",
-        "--build",
-        "--preset",
-        "windows-vs2022-debug-install"
+        "just",
+        "install-debug-applications"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -208,9 +179,9 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\tools\\devenv\\windows\\bootstrap.ps1",
-        "-Prepare",
-        "windows-vs2022-release"
+        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
+        "just",
+        "prepare-release"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -227,15 +198,8 @@
         "Bypass",
         "-File",
         "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "cmake",
-        "--build",
-        "--preset",
-        "windows-vs2022-release",
-        "--target",
-        "ksj_cli",
-        "ksj_gateway",
-        "ksj_recon",
-        "ksj_research"
+        "just",
+        "build-release-applications"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -254,10 +218,8 @@
         "Bypass",
         "-File",
         "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "cmake",
-        "--build",
-        "--preset",
-        "windows-vs2022-release-install"
+        "just",
+        "install-release-applications"
       ],
       "options": {
         "cwd": "${workspaceFolder}"

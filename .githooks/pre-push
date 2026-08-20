@@ -11,5 +11,5 @@ fi
 # normal edit/commit loop. Run it manually when you want a local smoke before
 # pushing:
 #
-#   "${repo_root}/tools/checks/linux/pre_push.sh"
-#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${repo_root}/tools/checks/windows/pre_push.ps1"
+#   "${repo_root}/tools/devenv/linux/run.sh" just pre-push
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${repo_root}/tools/devenv/windows/run.ps1" just pre-push

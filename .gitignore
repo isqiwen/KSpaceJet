@@ -124,14 +124,6 @@ site/
 *.pb.cc
 *.pb.h
 
-# Bundled WF2 prebuilt runtime libraries that are intentionally versioned
-!apps/dpc-dixon/prebuilt/
-!apps/dpc-dixon/prebuilt/**
-
 # Reviewed Intel oneAPI payloads are intentionally versioned through Git LFS.
 !third_party/intel/payload/
 !third_party/intel/payload/**
-
-# Raw MRI reconstruction payloads belong only in the sibling
-# KSpaceJet-ismrmrd-data repository. They are intentionally not ignored here:
-# the workspace checker must make an accidental local payload visible and fail.

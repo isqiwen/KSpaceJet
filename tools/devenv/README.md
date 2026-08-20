@@ -20,7 +20,7 @@ The sibling data repository owns raw `.mrd`, `.h5`, `.hdf5`, and `.ismrmrd` payl
 provenance, licenses, checksums, and Git-LFS policy. After bootstrap, check the layout with:
 
 ```bash
-tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --project-root .
+tools/devenv/linux/run.sh just workspace-check
 ```
 
 The Linux and Windows pre-commit hooks run the same offline check. It validates only the
@@ -42,27 +42,31 @@ Windows PowerShell:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 ```
 
-To provision the tools and prepare a build tree in one invocation, add the platform preset.
-If the Intel Git-LFS payload is absent, `--prepare` / `-Prepare` obtains it before the Conan
-install step:
+The direct bootstrap commands above are the required first-run exception: they install the
+project-local `just` binary. Afterward, invoke shared recipes through the platform runner. The
+recipe name is identical on Linux and Windows; `justfile` owns the platform-specific bootstrap,
+Conan-profile and CMake-preset mapping:
 
 ```bash
-bash tools/devenv/linux/bootstrap.sh --prepare linux-release
-```
-
-Application-level CTests use the separate application build preset, so product
-targets remain enabled while unit-test-only configuration stays isolated:
-
-```bash
-bash tools/devenv/linux/bootstrap.sh --prepare linux-release-app-tests
-tools/devenv/linux/run.sh cmake --build --preset linux-release-app-tests
-tools/devenv/linux/run.sh ctest --preset linux-release-app-tests
+tools/devenv/linux/run.sh just prepare-release
+tools/devenv/linux/run.sh just build-release-applications
+tools/devenv/linux/run.sh just install-release-applications
+tools/devenv/linux/run.sh just check
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 `
-  -Prepare windows-vs2022-release
+.\tools\devenv\windows\run.ps1 just prepare-release
+.\tools\devenv\windows\run.ps1 just build-release-applications
+.\tools\devenv\windows\run.ps1 just install-release-applications
+.\tools\devenv\windows\run.ps1 just check
 ```
+
+If the Intel Git-LFS payload is absent, the prepare recipe obtains it before the Conan install.
+`prepare-debug`, `format-staged`, `format-all`, `link-check`, `plan-check`, `workspace-check`,
+`pre-commit` and `pre-push` are also shared names. Run
+`tools/devenv/linux/run.sh just --list` or the Windows equivalent for the supported command list.
+`prepare-app-tests` and `app-tests` are Linux-only because there is no corresponding Windows
+application-test preset yet.
 
 The normal VS Code workflow remains: bootstrap once, run the matching `KSJ: prepare …
 environment` task once per build configuration, then use the incremental build and install tasks.
@@ -74,7 +78,7 @@ Not every executable belongs in a Python virtual environment.
 | Layer | Location | Contents |
 | --- | --- | --- |
 | Host prerequisite | OS / SDK installation | Git, Git LFS, Linux default GCC/G++ 14, or Visual Studio 2022 14.4x/v143 C++ Build Tools and a Windows SDK |
-| Bootstrap runtime | `.kspacejet/bootstrap/uv/` | A checksum-verified, pinned `uv` executable; it does not alter the user's PATH or shell profile |
+| Bootstrap runtime | `.kspacejet/bootstrap/uv/`, `.kspacejet/bootstrap/just/` | Checksum-verified, pinned `uv` and `just` executables; neither alters the user's PATH or shell profile |
 | Managed Python and cache | `.kspacejet/python/`, `.kspacejet/uv-cache/` | CPython acquired by uv and its disposable package cache |
 | Project tool environment | `.venv/` | Conan, cmake-format, and the locked CMake, Ninja, and clang-format binary wheels |
 
@@ -98,15 +102,15 @@ also needs host `gdb`, and the optional `linux-release-static-analysis` preset a
 
 ## Reproducibility and maintenance
 
-`tool-versions.env` pins the bootstrap `uv` version plus Linux/Windows archive and installed-binary
-checksums. The bootstrap verifies the cached executable before it is used.
+`tool-versions.env` pins the bootstrap `uv` and `just` versions plus Linux/Windows archive and
+installed-binary checksums. The bootstrap verifies each cached executable before it is used.
 `pyproject.toml`, `.python-version`, and `uv.lock` pin the project tool environment. The scripts run
 `uv sync --locked`, so a stale or manually edited lock file is rejected instead of being resolved on
 each developer machine.
 
 Do not add a floating `latest` dependency. A maintainer updates a tool deliberately, regenerates
-`uv.lock` (and any bootstrap checksum), and verifies the result on both supported platforms before
-committing it.
+`uv.lock` when applicable (and every changed bootstrap checksum), and verifies the result on both
+supported platforms before committing it.
 
 Useful non-mutating checks are:
 
@@ -118,10 +122,11 @@ bash tools/devenv/linux/bootstrap.sh --verify
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Verify
 ```
 
-`--offline` prevents network access and succeeds only when the pinned uv, managed Python, and locked
-packages are already cached locally. With `--prepare` / `-Prepare`, it additionally requires a fully
-hydrated and verified Intel payload plus every required Conan package in the local cache. In that mode
-the bootstrap passes Conan `--no-remote`; `--offline` cannot be combined with an explicit Git-LFS pull.
+`--offline` prevents network access and succeeds only when the pinned `uv` and `just`, managed
+Python, and locked packages are already cached locally. With `--prepare` / `-Prepare`, it additionally
+requires a fully hydrated and verified Intel payload plus every required Conan package in the local
+cache. In that mode the bootstrap passes Conan `--no-remote`; `--offline` cannot be combined with an
+explicit Git-LFS pull.
 
 Before a prepare, the bootstrap hashes every entry in the selected Intel payload manifest. This
 distinguishes real Git-LFS content from a checkout containing only LFS pointers. The quick sentinel
@@ -135,9 +140,25 @@ tools/devenv/linux/run.sh python tools/devenv/verify_intel_payload.py --platform
 .\tools\devenv\windows\run.ps1 python .\tools\devenv\verify_intel_payload.py --platform windows-x86_64 --full
 ```
 
-## Calling a managed tool outside VS Code
+## Running shared development commands
 
-The platform wrappers prepend the project tool environment to `PATH` for a single command:
+The platform runners select the project-local `just` before any system `just`, then `justfile`
+selects the correct platform command. Use these forms for every standard development operation:
+
+```bash
+tools/devenv/linux/run.sh just prepare-release
+tools/devenv/linux/run.sh just workspace-check
+tools/devenv/linux/run.sh just plan-check
+```
+
+```powershell
+.\tools\devenv\windows\run.ps1 just prepare-release
+.\tools\devenv\windows\run.ps1 just workspace-check
+.\tools\devenv\windows\run.ps1 just plan-check
+```
+
+For a focused diagnostic that has no recipe, the same platform wrappers can execute a locked
+managed tool directly:
 
 ```bash
 tools/devenv/linux/run.sh conan --version
@@ -149,5 +170,5 @@ tools/devenv/linux/run.sh clang-format --version
 .\tools\devenv\windows\run.ps1 clang-format --version
 ```
 
-Do not activate `.venv` or install tools into it manually. Change the checked-in dependency
-declarations and lock file, then rerun the bootstrap script.
+Do not activate `.venv`, install `just` system-wide, or install tools into the environment
+manually. Change the checked-in dependency declarations/checksums, then rerun the bootstrap script.

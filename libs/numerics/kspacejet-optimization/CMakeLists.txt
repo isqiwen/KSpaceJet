@@ -11,8 +11,8 @@ add_library(KSpaceJet::optimization ALIAS ${PROJ_NAME})
 target_compile_features(${PROJ_NAME} PUBLIC cxx_std_20)
 target_link_libraries(
   ${PROJ_NAME}
-  PRIVATE KSpaceJet::compile_options KSpaceJet::shared_library_link_options KSpaceJet::base_abi_definitions Eigen3::Eigen
-          Intel::headers Intel::mkl_rt
+  PRIVATE KSpaceJet::compile_options KSpaceJet::shared_library_link_options KSpaceJet::base_abi_definitions
+          Eigen3::Eigen Intel::headers Intel::mkl_rt
   PUBLIC KSpaceJet::linalg)
 target_include_directories(${PROJ_NAME} PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
 set_target_properties(

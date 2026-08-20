@@ -104,19 +104,21 @@ Inspect CMakePresets.json before configuring. Bootstrap the repository-local dev
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 
-Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. UV, managed Python and project tools are repository-local. Compilers, Git and Git LFS are host tools.
+Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. UV, managed Python, `just` and project tools are repository-local. Compilers, Git and Git LFS are host tools.
 
 On minimal Linux, bootstrap also needs curl or wget, tar and sha256sum or shasum. Linux VS Code debugging needs host gdb. The optional linux-release-static-analysis preset needs host clang++.
 
-For direct terminal use, always call the platform runner. Export local recipes before the matching Conan install:
+The first bootstrap is the only direct platform-script entry point because it installs the pinned project-local `just` binary. After bootstrap, use the platform runner plus the root `justfile`; do not use a system `just` or duplicate the platform/preset mapping outside that file:
 
-    tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-    tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
+    tools/devenv/linux/run.sh just prepare-release
+    tools/devenv/linux/run.sh just build-release-applications
+    tools/devenv/linux/run.sh just check
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export third_party/intel --user=kspacejet --channel=stable
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just prepare-release
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just build-release-applications
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just check
 
-Linux product builds use conan/profiles/linux-gcc14-release and linux-release. Windows product builds use conan/profiles/windows-msvc2022-release and windows-vs2022-release. Build the smallest affected target through the runner.
+`prepare-debug` / `prepare-release`, `build-*-applications`, `install-*-applications`, `format-*`, `check`, `pre-commit`, `pre-push`, `workspace-check` and `plan-check` have the same names on Linux and Windows. The recipes select the platform-specific bootstrap script, Conan profile and CMake preset. For focused diagnostics that have no recipe, call the platform runner explicitly with a locked managed tool; do not select a system Conan/CMake/Ninja/formatter by PATH order.
 
 Product application builds and unit/benchmark/research test builds are separate CMake trees. Never configure KSJ_BUILD_APPLICATIONS together with KSJ_BUILD_UNIT_TESTS, KSJ_BUILD_BENCHMARKS or KSJ_BUILD_RESEARCH.
 
@@ -129,7 +131,7 @@ First run KSJ: bootstrap developer environment. Before the first application bui
 - KSJ: prepare Windows Debug environment
 - KSJ: prepare Windows Release environment
 
-Preparation verifies Intel payload, exports recipes, runs Conan install and configures CMake. Re-run it only after deleting its build directory or changing dependencies, recipes, payload, CMake/preset or profile.
+The initial bootstrap task invokes the platform bootstrap directly; every post-bootstrap VS Code prepare/build/install task invokes the matching shared `just` recipe. Preparation verifies Intel payload, exports recipes, runs Conan install and configures CMake. Re-run it only after deleting its build directory or changing dependencies, recipes, payload, CMake/preset or profile.
 
 Application build tasks build all four executables incrementally:
 
@@ -222,10 +224,10 @@ Choose the smallest relevant test first and then the complete acceptance gates f
 Useful standard checks:
 
     git diff --check
-    bash tools/checks/linux/format_check.sh --changed HEAD^
-    bash tools/checks/linux/ci_unit.sh
-    bash tools/checks/linux/ci_check.sh
-    bash tools/checks/linux/ci_full.sh
+    tools/devenv/linux/run.sh just format-all
+    tools/devenv/linux/run.sh just unit
+    tools/devenv/linux/run.sh just check
+    tools/devenv/linux/run.sh just full
 
 Do not commit out/, generated reports, cache files, benchmark output or reconstruction output.
 

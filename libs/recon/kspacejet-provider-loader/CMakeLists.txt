@@ -2,10 +2,8 @@ ksj_include_project_bootstrap()
 
 set(PROJ_NAME ksj_provider_loader)
 
-add_library(
-  ${PROJ_NAME} SHARED
-  "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/provider/loader/provider_loader.hpp"
-  "${CMAKE_CURRENT_LIST_DIR}/src/provider_loader.cpp")
+add_library(${PROJ_NAME} SHARED "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/provider/loader/provider_loader.hpp"
+                                "${CMAKE_CURRENT_LIST_DIR}/src/provider_loader.cpp")
 add_library(KSpaceJet::provider_loader ALIAS ${PROJ_NAME})
 
 target_compile_features(${PROJ_NAME} PUBLIC cxx_std_20)

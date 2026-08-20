@@ -16,43 +16,40 @@ Linux hosts must provide Git, Git LFS, and default GCC/G++ 14. Windows hosts mus
 Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools, and a Windows SDK. Those host tools
 are deliberately not installed into a Python virtual environment. The pinned `uv` binary,
 managed Python, and the project tooling (Conan, CMake, Ninja, `clang-format`, and
-`cmake-format`) are instead kept under the repository's ignored `.kspacejet/` and `.venv/`
-directories. The bootstrap does not use `sudo`, a platform package manager, or global Python
-packages. See [Developer environment](../../tools/devenv/README.md) for the full ownership,
-offline, and update rules.
+`cmake-format`) are kept under the repository's ignored `.kspacejet/` and `.venv/` directories.
+The pinned native `just` binary is likewise project-local under `.kspacejet/`; it is not taken
+from a system PATH. The bootstrap does not use `sudo`, a platform package manager, or global
+Python packages. See [Developer environment](../../tools/devenv/README.md) for the full
+ownership, offline, and update rules.
 
 A minimal Linux host also needs `curl` or `wget`, `tar`, and `sha256sum` or `shasum` for the
 initial bootstrap download. Host `gdb` is required only for Linux VS Code debugging, while host
 `clang++` is required only by the optional `linux-release-static-analysis` preset.
 
-After bootstrap, use `tools/devenv/linux/run.sh` or `tools/devenv/windows/run.ps1` for every
-direct terminal invocation of a managed tool. Do not use a system `conan`, `cmake`, `ninja`,
-or formatter by accident.
-
-Export the local Conan recipes, then install dependencies into the output folder used by the
-selected CMake preset. Use `linux-release` with
-`conan/profiles/linux-gcc14-release` on Linux and `windows-vs2022-release` with
-`conan/profiles/windows-msvc2022-release` on Windows.
+The direct bootstrap commands above are the first-run exception: they install project-local
+`just`. After bootstrap, use the platform runner and root `justfile` for normal development;
+the same recipe names work on Linux and Windows:
 
 ```bash
-tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
-tools/devenv/linux/run.sh conan install . --output-folder=out/build/linux-release \
-  --profile:host=conan/profiles/linux-gcc14-release --build=missing
-tools/devenv/linux/run.sh cmake --preset linux-release
+tools/devenv/linux/run.sh just prepare-release
+tools/devenv/linux/run.sh just build-release-applications
+tools/devenv/linux/run.sh just install-release-applications
+tools/devenv/linux/run.sh just check
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export third_party/intel --user=kspacejet --channel=stable
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan install . --output-folder=out/build/windows-vs2022-release `
-  --profile:host=conan/profiles/windows-msvc2022-release --build=missing
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --preset windows-vs2022-release
+.\tools\devenv\windows\run.ps1 just prepare-release
+.\tools\devenv\windows\run.ps1 just build-release-applications
+.\tools\devenv\windows\run.ps1 just install-release-applications
+.\tools\devenv\windows\run.ps1 just check
 ```
 
-Build the smallest changed target. `ksj_ismrmrd`, `ksj_array` and
-`ksj_mri_debug` are common targets. Intel payload files are obtained through
-Git LFS; a host oneAPI installation is not required.
+`prepare-debug` / `prepare-release` own the platform-specific local-recipe export, Conan
+profile, Intel payload verification and CMake configure. `build-*-applications` and
+`install-*-applications` are deliberately incremental only. Use `just --list` through the
+platform runner to view all supported commands. For a focused target not represented by a
+recipe, call the locked `cmake` through the platform runner explicitly. Intel payload files are
+obtained through Git LFS; a host oneAPI installation is not required.
 
 The repository profiles require dynamic variants for all Conan dependencies
 that provide a `shared` option (`*:shared=True`).  Linux also enables PIC for
@@ -72,10 +69,11 @@ then run the matching preparation task before the first build for each platform/
 | Windows Debug | `KSJ: prepare Windows Debug environment` | `KSJ: build Windows Debug applications` | `KSJ: install Windows Debug applications` | `windows-vs2022-debug-install` | `out/install/windows-vs2022-debug` |
 | Windows Release | `KSJ: prepare Windows Release environment` | `KSJ: build Windows Release applications` | `KSJ: install Windows Release applications` | `windows-vs2022-release-install` | `out/install/windows-vs2022-release` |
 
-Each `prepare` task calls the same platform bootstrap used at the command line. It verifies the
-complete Intel payload manifest, exports the local ISMRMRD and Intel Conan recipes, runs `conan
-install`, and configures CMake for its dedicated output directory. It produces the Conan toolchain
-and CMake build files required by the matching `build` task.
+The initial bootstrap task calls the platform bootstrap directly because it installs `just`.
+Each subsequent `prepare` task calls its shared `just` recipe, which verifies the complete Intel
+payload manifest, exports the local ISMRMRD and Intel Conan recipes, runs `conan install`, and
+configures CMake for its dedicated output directory. It produces the Conan toolchain and CMake
+build files required by the matching `build` task.
 
 Each `build … applications` task performs only `cmake --build` against that prepared
 directory. It does not export recipes, run Conan, or configure CMake, and it must not

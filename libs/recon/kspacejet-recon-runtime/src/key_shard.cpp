@@ -6,8 +6,8 @@ namespace ksj::recon::runtime {
 
 std::string_view to_string(const KeyShardState state) noexcept {
   static constexpr std::array names{
-    "dormant", "idle", "scheduled", "running", "blocked_input", "blocked_dependency", "blocked_output",
-    "blocked_resource", "flushing", "cancelling", "done", "failed",
+    "dormant",          "idle",     "scheduled",  "running", "blocked_input", "blocked_dependency", "blocked_output",
+    "blocked_resource", "flushing", "cancelling", "done",    "failed",
   };
   return names.at(static_cast<std::size_t>(state));
 }

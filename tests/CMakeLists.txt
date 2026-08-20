@@ -20,10 +20,9 @@ function(ksj_append_runner_metadata_var output_var variable_name)
 endfunction()
 
 function(ksj_generate_test_suite_runner suite_name script_name)
-  # The detailed environment-report runner is a POSIX shell program. Windows
-  # uses the ordinary CTest registrations created by ksj_add_gtest() instead;
-  # that keeps the test binaries and their discovery identical on both
-  # platforms without installing a nonfunctional .sh launcher on Windows.
+  # The detailed environment-report runner is a POSIX shell program. Windows uses the ordinary CTest registrations
+  # created by ksj_add_gtest() instead; that keeps the test binaries and their discovery identical on both platforms
+  # without installing a nonfunctional .sh launcher on Windows.
   if(WIN32)
     return()
   endif()

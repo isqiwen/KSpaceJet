@@ -31,6 +31,48 @@ fi
 repo_root="$(ksj_repo_root)"
 cd "${repo_root}"
 
+# Keep each formatter invocation below the Windows CreateProcess command-line
+# limit too.  The same script is used through shared `just` recipes, and a
+# full source tree can exceed that limit even though every individual path is
+# valid.  Leave headroom for the executable and options.
+run_formatter_batches() {
+  local maximum_path_characters=24000
+  local -a command=()
+  while [[ $# -gt 0 && "$1" != "--" ]]; do
+    command+=("$1")
+    shift
+  done
+  [[ $# -gt 0 ]] || ksj_die "formatter batch is missing its path separator"
+  shift
+
+  local command_characters=0
+  local part
+  for part in "${command[@]}"; do
+    ((command_characters += ${#part} + 1))
+  done
+
+  local -a batch=()
+  local batch_characters="${command_characters}"
+  local path
+  for path in "$@"; do
+    local path_characters=$(( ${#path} + 1 ))
+    if (( command_characters + path_characters > maximum_path_characters )); then
+      ksj_die "formatter path is too long for a portable command line: ${path}"
+    fi
+    if (( ${#batch[@]} > 0 && batch_characters + path_characters > maximum_path_characters )); then
+      "${command[@]}" "${batch[@]}"
+      batch=()
+      batch_characters="${command_characters}"
+    fi
+    batch+=("${path}")
+    ((batch_characters += path_characters))
+  done
+
+  if (( ${#batch[@]} > 0 )); then
+    "${command[@]}" "${batch[@]}"
+  fi
+}
+
 files=()
 if [[ "${mode}" == "--staged" ]]; then
   mapfile -t files < <(git diff --cached --name-only --diff-filter=ACMR | sed '/^$/d')
@@ -67,6 +109,14 @@ fi
 cpp_files=()
 cmake_files=()
 for path in "${files[@]}"; do
+  # The Intel payload is checksum-verified third-party binary/source material;
+  # it is not KSpaceJet-maintained C/C++ and must never be rewritten or made a
+  # project formatting gate.
+  case "${path}" in
+    third_party/intel/payload/*)
+      continue
+      ;;
+  esac
   [[ -f "${path}" ]] || continue
   case "${path}" in
     *.c|*.cc|*.cpp|*.cxx|*.h|*.hh|*.hpp|*.hxx|*.ipp)
@@ -81,13 +131,13 @@ done
 if [[ ${#cpp_files[@]} -gt 0 ]]; then
   ksj_has_command clang-format || ksj_die "clang-format is required for C/C++ format checks"
   ksj_note "checking ${#cpp_files[@]} C/C++ file(s) with clang-format"
-  ksj_run clang-format --dry-run --Werror "${cpp_files[@]}"
+  run_formatter_batches clang-format --dry-run --Werror -- "${cpp_files[@]}"
 fi
 
 if [[ ${#cmake_files[@]} -gt 0 ]]; then
   if ksj_has_command cmake-format; then
     ksj_note "checking ${#cmake_files[@]} CMake file(s) with cmake-format"
-    ksj_run cmake-format --check "${cmake_files[@]}"
+    run_formatter_batches cmake-format --check -- "${cmake_files[@]}"
   elif [[ "${KSJ_REQUIRE_CMAKE_FORMAT:-0}" == "1" ]]; then
     ksj_die "cmake-format is required for CMake format checks"
   else

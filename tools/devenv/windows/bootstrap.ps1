@@ -30,8 +30,10 @@ Options:
 
 The script never invokes winget or installs system software. Git, Git LFS,
 Visual Studio 2022 C++ Build Tools (v143), and a Windows SDK are host
-prerequisites. It installs a pinned uv bootstrap binary under .kspacejet/,
-then uses uv to create .venv/ and sync the locked developer-tool set.
+prerequisites. It installs pinned uv and just bootstrap binaries under
+.kspacejet/, then uses uv to create .venv/ and sync the locked developer-tool
+set. After this first bootstrap, use .\tools\devenv\windows\run.ps1 just
+<recipe> for the shared development commands.
 "@ | Write-Host
 }
 
@@ -61,8 +63,11 @@ foreach ($line in Get-Content -LiteralPath $manifestPath) {
 $uvVersion = $versions["KSJ_UV_VERSION"]
 $uvChecksum = $versions["KSJ_UV_WINDOWS_X86_64_SHA256"]
 $uvBinaryChecksum = $versions["KSJ_UV_WINDOWS_X86_64_BINARY_SHA256"]
+$justVersion = $versions["KSJ_JUST_VERSION"]
+$justChecksum = $versions["KSJ_JUST_WINDOWS_X86_64_SHA256"]
+$justBinaryChecksum = $versions["KSJ_JUST_WINDOWS_X86_64_BINARY_SHA256"]
 $pythonVersion = $versions["KSJ_PYTHON_VERSION"]
-if ([string]::IsNullOrWhiteSpace($uvVersion) -or [string]::IsNullOrWhiteSpace($uvChecksum) -or [string]::IsNullOrWhiteSpace($uvBinaryChecksum) -or [string]::IsNullOrWhiteSpace($pythonVersion)) {
+if ([string]::IsNullOrWhiteSpace($uvVersion) -or [string]::IsNullOrWhiteSpace($uvChecksum) -or [string]::IsNullOrWhiteSpace($uvBinaryChecksum) -or [string]::IsNullOrWhiteSpace($justVersion) -or [string]::IsNullOrWhiteSpace($justChecksum) -or [string]::IsNullOrWhiteSpace($justBinaryChecksum) -or [string]::IsNullOrWhiteSpace($pythonVersion)) {
   throw "[kspacejet-devenv] tool version manifest is incomplete"
 }
 
@@ -132,6 +137,8 @@ function Test-HostPrerequisites {
 
 $uvRoot = Join-Path $repoRoot ".kspacejet\bootstrap\uv\$uvVersion\windows-x86_64"
 $uvPath = Join-Path $uvRoot "uv.exe"
+$justRoot = Join-Path $repoRoot ".kspacejet\bootstrap\just\$justVersion\windows-x86_64"
+$justPath = Join-Path $justRoot "just.exe"
 
 function Test-ProjectUv {
   if (-not (Test-Path -LiteralPath $uvPath -PathType Leaf)) {
@@ -193,6 +200,74 @@ function Install-ProjectUv {
     Move-Item -LiteralPath $temporaryTarget -Destination $uvPath -Force
     if (-not (Test-ProjectUv)) {
       Stop-KSpaceJetDev "installed uv executable failed integrity verification"
+    }
+  } finally {
+    if (Test-Path -LiteralPath $temporaryDirectory) {
+      Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force
+    }
+  }
+}
+
+function Test-ProjectJust {
+  if (-not (Test-Path -LiteralPath $justPath -PathType Leaf)) {
+    return $false
+  }
+  try {
+    $reported = & $justPath --version
+    $justExitCode = $LASTEXITCODE
+    $actualChecksum = (Get-FileHash -LiteralPath $justPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    return $justExitCode -eq 0 -and (($reported -split "\s+")[1] -eq $justVersion) -and $actualChecksum -eq $justBinaryChecksum
+  } catch {
+    return $false
+  }
+}
+
+function Install-ProjectJust {
+  if (Test-ProjectJust) {
+    Write-KSpaceJetDevNote "using pinned project-local just $justVersion"
+    return
+  }
+  if ($Verify) {
+    Stop-KSpaceJetDev "project-local just $justVersion is absent or invalid; -Verify never downloads tools"
+  }
+  if ($Offline) {
+    Stop-KSpaceJetDev "project-local just $justVersion is absent or invalid while -Offline is set"
+  }
+
+  $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("kspacejet-just-" + [Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Path $temporaryDirectory -Force | Out-Null
+  try {
+    $archivePath = Join-Path $temporaryDirectory "just.zip"
+    $url = "https://github.com/casey/just/releases/download/$justVersion/just-$justVersion-x86_64-pc-windows-msvc.zip"
+    Write-KSpaceJetDevNote "downloading pinned just $justVersion"
+    Invoke-WebRequest -Uri $url -OutFile $archivePath -UseBasicParsing
+
+    $actualChecksum = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualChecksum -ne $justChecksum) {
+      Stop-KSpaceJetDev "just archive SHA-256 mismatch"
+    }
+
+    $extractDirectory = Join-Path $temporaryDirectory "extract"
+    Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDirectory -Force
+    $candidates = @(Get-ChildItem -LiteralPath $extractDirectory -Filter "just.exe" -File -Recurse)
+    if ($candidates.Count -ne 1) {
+      Stop-KSpaceJetDev "unexpected just archive layout"
+    }
+
+    $reported = & $candidates[0].FullName --version
+    if ($LASTEXITCODE -ne 0 -or (($reported -split "\s+")[1] -ne $justVersion)) {
+      Stop-KSpaceJetDev "downloaded just reports an unexpected version"
+    }
+
+    New-Item -ItemType Directory -Path $justRoot -Force | Out-Null
+    $temporaryTarget = "$justPath.new"
+    Copy-Item -LiteralPath $candidates[0].FullName -Destination $temporaryTarget -Force
+    if (Test-Path -LiteralPath $justPath -PathType Leaf) {
+      Remove-Item -LiteralPath $justPath -Force
+    }
+    Move-Item -LiteralPath $temporaryTarget -Destination $justPath -Force
+    if (-not (Test-ProjectJust)) {
+      Stop-KSpaceJetDev "installed just executable failed integrity verification"
     }
   } finally {
     if (Test-Path -LiteralPath $temporaryDirectory) {
@@ -318,6 +393,7 @@ function Prepare-Build {
 
 function Show-Versions {
   Write-KSpaceJetDevNote "tool versions"
+  Invoke-KSpaceJetDevNative -Executable $justPath -Arguments @("--version")
   Invoke-ProjectTool -Arguments @("python", "--version")
   Invoke-ProjectTool -Arguments @("conan", "--version")
   Invoke-ProjectTool -Arguments @("cmake", "--version")
@@ -333,22 +409,18 @@ function Invoke-SmokeChecks {
   if ($Verify) {
     Stop-KSpaceJetDev "-Verify cannot be combined with -Smoke"
   }
-  & (Join-Path $repoRoot "tools\checks\windows\pre_commit.ps1")
-  if ($LASTEXITCODE -ne 0) {
-    throw "[kspacejet-devenv] pre-commit smoke check failed"
-  }
-  & (Join-Path $repoRoot "tools\checks\windows\format_check.ps1") --changed HEAD
-  if ($LASTEXITCODE -ne 0) {
-    throw "[kspacejet-devenv] format smoke check failed"
-  }
+  Invoke-ProjectTool -Arguments @("just", "pre-commit")
+  Invoke-ProjectTool -Arguments @("just", "format-changed")
 }
 
 Set-Location $repoRoot
 Test-HostPrerequisites
 Install-ProjectUv
+Install-ProjectJust
 Sync-PythonTools
 Configure-Repository
 Prepare-Build
 Show-Versions
 Invoke-SmokeChecks
+Write-KSpaceJetDevNote "shared commands: .\tools\devenv\windows\run.ps1 just --list"
 Write-KSpaceJetDevNote "developer environment is ready"

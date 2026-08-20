@@ -26,7 +26,7 @@ KSpaceJet 内的 symlink。数据相关命令应显式传入 sibling 数据仓�
 后，可运行以下离线检查；Linux/Windows pre-commit 也会自动执行它：
 
 ```bash
-tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --project-root .
+tools/devenv/linux/run.sh just workspace-check
 ```
 
 该检查只验证同级布局、数据仓库 identity/结构和 KSpaceJet 中不存在 raw payload；它不下载
@@ -63,11 +63,13 @@ tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --projec
 Git、Git LFS，以及默认的 GCC/G++ 14；Windows x86_64 的宿主机需要 Git、Git LFS、
 Visual Studio 2022 的 v143 C++ 工具和 Windows SDK。这些与操作系统/SDK 集成的工具保留在
 宿主机上；Conan、CMake、Ninja、`clang-format` 和 `cmake-format` 由固定版本的 `uv` 环境
-安装到本仓库，不会修改全局 Python 或 shell `PATH`。
+安装到本仓库，`just` 则作为独立、校验过的 native artifact 安装在 `.kspacejet/`。两者都
+不会修改全局 Python、shell `PATH` 或系统级 `just`。
 
 Linux 首次 bootstrap 还需要普通的宿主下载/解包工具：`curl` 或 `wget`、`tar`、`sha256sum` 或
 `shasum`。Linux 的 VS Code 调试另需宿主 `gdb`；仅 `linux-release-static-analysis` 需要宿主
-`clang++`。这些都不影响普通构建。
+`clang++`。这些都不影响普通构建。首次 bootstrap 是唯一直接调用平台脚本的步骤，因为它负责
+安装项目锁定的 `just`。
 
 Linux：
 
@@ -81,42 +83,30 @@ Windows PowerShell：
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 ```
 
-希望在 bootstrap 后立刻准备 Release 构建目录时，使用 `--prepare linux-release`，或 Windows
-的 `-Prepare windows-vs2022-release`；缺失的 Intel Git-LFS payload 会自动取得。`--pull-lfs`
-（Windows 为 `-PullLfs`）只用于不准备构建目录时单独预取 payload。完整的工具归属、离线验证和
-维护规则见 [开发环境说明](tools/devenv/README.md)。
-
-下文所有命令行示例都通过平台 wrapper 调用项目锁定的工具。不要直接依赖系统 PATH 中的
-`conan`、`cmake` 或格式化工具。
-
-先导出本仓库的本地 Conan recipes：
+完成 bootstrap 后，日常命令全部经过根 `justfile`，Linux 与 Windows 使用相同的 recipe 名称：
 
 ```bash
-tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
+tools/devenv/linux/run.sh just prepare-release
+tools/devenv/linux/run.sh just build-release-applications
+tools/devenv/linux/run.sh just install-release-applications
+tools/devenv/linux/run.sh just check
+tools/devenv/linux/run.sh just workspace-check
 ```
-
-Linux：
-
-```bash
-tools/devenv/linux/run.sh conan install . --output-folder=out/build/linux-release \
-  --profile:host=conan/profiles/linux-gcc14-release --build=missing
-tools/devenv/linux/run.sh cmake --preset linux-release
-tools/devenv/linux/run.sh cmake --build --preset linux-release --target ksj_ismrmrd
-tools/devenv/linux/run.sh cmake --build --preset linux-release --target ksj_cli ksj_gateway ksj_recon ksj_research
-```
-
-Windows：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan export third_party/intel --user=kspacejet --channel=stable
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan install . --output-folder=out/build/windows-vs2022-release `
-  --profile:host=conan/profiles/windows-msvc2022-release --build=missing
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --preset windows-vs2022-release
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-release --target ksj_ismrmrd
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-release --target ksj_cli ksj_gateway ksj_recon ksj_research
+.\tools\devenv\windows\run.ps1 just prepare-release
+.\tools\devenv\windows\run.ps1 just build-release-applications
+.\tools\devenv\windows\run.ps1 just install-release-applications
+.\tools\devenv\windows\run.ps1 just check
+.\tools\devenv\windows\run.ps1 just workspace-check
 ```
+
+`prepare-debug` / `prepare-release` 自动选择对应的 Conan profile、Intel payload 验证与 CMake preset；
+`build-*-applications` 和 `install-*-applications` 保持纯增量，不会隐式重新 prepare。使用
+`tools/devenv/linux/run.sh just --list` 或 Windows 等价命令查看所有 recipes。对尚未提供 recipe
+的低层诊断，仍可通过 platform runner 直接调用项目锁定的工具；不要依赖系统 PATH 中的 `just`、
+`conan`、`cmake` 或格式化工具。完整的工具归属、离线验证和维护规则见
+[开发环境说明](tools/devenv/README.md)。
 
 Intel payload 位于 `third_party/intel/payload/`，由 Git LFS 管理。发布前执行
 `git lfs pull`，以获得 Linux 和 Windows 运行时文件。

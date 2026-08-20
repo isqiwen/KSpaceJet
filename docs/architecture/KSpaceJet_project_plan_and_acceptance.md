@@ -4,7 +4,7 @@
 > 状态权威：第 12 节唯一执行台账；顶部总览只是可再生成的只读投影
 > 适用仓库：`isqiwen/KSpaceJet`
 > 文档状态：ACTIVE
-> 版本：0.4
+> 版本：0.5
 > 建立日期：2026-08-19
 > 基线分支与提交：main / `8c31b30419ed330688b3f1b90f14a4498503317d`
 > 项目阶段：Pre-release；接口、ABI、schema 和源代码布局均可直接演进，不保留兼容层，除非当前任务明确要求。
@@ -93,14 +93,14 @@ ready_items: []
 blocked_items:
   - P0-002
   - P0-006
-accepted: 6
-applicable: 55
-coverage: 10.9%
+accepted: 7
+applicable: 56
+coverage: 12.5%
 ```
 
 | 阶段 | 目标 | 已接受 | 适用项 | 覆盖度 | 状态分布 |
 | --- | --- | ---: | ---: | ---: | --- |
-| P0 | 规范、基线和工程治理 | 6 | 9 | 66.7% | ACCEPTED: 6 · BLOCKED: 2 · PLANNED: 1 |
+| P0 | 规范、基线和工程治理 | 7 | 10 | 70% | ACCEPTED: 7 · BLOCKED: 2 · PLANNED: 1 |
 | P1 | 可信离线 reference 基线 | 0 | 7 | 0% | PLANNED: 7 |
 | P2 | 图、artifact、compiler、verifier 和 CLI 计划工具 | 0 | 6 | 0% | PLANNED: 6 |
 | P3 | 有界 generic CPU runtime | 0 | 6 | 0% | PLANNED: 6 |
@@ -113,9 +113,9 @@ coverage: 10.9%
 
 | 工作项 | 证据记录 |
 | --- | --- |
+| P0-010 | [13.12 P0-010 ACCEPTED 证据](#1312-p0-010-accepted-证据) |
 | P0-009 | [13.11 P0-009 ACCEPTED 证据](#1311-p0-009-accepted-证据) |
 | P0-003 | [13.10 P0-003 ACCEPTED 证据](#1310-p0-003-accepted-证据) |
-| P0-008 | [13.9 P0-008 ACCEPTED 证据](#139-p0-008-accepted-证据) |
 
 #### 当前阻塞项（自动生成）
 
@@ -418,36 +418,34 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 
 ### 7.2 固定验证入口
 
-所有直接命令均先使用项目的 bootstrap/runner；不要误用系统 PATH 中的 Conan、CMake、Ninja 或 formatter。
+首次 bootstrap 是唯一直接调用平台脚本的入口，因为它安装项目锁定的 `just`。之后的日常开发命令均通过 platform runner 和根 `justfile`；不要误用系统 PATH 中的 `just`、Conan、CMake、Ninja 或 formatter。
 
 Linux 首次准备：
 
     bash tools/devenv/linux/bootstrap.sh
-    tools/devenv/linux/run.sh conan export conan/recipes/ismrmrd --user=kspacejet --channel=stable
-    tools/devenv/linux/run.sh conan export third_party/intel --user=kspacejet --channel=stable
+    tools/devenv/linux/run.sh just prepare-release
+    tools/devenv/linux/run.sh just build-release-applications
 
 Linux 格式与静态基线：
 
     git diff --check
-    bash tools/checks/linux/format_check.sh --changed HEAD^
-    python3 tools/type_registry/generate.py --project-root . --check
+    tools/devenv/linux/run.sh just format-all
+    tools/devenv/linux/run.sh just type-check
 
 Linux 单元测试：
 
-    bash tools/checks/linux/ci_unit.sh
-    tools/devenv/linux/run.sh ctest --preset linux-release-unit-tests --output-on-failure
-    tools/devenv/linux/run.sh ctest --preset linux-release-unit-tests -L recon --output-on-failure
+    tools/devenv/linux/run.sh just unit
 
 Linux 完整检查和 benchmark smoke：
 
-    bash tools/checks/linux/ci_check.sh
-    bash tools/checks/linux/ci_full.sh
+    tools/devenv/linux/run.sh just check
+    tools/devenv/linux/run.sh just full
 
 Windows 基础门禁：
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\checks\windows\pre_commit.ps1
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\checks\windows\pre_push.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just check
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just pre-push
 
 产品 application 与 unit/benchmark/research 测试必须使用不同 build tree。不得以 application build 成功替代 unit test，也不得把测试 preset 同时配置为 application build。
 
@@ -697,6 +695,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P0-007 | 建立远程 CI 和分支保护计划；若用户授权，实际创建 CI workflow/现有 runner pipeline 和 required checks。 | .github 或现有 CI 目录、tools/checks、GitHub settings。 | P0-002。 | AC-REL-001、002；无远程写入授权时只产出设计和 BLOCKED 证据。 |
 | P0-008 | 将本文件升级为可快速查看的 Master Plan：从唯一台账派生阶段完成度、当前项、READY/阻塞项和最近证据，并以离线检查器阻止其与台账漂移。 | 本文件、README、docs/README、tools/checks。 | P0-001。 | 总览只读派生自第 12 节，不复制单项状态；检查器验证第 10/12 节 ID 集合、状态、唯一 READY/活动项、READY 依赖、入口链接和总览一致性。 |
 | P0-009 | 固化双仓库数据边界：KSpaceJet 不保存 MRI 原始重建数据；开发工作区必须与同级 `KSpaceJet-ismrmrd-data` 仓库配套，后者是唯一 raw ISMRMRD dataset 归属。删除旧 project-internal research raw-data 目录及专用 downloader/test，不迁入数据仓库。 | AGENTS、README、tools/devenv、tools/checks、research/benchmarks、canonical plan。 | P0-003。 | 离线检查必须拒绝 KSpaceJet 已跟踪或物理存在的 `.mrd`、`.h5`、`.hdf5`、`.ismrmrd` payload，并验证同级数据仓库、origin 与 manifest 结构；Linux/Windows pre-commit 都必须执行该检查，所有旧 local-data 引用必须清除，文档给出可复制布局。 |
+| P0-010 | 将 `just` 纳入项目级开发环境 bootstrap，并以根 `justfile` 提供 Linux/Windows 相同语义的 prepare、incremental build、install、format 和 check 入口；首次 bootstrap 是唯一允许直接调用平台脚本的引导例外。 | `justfile`、`tools/devenv`、`.vscode/tasks.json`、`.githooks`、README、docs/conventions、tools/checks。 | P0-003。 | 两端 bootstrap 必须下载并校验固定版本的 project-local `just`，而非使用系统 PATH；两端 runner、VS Code 和 Git hook 均须选择同一 `justfile` recipe；Linux 必须实际 bootstrap、验证 binary、解析/格式化 justfile 并运行代表性 recipes。Windows 接线须静态检查，真实 Windows 运行证据纳入 P0-002。 |
 
 ### P1：可信离线 reference 基线
 
@@ -821,8 +820,8 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 
 ## 12. 唯一执行台账
 
-**更新时间**：2026-08-20，P0-003、P0-004、P0-005、P0-008、P0-009 已 ACCEPTED；P0-002 仍等待 Windows 主机，P0-006 仍等待产品参数 authority
-**当前可执行任务**：无；第 12 节没有 READY、IN_PROGRESS 或 VERIFYING 项。不得伪造下一项；只在外部阻塞解除后按本节状态机恢复。
+**更新时间**：2026-08-20，P0-010 已 ACCEPTED；P0-002 仍等待真实 Windows 主机，P0-006 仍等待产品参数 authority
+**当前可执行任务**：无；第 12 节没有 READY、IN_PROGRESS 或 VERIFYING 项。不得伪造下一项；只在 P0-002 的真实 Windows host 或 P0-006 的完整 owner/source/review inputs 到位后，按本节状态机恢复。
 **状态权威**：本节是本文件中唯一允许修改任务状态的位置。任务目录第 10 节不维护重复状态。
 
 ### 12.1 P0 台账
@@ -838,6 +837,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P0-007 | PLANNED | P0-002 | main 无 GitHub Actions/.gitlab CI 文件和 required status evidence。 | 先制定最小 CI matrix；外部 repo settings 改动仅在被授权时执行。 | remote workflow/branch protection 尚未配置。 |
 | P0-008 | ACCEPTED | P0-001 | 用户要求的 Master Plan 视图已在第 0.4 节作为受控派生总览落地：显示阶段覆盖度、当前/READY/阻塞项、最近验收证据和阻塞恢复动作；完整证据见第 13.9 节。第 12 节仍是唯一状态权威。 | 后续状态变更只改第 12 节，然后运行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；无 READY 时保持无下一项。 | 总览不能直接改变状态。P0-002 的 Windows 与 P0-006 的参数 authority BLOCKED 均不因本项解除；当前 Linux 主机无法执行 Windows hook。 |
 | P0-009 | ACCEPTED | P0-003 | 已确立并验证双仓库 raw-data contract：KSpaceJet 无原始 MRI payload，唯一外部数据归属为同级 `KSpaceJet-ismrmrd-data`。旧 `research/benchmarks/datasets/`、专用 downloader/test 已按用户授权删除（先移入 Trash）；完整证据见第 13.11 节。 | 无 READY 项；后续开发保持 sibling workspace，预提交自动检查 `check_workspace_layout.py`，数据仓库完整性在 sibling 中运行 `tools/verify-data.sh`。 | Windows PowerShell hook 未在本 Linux host 执行；其静态接线已与 Linux 同步，实际 Windows toolchain/host 证据仍只属于 P0-002。 |
+| P0-010 | ACCEPTED | P0-003 | project-local `just 1.58.0` 已由两端 bootstrap/runner、根 justfile、VS Code、hook 与开发文档收敛；Linux 实测和 Windows static wiring 证据见第 13.12 节。系统 `/usr/bin/just` 1.40.0 仅为审计观察，不能作为项目工具。 | 无 READY 项；后续使用 platform runner 加 `just <recipe>`，仅在没有 recipe 的聚焦诊断中直接调用锁定工具。 | 当前无 Windows PowerShell/MSVC host；真实 Windows binary/bootstrap/recipe evidence 仍由 P0-002 补充，不得把本项当作 Windows release qualification。 |
 
 ### 12.1.1 P0-001 基线能力矩阵（2026-08-20，ACCEPTED）
 
@@ -953,6 +953,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | 2026-08-20 | 将唯一执行台账升级为可校验的 Master Plan 视图。 | P0-008 | 第 0.4 节从第 12 节生成阶段覆盖度、当前/READY/阻塞项、最近验收证据和恢复动作；离线 checker 与本地 document gates 已接入。 | P0-008 ACCEPTED；当前无 READY/IN_PROGRESS 项，P0-002、P0-003、P0-006 保持独立 BLOCKED。 |
 | 2026-08-20 | 将 canonical governance/contract 交付提交到当前实际仓库。 | P0-003 | commit `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` / tree `01c12fcd1b52fe45a86a3a26691bcfbf264e6589`，pre-commit gate 通过。 | P0-003 ACCEPTED；P0-002 与 P0-006 保持 BLOCKED，当前无 READY 项。 |
 | 2026-08-20 | 固化双仓库 raw-data 边界并删除旧 KSpaceJet local-data 工作流。 | P0-009 | 用户明确要求所有原始数据只留在同级 `KSpaceJet-ismrmrd-data`；旧 local raw data、metadata、downloader 与 test 已移除，离线 workspace checker、两端 pre-commit 接线和数据仓库 verifier 均已验证。 | P0-009 ACCEPTED；当前无 READY 项，P0-002/P0-006 的既有外部 BLOCKED 条件不变。 |
+| 2026-08-20 | 建立 checksum-pinned project-local `just` 和跨平台统一开发入口。 | P0-010 | Linux/Windows bootstrap、runner、根 `justfile`、VS Code 和 hook 收敛到同名 recipe；Linux 实际 bootstrap、format、build/install、unit 和 check 通过，Windows 接线/命令长度经静态审查。 | P0-010 ACCEPTED；当前没有 READY 项，P0-002 的真实 Windows host 需求与 P0-006 的参数 authority 仍独立 BLOCKED。 |
 
 ### 13.1 P0-001 ACCEPTED 证据
 
@@ -1090,13 +1091,25 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 - Known limitations: 当前 Linux host 无 `powershell` / `pwsh`，所以 Windows pre-commit runtime 未执行；其明确的 `Invoke-KSpaceJetCommand python tools/checks/check_workspace_layout.py --project-root $repoRoot` 接线已静态审查。该限制不改变 P0-002 对真实 Windows toolchain/install 的 BLOCKED 事实。checker 按当前项目的 raw ISMRMRD suffix contract 识别 payload，不替代 data repo 的完整 manifest/checksum verifier。
 - Next READY item: 无。只有 P0-002 收到真实 Windows x64 + VS 2022 + SDK runner，或 P0-006 收到完整产品参数 authority 后，才能按第 12 节重新选择工作项。
 
+### 13.12 P0-010 ACCEPTED 证据
+
+- Work item: `P0-010`; requirements/acceptance: 本项第 10 节的 project-local `just`、Linux/Windows 同名 recipe、bootstrap/runner/VS Code/hook 收敛和 Linux 实测要求。
+- Base commit/tree: `eb323fb0c20abbfdff4310f8bb62ac4075088803` / `f419d09a66d72e7d92377ae5cdee83df05f37fcf`。本项尚未创建 commit；未覆盖 P0-009 已提交内容或任何 ignored build/cache artifact。
+- Changed surface: `tools/devenv/tool-versions.env` 固定 `just 1.58.0` 的 Linux musl 与 Windows MSVC archive/binary SHA-256。两端 bootstrap 下载、版本检查和二次 binary digest 检查 project-local `.kspacejet/bootstrap/just/<version>/<platform>/just[.exe]`；runner 在 `.venv` 和系统 PATH 前选择它，并在缺失时拒绝执行 `just`。根 `justfile` 使用 `minimum-version`、Linux/Windows 条件 recipe 和相同的 prepare、incremental build、install、format、check、hook、link/plan/workspace/type 命令；VS Code 的首次 bootstrap 保留直接平台调用，所有其后 prepare/build/install 与 Git hooks 均转到同一 recipe。格式门禁跳过 checksum-owned `third_party/intel/payload/`，将两端 formatter 调用限制为最多 24,000 path characters 的批次（当前 Windows 全仓 clang-format 为两批），并以项目 formatter 修复 6 个既有 C++ 和 8 个 CMake 格式偏差。无 public API/ABI/schema/CLI 产品行为变更。
+- Focused Linux validation: `bash tools/devenv/linux/bootstrap.sh --no-hooks` 首次下载并验证 `just 1.58.0`；随后 `bash tools/devenv/linux/bootstrap.sh --verify`、`tools/devenv/linux/run.sh bash -c 'command -v just; just --version; sha256sum "$(command -v just)"'` 均 exit 0，实际 binary 为 `.kspacejet/bootstrap/just/1.58.0/linux-x86_64/just`，digest `3ad66571feae522db2cad31b9613bf21035b8a06d2738d6fc8fe6089856f2042`。`tools/devenv/linux/run.sh just --fmt --check`、`just --list`、`just format-all`、`just format-changed`、`just type-check`、`just link-check`、`just plan-check`、`just workspace-check` 和 `just pre-commit` 全部 exit 0；`bash tools/devenv/linux/bootstrap.sh --no-hooks --smoke` 亦经 `just pre-commit` / `just format-changed` 通过。
+- Complete Linux validation: `tools/devenv/linux/run.sh just prepare-release`、`just build-release-applications`、`just install-release-applications`、`just check` 和 `just unit` 均 exit 0；unit CTest 35/35 通过。`.githooks/pre-commit` 经 runner 调用 `just pre-commit` exit 0。一次既有 Ninja metadata `premature end of file; recovering` warning 被追溯到忽略且可再生的 `out/build/linux-release/.ninja_log` / `.ninja_deps`；确认二者均为 `/out/` 下 regular file 后，以精确 `find out/build/linux-release -maxdepth 1 -type f \( -name .ninja_log -o -name .ninja_deps \) -delete` 删除并立即重新运行 build/install（160-step app build、54-step install build，均无该 warning）。未删除 tracked source 或数据。`bash -n .githooks/pre-commit .githooks/pre-push tools/devenv/linux/bootstrap.sh tools/devenv/linux/run.sh tools/checks/linux/format_check.sh tools/checks/linux/install_hooks.sh`、`tools/devenv/linux/run.sh python -m json.tool .vscode/tasks.json` 与 `git diff --check` 全部 exit 0。`cmake-format` 的两条既有 `${_KSJ_INSTALL_*}` install-form warning 未导致失败。
+- Windows static wiring: 检查 `windows/bootstrap.ps1` 的 `Install-ProjectJust`/checksum、`windows/run.ps1` 的 project-local PATH 前置、`.githooks/pre-commit` 和所有 Windows VS Code post-bootstrap task 的 `run.ps1 just <recipe>` 接线，以及根 justfile 的 `[windows]` recipes。当前 658 个 C/C++ tracked paths 按相同 24,000-character 算法拆为 2 批（340 / 318 paths，最长 23,988 characters，小于 CreateProcess 32,767），107 个 CMake paths 为 1 批（4,956）；因此 Windows `format-all` / `check` 不再依赖超长单一 argv。
+- Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, GCC/G++ 14.2.0, repository-local `just 1.58.0`, Python 3.13.5, Conan 2.31.2, CMake 3.31.6, Ninja 1.13.0, clang-format 19.1.7, cmake-format 0.6.13.
+- Known limitations: 当前 host 无 `powershell` / `pwsh`、Windows kernel、MSVC 或 Windows SDK，因此未执行 Windows binary download/bootstrap/PowerShell recipe；静态审查不能替代该运行证据。P0-002 仍是此真实 Windows validation 的唯一 BLOCKED owner，且本项不宣称 Windows build/install/release qualification。开发者不得使用系统 `just`；首次 bootstrap 仍是有意保留的引导例外。
+- Next READY item: 无。只有 P0-002 的 Windows host 或 P0-006 的完整参数 authority 到位后，才能依第 12 节状态机重新激活任务。
+
 ---
 
 ## 14. 需求追踪矩阵
 
 | 功能范围 | 功能 ID | 主工作项 | 关键验收 |
 | --- | --- | --- | --- |
-| 工具链、CI、文件完整性 | FUN-001, FUN-002 | P0-001 至 P0-009, P7-001 至 P7-004 | AC-BLD, AC-TYP, AC-REL-001 至 005 |
+| 工具链、CI、文件完整性 | FUN-001, FUN-002 | P0-001 至 P0-010, P7-001 至 P7-004 | AC-BLD, AC-TYP, AC-REL-001 至 005 |
 | 数据、FrameSlot、artifact | FUN-003 至 FUN-006 | P1-001 至 P1-007, P2-001 | AC-ART, AC-DAT |
 | Pipeline/resolve/plan/verify | FUN-010 至 FUN-013 | P2-001 至 P2-006 | AC-SCH, AC-PLN |
 | bounded execution/lifecycle | FUN-014 至 FUN-017 | P3-001 至 P3-006, P6-001/002 | AC-SCH, AC-RT, AC-PERF-001 至 004 |

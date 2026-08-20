@@ -39,7 +39,8 @@ if(NOT TARGET KSpaceJet::linux_runtime_definitions)
   add_library(KSpaceJet::linux_runtime_definitions ALIAS ksj_platform_runtime_definitions)
 endif()
 if(WIN32)
-  target_compile_definitions(ksj_platform_runtime_definitions INTERFACE KSJ_BUILD_FOR_WINDOWS NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_compile_definitions(ksj_platform_runtime_definitions INTERFACE KSJ_BUILD_FOR_WINDOWS NOMINMAX
+                                                                        WIN32_LEAN_AND_MEAN)
 else()
   target_compile_definitions(ksj_platform_runtime_definitions INTERFACE KSJ_BUILD_FOR_LINUX KSJ_NO_BUSY_LOOP)
 endif()
@@ -50,7 +51,8 @@ ksj_add_interface_target(ksj_main_runtime_definitions KSpaceJet::main_runtime_de
 target_compile_definitions(ksj_main_runtime_definitions INTERFACE BUILDING_KSpaceJet)
 
 ksj_add_interface_target(ksj_base_abi_definitions KSpaceJet::base_abi_definitions)
-target_link_libraries(ksj_base_abi_definitions INTERFACE KSpaceJet::platform_runtime_definitions
-                                                            KSpaceJet::intel_compat_definitions KSpaceJet::main_runtime_definitions)
+target_link_libraries(
+  ksj_base_abi_definitions INTERFACE KSpaceJet::platform_runtime_definitions KSpaceJet::intel_compat_definitions
+                                     KSpaceJet::main_runtime_definitions)
 ksj_add_interface_target(ksj_matio_headers KSpaceJet::matio_headers)
 target_include_directories(ksj_matio_headers INTERFACE "${KSJ_MATIO_DIR}/include")

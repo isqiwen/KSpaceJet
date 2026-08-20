@@ -13,8 +13,8 @@ namespace {
 std::once_flag g_numerics_runtime_init_once;
 
 void initialize_ipp_backend_runtime() {
-  // KSpaceJet schedules work at a higher level. Keep IPP single-threaded to avoid hidden nested parallelism inside numerics
-  // kernels; callers that need concurrency should parallelize around numerics operations.
+  // KSpaceJet schedules work at a higher level. Keep IPP single-threaded to avoid hidden nested parallelism inside
+  // numerics kernels; callers that need concurrency should parallelize around numerics operations.
   (void)ippSetNumThreads_T(1);
 }
 

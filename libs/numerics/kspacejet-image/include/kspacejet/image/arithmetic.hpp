@@ -1,6 +1,7 @@
 #pragma once
 
-/// Pixelwise image arithmetic with shape validation; elementwise operations delegate backend selection to kspacejet-array.
+/// Pixelwise image arithmetic with shape validation; elementwise operations delegate backend selection to
+/// kspacejet-array.
 
 #include "kspacejet/array/array.hpp"
 #include "kspacejet/image/detail/common.hpp"

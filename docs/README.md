@@ -25,9 +25,10 @@ the normal application build and install:
 `ksj-research` is installed as a research-tool scaffold, not a runtime or data-plane dependency
 of the other applications. It remains separate from the existing `KSJ_BUILD_RESEARCH`
 test/research switch. In VS Code, first run the visible
-`KSJ: bootstrap developer environment` task, which calls the matching project-local
-bootstrap; then, before the first build or F5 debug session for a platform/configuration,
-run its matching `KSJ: prepare <platform> <config> environment` task. The application build
+`KSJ: bootstrap developer environment` task, which installs the project-local `just` through the
+matching platform bootstrap; then, before the first build or F5 debug session for a
+platform/configuration, run its matching `KSJ: prepare <platform> <config> environment` task.
+All post-bootstrap tasks invoke the shared root `justfile` recipes. The application build
 tasks are
 `KSJ: build Linux Debug applications`, `KSJ: build Linux Release applications`,
 `KSJ: build Windows Debug applications`, and `KSJ: build Windows Release applications`;

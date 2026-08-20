@@ -21,25 +21,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\boots
 Linux hosts must already have Git, Git LFS, and default GCC/G++ 14. Windows hosts must
 already have Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools, and a Windows SDK.
 These system-integrated tools stay on the host. The bootstrap creates a repository-local
-`uv` environment for the locked Python and developer tools; it does not install every tool
-into a virtual environment and does not alter a global Python environment. See
+`uv` environment and installs a checksum-pinned project-local `just`; it does not install every
+tool into a virtual environment or alter a global Python environment. See
 [the developer-environment guide](../devenv/README.md) for the complete policy.
+
+After the first bootstrap, run the shared `justfile` recipes through the platform runner. The
+recipe names below are the same on Linux and Windows; only Linux-only recipes such as `unit`
+and `benchmark-smoke` are intentionally absent on Windows.
 
 Linux entry points:
 
 ```bash
-tools/checks/linux/pre_commit.sh
-tools/checks/linux/pre_push.sh
-tools/checks/linux/ci_check.sh
-tools/checks/linux/ci_unit.sh
-tools/checks/linux/benchmark_smoke.sh
+tools/devenv/linux/run.sh just pre-commit
+tools/devenv/linux/run.sh just pre-push
+tools/devenv/linux/run.sh just check
+tools/devenv/linux/run.sh just unit
+tools/devenv/linux/run.sh just benchmark-smoke
 ```
 
 Windows entry points:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\checks\windows\pre_commit.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\checks\windows\pre_push.ps1
+.\tools\devenv\windows\run.ps1 just pre-commit
+.\tools\devenv\windows\run.ps1 just pre-push
+.\tools\devenv\windows\run.ps1 just check
 ```
 
 The pre-commit and Linux CI checks also run the offline Markdown link checker and the
@@ -47,11 +52,11 @@ canonical execution-plan checker. The link checker validates repository-local in
 and Markdown heading fragments without fetching external URLs:
 
 ```bash
-tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .
+tools/devenv/linux/run.sh just link-check
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_markdown_links.py --project-root .
+.\tools\devenv\windows\run.ps1 just link-check
 ```
 
 Use `--self-test` to run the hermetic checker regression tests, including the negative case
@@ -63,13 +68,13 @@ read-only projection of section 12; it never creates a second status file. After
 work-item state, update section 12 and then regenerate and verify the dashboard:
 
 ```bash
-tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --project-root . --write
-tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --project-root . --check
+tools/devenv/linux/run.sh just plan-write
+tools/devenv/linux/run.sh just plan-check
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_execution_plan.py --project-root . --write
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_execution_plan.py --project-root . --check
+.\tools\devenv\windows\run.ps1 just plan-write
+.\tools\devenv\windows\run.ps1 just plan-check
 ```
 
 `--self-test` exercises its parser, section-10/section-12 task-set equality, canonical-plan
@@ -94,25 +99,23 @@ and `.ismrmrd` payloads in KSpaceJet. It intentionally is not part of self-conta
 CI must explicitly check out the sibling repository before it can claim workspace verification.
 
 ```bash
-tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --project-root .
-tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --self-test
+tools/devenv/linux/run.sh just workspace-check
+tools/devenv/linux/run.sh just workspace-self-test
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_workspace_layout.py --project-root .
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 python .\tools\checks\check_workspace_layout.py --self-test
+.\tools\devenv\windows\run.ps1 just workspace-check
+.\tools\devenv\windows\run.ps1 just workspace-self-test
 ```
 
 The checker never fetches or hashes datasets. Run `tools/verify-data.sh` from inside the sibling
 data repository for its manifest and checksum verification.
 
-Before invoking a CMake-based check, export the local Conan recipes and run `conan install`
-for the matching preset output directory. Use the platform runner for direct terminal
-commands, for example `tools/devenv/linux/run.sh conan install ...` or
-`powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 conan install ...`;
-do not select a system Conan/CMake
-by PATH order. See the root [README](../../README.md) for commands. `benchmark_smoke.sh`
-tests only the numerical benchmark targets; it is Linux-only.
+Before invoking a CMake-based check, run the matching `just prepare-*` recipe so it exports local
+Conan recipes and configures the matching output directory. Use the platform runner directly only
+for a focused diagnostic with no recipe; never select a system `just`, Conan or CMake by PATH
+order. See the root [README](../../README.md) for commands. `benchmark-smoke` tests only the
+numerical benchmark targets; it is Linux-only.
 
 The locked development environment supplies `clang-format` and `cmake-format`. Set
 `KSJ_REQUIRE_CMAKE_FORMAT=1` to make a missing formatter an error in environments that

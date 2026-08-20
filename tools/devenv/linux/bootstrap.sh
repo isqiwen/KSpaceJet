@@ -23,9 +23,10 @@ Options:
   --help              Show this help.
 
 The script never invokes sudo or a system package manager.  Git, Git LFS and
-the default GCC/G++ 14 toolchain are host prerequisites.  It installs a pinned
-uv bootstrap binary under .kspacejet/, then uses uv to create .venv/ and sync
-the locked developer-tool set.
+the default GCC/G++ 14 toolchain are host prerequisites.  It installs pinned
+uv and just binaries under .kspacejet/, then uses uv to create .venv/ and sync
+the locked developer-tool set.  After this first bootstrap, use
+tools/devenv/linux/run.sh just <recipe> for the shared development commands.
 EOF
 }
 
@@ -103,7 +104,7 @@ sha256_file() {
   elif command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "${path}" | awk '{print $1}'
   else
-    die "need sha256sum or shasum to verify the uv bootstrap artifact"
+    die "need sha256sum or shasum to verify bootstrap artifacts"
   fi
 }
 
@@ -116,7 +117,7 @@ check_host_prerequisites() {
   require_command gcc
   require_command g++
   if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
-    die "need sha256sum or shasum to verify the uv bootstrap artifact"
+    die "need sha256sum or shasum to verify bootstrap artifacts"
   fi
 
   local gcc_major
@@ -130,6 +131,8 @@ check_host_prerequisites() {
 
 uv_root="${repo_root}/.kspacejet/bootstrap/uv/${KSJ_UV_VERSION}/linux-x86_64"
 uv_binary="${uv_root}/uv"
+just_root="${repo_root}/.kspacejet/bootstrap/just/${KSJ_JUST_VERSION}/linux-x86_64"
+just_binary="${just_root}/just"
 
 uv_is_valid() {
   [[ -x "${uv_binary}" ]] || return 1
@@ -182,6 +185,61 @@ install_uv() {
   install -m 0755 "${candidates[0]}" "${uv_binary}.new"
   mv -f "${uv_binary}.new" "${uv_binary}"
   uv_is_valid || die "installed uv executable failed integrity verification"
+  trap - RETURN
+  rm -rf "${temporary_directory}"
+}
+
+just_is_valid() {
+  [[ -x "${just_binary}" ]] || return 1
+  [[ "$("${just_binary}" --version 2>/dev/null | awk '{print $2}')" == "${KSJ_JUST_VERSION}" ]] || return 1
+  [[ "$(sha256_file "${just_binary}")" == "${KSJ_JUST_LINUX_X86_64_BINARY_SHA256}" ]]
+}
+
+install_just() {
+  if just_is_valid; then
+    note "using pinned project-local just ${KSJ_JUST_VERSION}"
+    return
+  fi
+
+  [[ "${verify_only}" -eq 0 ]] || die "project-local just ${KSJ_JUST_VERSION} is absent or invalid; --verify never downloads tools"
+  [[ "${offline}" -eq 0 ]] || die "project-local just ${KSJ_JUST_VERSION} is absent or invalid while --offline is set"
+  require_command tar
+
+  local downloader=""
+  if command -v curl >/dev/null 2>&1; then
+    downloader="curl"
+  elif command -v wget >/dev/null 2>&1; then
+    downloader="wget"
+  else
+    die "need curl or wget to download the verified just bootstrap artifact"
+  fi
+
+  local temporary_directory
+  temporary_directory="$(mktemp -d)"
+  trap 'rm -rf "${temporary_directory}"' RETURN
+
+  local archive="${temporary_directory}/just.tar.gz"
+  local url="https://github.com/casey/just/releases/download/${KSJ_JUST_VERSION}/just-${KSJ_JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+  note "downloading pinned just ${KSJ_JUST_VERSION}"
+  if [[ "${downloader}" == "curl" ]]; then
+    curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error --output "${archive}" "${url}"
+  else
+    wget --https-only --output-document="${archive}" "${url}"
+  fi
+
+  local actual_sha256
+  actual_sha256="$(sha256_file "${archive}")"
+  [[ "${actual_sha256}" == "${KSJ_JUST_LINUX_X86_64_SHA256}" ]] || die "just archive SHA-256 mismatch"
+
+  tar --extract --gzip --file="${archive}" --directory="${temporary_directory}"
+  mapfile -t candidates < <(find "${temporary_directory}" -type f -name just -perm -u+x -print)
+  [[ ${#candidates[@]} -eq 1 ]] || die "unexpected just archive layout"
+  [[ "$("${candidates[0]}" --version | awk '{print $2}')" == "${KSJ_JUST_VERSION}" ]] || die "downloaded just reports an unexpected version"
+
+  mkdir -p "${just_root}"
+  install -m 0755 "${candidates[0]}" "${just_binary}.new"
+  mv -f "${just_binary}.new" "${just_binary}"
+  just_is_valid || die "installed just executable failed integrity verification"
   trap - RETURN
   rm -rf "${temporary_directory}"
 }
@@ -292,6 +350,7 @@ prepare_build() {
 
 show_versions() {
   note "tool versions"
+  "${just_binary}" --version
   "${tool_runner}" python --version
   "${tool_runner}" conan --version
   "${tool_runner}" cmake --version
@@ -303,16 +362,18 @@ show_versions() {
 run_smoke_checks() {
   [[ "${run_smoke}" -eq 1 ]] || return 0
   [[ "${verify_only}" -eq 0 ]] || die "--verify cannot be combined with --smoke"
-  "${repo_root}/tools/checks/linux/pre_commit.sh"
-  "${repo_root}/tools/checks/linux/format_check.sh" --changed HEAD
+  "${tool_runner}" just pre-commit
+  "${tool_runner}" just format-changed
 }
 
 cd "${repo_root}"
 check_host_prerequisites
 install_uv
+install_just
 sync_python_tools
 configure_repository
 prepare_build
 show_versions
 run_smoke_checks
+note "shared commands: tools/devenv/linux/run.sh just --list"
 note "developer environment is ready"
