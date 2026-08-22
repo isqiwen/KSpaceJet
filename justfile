@@ -3,8 +3,6 @@
 # Bootstrap ensures `just` is available as a host tool. This file deliberately keeps the
 # recipe names and platform-specific commands in one place.
 
-set default-list
-
 [linux]
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 

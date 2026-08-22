@@ -82,6 +82,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command just -ErrorAction SilentlyContinue) -and -not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+              throw 'The hosted runner has neither just, winget, nor Chocolatey to provide the host just prerequisite.'
+            }
+            choco install just --yes --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey failed to install host just with exit code $LASTEXITCODE"
+            }
+          }
           .\tools\devenv\windows\bootstrap.ps1
 
           function Invoke-Just {
