@@ -299,6 +299,8 @@ prepare_build() {
     --output-folder="${output_folder}"
     --profile:host="${profile}"
     --profile:build="${profile}"
+    -cc
+    core.net.http:timeout=300
     --build=missing)
   if [[ "${offline}" -eq 1 ]]; then
     conan_install_args+=(--no-remote)
