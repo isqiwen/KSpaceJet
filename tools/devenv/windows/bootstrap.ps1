@@ -409,7 +409,7 @@ function Prepare-Build {
   Write-KSpaceJetDevNote "preparing $Prepare"
   Invoke-ProjectTool -Arguments @("conan", "export", "conan/recipes/ismrmrd", "--user=kspacejet", "--channel=stable")
   Invoke-ProjectTool -Arguments @("conan", "export", "third_party/intel", "--user=kspacejet", "--channel=stable")
-  $conanInstallArguments = @("conan", "install", ".", "--output-folder=$outputFolder", "--profile:host=$profile", "--build=missing")
+  $conanInstallArguments = @("conan", "install", ".", "--output-folder=$outputFolder", "--profile:host=$profile", "--profile:build=$profile", "--build=missing")
   if ($Offline) {
     $conanInstallArguments += "--no-remote"
   }

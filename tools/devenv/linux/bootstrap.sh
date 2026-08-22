@@ -298,6 +298,7 @@ prepare_build() {
   local -a conan_install_args=(
     --output-folder="${output_folder}"
     --profile:host="${profile}"
+    --profile:build="${profile}"
     --build=missing)
   if [[ "${offline}" -eq 1 ]]; then
     conan_install_args+=(--no-remote)
