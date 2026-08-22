@@ -32,7 +32,9 @@ def run_json_failure(
     arguments: list[str],
     expected_code: str | None = None,
 ) -> None:
-    result = subprocess.run([str(executable), *arguments], check=False, capture_output=True, text=True)
+    result = subprocess.run(
+        [str(executable), *arguments], check=False, capture_output=True, text=True, encoding="utf-8"
+    )
     require(result.returncode != 0, f"{name} unexpectedly succeeded")
     report = parse_json_stdout(name, result)
     if expected_code is not None:
@@ -42,7 +44,7 @@ def run_json_failure(
 
 def run_scaffold_help(name: str, executable: pathlib.Path) -> None:
     json_result = subprocess.run(
-        [str(executable), "--help", "--format", "json"], check=False, capture_output=True, text=True
+        [str(executable), "--help", "--format", "json"], check=False, capture_output=True, text=True, encoding="utf-8"
     )
     require(json_result.returncode == 0, f"{name} JSON help failed: {json_result.stderr}")
     report = parse_json_stdout(name, json_result)
@@ -51,7 +53,9 @@ def run_scaffold_help(name: str, executable: pathlib.Path) -> None:
     require(report.get("availability") == "reserved", f"{name} did not identify its commands as reserved")
     require(report.get("operations") == "unimplemented", f"{name} did not identify operations as unimplemented")
 
-    text_result = subprocess.run([str(executable), "--help"], check=False, capture_output=True, text=True)
+    text_result = subprocess.run(
+        [str(executable), "--help"], check=False, capture_output=True, text=True, encoding="utf-8"
+    )
     require(text_result.returncode == 0, f"{name} text help failed: {text_result.stderr}")
     require(text_result.stderr, f"{name} did not initialize the core diagnostic logger on stderr")
     text_help = text_result.stdout.lower()

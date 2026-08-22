@@ -1,0 +1,111 @@
+name: KSpaceJet CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kspacejet-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-release-quality:
+    name: linux-release-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+
+      - name: Install Linux host prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            gcc-14 g++-14 git-lfs curl ca-certificates tar coreutils
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
+          sudo update-alternatives --set gcc /usr/bin/gcc-14
+          sudo update-alternatives --set g++ /usr/bin/g++-14
+          gcc -dumpfullversion -dumpversion
+          g++ -dumpfullversion -dumpversion
+          git lfs version
+
+      - name: Bootstrap and run Release gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/devenv/linux/bootstrap.sh
+          just prepare-release
+          KSJ_FORMAT_SCOPE=all just check
+          just type-check
+          just prepare-unit-tests
+          just unit
+          just prepare-app-tests
+          just app-tests
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-release-diagnostics
+          path: |
+            out/build/**/CMakeFiles/CMakeConfigureLog.yaml
+            out/build/**/Testing/Temporary/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  windows-release-build-install:
+    name: windows-release-build-install
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+
+      - name: Bootstrap and run Release gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\tools\devenv\windows\bootstrap.ps1
+
+          function Invoke-Just {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & just @Arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "just $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          Invoke-Just prepare-release
+          Invoke-Just check
+          Invoke-Just type-check
+          Invoke-Just build-release-applications
+          Invoke-Just install-release-applications
+          Invoke-Just smoke-release-install
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-release-diagnostics
+          path: |
+            out/build/**/CMakeFiles/CMakeConfigureLog.yaml
+            out/build/**/Testing/Temporary/**
+          if-no-files-found: ignore
+          retention-days: 14

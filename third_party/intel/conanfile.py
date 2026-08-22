@@ -236,8 +236,5 @@ class IntelOneapiConan(ConanFile):
         openmp.set_property("cmake_target_name", "Intel::iomp5")
         openmp.libs = ["libiomp5md" if str(self.settings.os) == "Windows" else "iomp5"]
         openmp.includedirs = []
-        openmp.libdirs = [
-            os.path.join(compiler_root, "lib", "intel64") if str(self.settings.os) == "Windows"
-            else os.path.join(compiler_root, "lib")
-        ]
+        openmp.libdirs = [os.path.join(compiler_root, "lib")]
         openmp.requires = ["headers"]

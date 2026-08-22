@@ -149,49 +149,68 @@ function(ksj_install_thirdparty_runtime_dependencies dependency_set_name)
     return()
   endif()
 
+  if(WIN32)
+    # Build targets stage DLLs next to their executables for local runs.  CMake's runtime-dependency resolver then sees
+    # both those staged copies and the original Conan package files, which makes a same-named DLL ambiguous.  Install
+    # the package DLLs directly instead.  The collision check covers Conan bin/ and Intel lib/ sources together.
+    ksj_collect_conan_runtime_dirs(_ksj_conan_runtime_dirs)
+    ksj_get_intel_runtime_dirs(_ksj_intel_runtime_dirs)
+    set(_ksj_windows_runtime_dirs ${_ksj_conan_runtime_dirs} ${_ksj_intel_runtime_dirs})
+    foreach(_ksj_windows_runtime_dir IN LISTS _ksj_windows_runtime_dirs)
+      if(IS_DIRECTORY "${_ksj_windows_runtime_dir}")
+        file(
+          GLOB _ksj_conan_runtime_dlls
+          LIST_DIRECTORIES false
+          "${_ksj_windows_runtime_dir}/*.dll")
+        list(APPEND _ksj_windows_runtime_dlls ${_ksj_conan_runtime_dlls})
+      endif()
+    endforeach()
+    if(_ksj_windows_runtime_dlls)
+      list(REMOVE_DUPLICATES _ksj_windows_runtime_dlls)
+      foreach(_ksj_windows_runtime_dll IN LISTS _ksj_windows_runtime_dlls)
+        get_filename_component(_ksj_windows_runtime_name "${_ksj_windows_runtime_dll}" NAME)
+        string(TOLOWER "${_ksj_windows_runtime_name}" _ksj_windows_runtime_name_lower)
+        string(SHA256 _ksj_windows_runtime_name_hash "${_ksj_windows_runtime_name_lower}")
+        set(_ksj_windows_runtime_source_variable "_ksj_windows_runtime_source_${_ksj_windows_runtime_name_hash}")
+        if(DEFINED ${_ksj_windows_runtime_source_variable})
+          file(SHA256 "${${_ksj_windows_runtime_source_variable}}" _ksj_windows_runtime_existing_hash)
+          file(SHA256 "${_ksj_windows_runtime_dll}" _ksj_windows_runtime_candidate_hash)
+          if(NOT _ksj_windows_runtime_existing_hash STREQUAL _ksj_windows_runtime_candidate_hash)
+            message(FATAL_ERROR "Conflicting Conan runtime DLL sources for ${_ksj_windows_runtime_name}: "
+                                "${${_ksj_windows_runtime_source_variable}} and ${_ksj_windows_runtime_dll}")
+          endif()
+        else()
+          set(${_ksj_windows_runtime_source_variable} "${_ksj_windows_runtime_dll}")
+          list(APPEND _ksj_windows_runtime_dlls_unique "${_ksj_windows_runtime_dll}")
+        endif()
+      endforeach()
+      install(FILES ${_ksj_windows_runtime_dlls_unique} DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    endif()
+    return()
+  endif()
+
   ksj_get_intel_runtime_dirs(_ksj_intel_runtime_dirs)
   set(_ksj_runtime_dirs ${_ksj_intel_runtime_dirs})
-  if(WIN32)
-    # CMake's install(RUNTIME_DEPENDENCY_SET) scans the installed KSpaceJet binaries, but it needs Conan package bin
-    # directories to resolve their transitive DLLs.  Keep the Intel-specific paths above for its dispatch DLLs and add
-    # every CMakeDeps package bindir as a general mechanism.
-    ksj_collect_conan_runtime_dirs(_ksj_conan_runtime_dirs)
-    list(APPEND _ksj_runtime_dirs ${_ksj_conan_runtime_dirs})
-  endif()
   foreach(_ksj_runtime_dir IN LISTS _ksj_runtime_dirs)
     if(IS_DIRECTORY "${_ksj_runtime_dir}")
       list(APPEND _ksj_existing_runtime_dirs "${_ksj_runtime_dir}")
     endif()
   endforeach()
-  # TARGET_RUNTIME_DLLS in the generated staging script remains a direct-DLL fallback for imported targets that do not
-  # publish a CMakeDeps bindir.
   if(_ksj_existing_runtime_dirs)
     list(REMOVE_DUPLICATES _ksj_existing_runtime_dirs)
   endif()
 
   set(_ksj_install_dependency_args RUNTIME_DEPENDENCY_SET ${dependency_set_name})
-  if(WIN32)
-    list(
-      APPEND
-      _ksj_install_dependency_args
-      PRE_EXCLUDE_REGEXES
-      "api-ms-.*"
-      "ext-ms-.*"
-      POST_EXCLUDE_REGEXES
-      ".*[Ww]indows[\\\\/].*"
-      ".*[Ss]ystem32[\\\\/].*")
-  else()
-    list(
-      APPEND
-      _ksj_install_dependency_args
-      PRE_EXCLUDE_REGEXES
-      "linux-vdso\\.so.*"
-      POST_EXCLUDE_REGEXES
-      "^/lib/.*"
-      "^/lib64/.*"
-      "^/usr/lib/.*"
-      "^/usr/lib64/.*")
-  endif()
+  list(
+    APPEND
+    _ksj_install_dependency_args
+    PRE_EXCLUDE_REGEXES
+    "linux-vdso\\.so.*"
+    POST_EXCLUDE_REGEXES
+    "^/lib/.*"
+    "^/lib64/.*"
+    "^/usr/lib/.*"
+    "^/usr/lib64/.*")
   if(_ksj_existing_runtime_dirs)
     list(APPEND _ksj_install_dependency_args DIRECTORIES ${_ksj_existing_runtime_dirs})
   endif()
@@ -210,6 +229,11 @@ endfunction()
 
 function(ksj_install_intel_runtime_libraries)
   if(NOT KSJ_ENABLE_INSTALL_RULES)
+    return()
+  endif()
+  if(WIN32)
+    # Windows installs Intel DLLs through ksj_install_thirdparty_runtime_dependencies(), which verifies that their
+    # basenames do not conflict with any Conan bin/ DLL before adding them to the install surface.
     return()
   endif()
 

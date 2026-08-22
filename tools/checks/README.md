@@ -18,33 +18,35 @@ bash tools/devenv/linux/bootstrap.sh
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 ```
 
-Linux hosts must already have Git, Git LFS, and default GCC/G++ 14. Windows hosts must
-already have Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools, and a Windows SDK.
+Linux hosts must already have Git, Git LFS, and default GCC/G++ 14; bootstrap uses apt to ensure
+`just` is installed. Windows hosts must
+already have Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools, a Windows SDK, and winget;
+bootstrap installs `just` when it is absent.
 These system-integrated tools stay on the host. The bootstrap creates a repository-local
-`uv` environment and installs a checksum-pinned project-local `just`; it does not install every
-tool into a virtual environment or alter a global Python environment. See
+`uv` environment and uses apt on Linux to ensure `just` is installed; Windows uses winget only when absent. It does not install every tool into a
+virtual environment or alter a global Python environment. See
 [the developer-environment guide](../devenv/README.md) for the complete policy.
 
-After the first bootstrap, run the shared `justfile` recipes through the platform runner. The
-recipe names below are the same on Linux and Windows; only Linux-only recipes such as `unit`
+After the first bootstrap, run the shared `justfile` recipes directly. The recipe names below are
+the same on Linux and Windows; only Linux-only recipes such as `unit`
 and `benchmark-smoke` are intentionally absent on Windows.
 
 Linux entry points:
 
 ```bash
-tools/devenv/linux/run.sh just pre-commit
-tools/devenv/linux/run.sh just pre-push
-tools/devenv/linux/run.sh just check
-tools/devenv/linux/run.sh just unit
-tools/devenv/linux/run.sh just benchmark-smoke
+just pre-commit
+just pre-push
+just check
+just unit
+just benchmark-smoke
 ```
 
 Windows entry points:
 
 ```powershell
-.\tools\devenv\windows\run.ps1 just pre-commit
-.\tools\devenv\windows\run.ps1 just pre-push
-.\tools\devenv\windows\run.ps1 just check
+just pre-commit
+just pre-push
+just check
 ```
 
 The pre-commit and Linux CI checks also run the offline Markdown link checker and the
@@ -52,11 +54,11 @@ canonical execution-plan checker. The link checker validates repository-local in
 and Markdown heading fragments without fetching external URLs:
 
 ```bash
-tools/devenv/linux/run.sh just link-check
+just link-check
 ```
 
 ```powershell
-.\tools\devenv\windows\run.ps1 just link-check
+just link-check
 ```
 
 Use `--self-test` to run the hermetic checker regression tests, including the negative case
@@ -68,13 +70,13 @@ read-only projection of section 12; it never creates a second status file. After
 work-item state, update section 12 and then regenerate and verify the dashboard:
 
 ```bash
-tools/devenv/linux/run.sh just plan-write
-tools/devenv/linux/run.sh just plan-check
+just plan-write
+just plan-check
 ```
 
 ```powershell
-.\tools\devenv\windows\run.ps1 just plan-write
-.\tools\devenv\windows\run.ps1 just plan-check
+just plan-write
+just plan-check
 ```
 
 `--self-test` exercises its parser, section-10/section-12 task-set equality, canonical-plan
@@ -99,13 +101,13 @@ and `.ismrmrd` payloads in KSpaceJet. It intentionally is not part of self-conta
 CI must explicitly check out the sibling repository before it can claim workspace verification.
 
 ```bash
-tools/devenv/linux/run.sh just workspace-check
-tools/devenv/linux/run.sh just workspace-self-test
+just workspace-check
+just workspace-self-test
 ```
 
 ```powershell
-.\tools\devenv\windows\run.ps1 just workspace-check
-.\tools\devenv\windows\run.ps1 just workspace-self-test
+just workspace-check
+just workspace-self-test
 ```
 
 The checker never fetches or hashes datasets. Run `tools/verify-data.sh` from inside the sibling
@@ -113,8 +115,8 @@ data repository for its manifest and checksum verification.
 
 Before invoking a CMake-based check, run the matching `just prepare-*` recipe so it exports local
 Conan recipes and configures the matching output directory. Use the platform runner directly only
-for a focused diagnostic with no recipe; never select a system `just`, Conan or CMake by PATH
-order. See the root [README](../../README.md) for commands. `benchmark-smoke` tests only the
+for a focused diagnostic with no recipe; `just` is a host tool, while Conan and CMake must not be
+selected by PATH order. See the root [README](../../README.md) for commands. `benchmark-smoke` tests only the
 numerical benchmark targets; it is Linux-only.
 
 The locked development environment supplies `clang-format` and `cmake-format`. Set

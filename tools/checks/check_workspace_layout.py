@@ -35,6 +35,15 @@ EXPECTED_ORIGIN_PATTERN = re.compile(
     rf"{re.escape(DATA_REPOSITORY_PATH)}(?:[.]git)?/?",
     re.IGNORECASE,
 )
+GIT_LOCAL_ENVIRONMENT_VARIABLES = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_PREFIX",
+)
 
 
 @dataclass(frozen=True)
@@ -64,12 +73,16 @@ class CheckResult:
 def run_git(directory: Path, *arguments: str) -> tuple[int | None, bytes, str]:
     """Run Git without a shell and retain binary stdout for ``ls-files -z``."""
 
+    environment = os.environ.copy()
+    for variable in GIT_LOCAL_ENVIRONMENT_VARIABLES:
+        environment.pop(variable, None)
     try:
         completed = subprocess.run(
             ["git", "-C", str(directory), *arguments],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=environment,
         )
     except OSError as error:
         return None, b"", str(error)
@@ -284,6 +297,23 @@ class WorkspaceLayoutTests(unittest.TestCase):
 
         self.assertEqual(result.diagnostics, ())
 
+    def test_ignores_hook_worktree_environment_for_sibling_repository(self) -> None:
+        project_root, data_repository = self.create_workspace()
+        original_environment = {variable: os.environ.get(variable) for variable in GIT_LOCAL_ENVIRONMENT_VARIABLES}
+        try:
+            os.environ["GIT_DIR"] = str(project_root / ".git")
+            os.environ["GIT_WORK_TREE"] = str(project_root)
+            result = check_workspace(project_root)
+        finally:
+            for variable, original_value in original_environment.items():
+                if original_value is None:
+                    os.environ.pop(variable, None)
+                else:
+                    os.environ[variable] = original_value
+
+        self.assertEqual(result.data_repository, data_repository.resolve())
+        self.assertEqual(result.diagnostics, ())
+
     def test_rejects_tracked_raw_mri_payload(self) -> None:
         project_root, _ = self.create_workspace()
         raw_payload = project_root / "fixtures" / "scan.mrd"
@@ -295,7 +325,7 @@ class WorkspaceLayoutTests(unittest.TestCase):
 
         self.assertTrue(
             any(
-                diagnostic.path == raw_payload
+                diagnostic.path == raw_payload.resolve()
                 and "tracked raw MRI payload is forbidden" in diagnostic.message
                 for diagnostic in result.diagnostics
             ),
@@ -312,7 +342,7 @@ class WorkspaceLayoutTests(unittest.TestCase):
 
         self.assertTrue(
             any(
-                diagnostic.path == raw_payload
+                diagnostic.path == raw_payload.resolve()
                 and "raw MRI payload file is forbidden" in diagnostic.message
                 for diagnostic in result.diagnostics
             ),
@@ -352,7 +382,7 @@ class WorkspaceLayoutTests(unittest.TestCase):
         result = check_workspace(project_root)
 
         self.assertTrue(
-            any(diagnostic.path == data_repository / "catalog.yaml" for diagnostic in result.diagnostics),
+            any(diagnostic.path == (data_repository / "catalog.yaml").resolve() for diagnostic in result.diagnostics),
             result.diagnostics,
         )
 

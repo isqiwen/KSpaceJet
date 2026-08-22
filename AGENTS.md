@@ -104,19 +104,19 @@ Inspect CMakePresets.json before configuring. Bootstrap the repository-local dev
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 
-Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. UV, managed Python, `just` and project tools are repository-local. Compilers, Git and Git LFS are host tools.
+Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. Linux bootstrap uses apt to ensure host `just` is installed; Windows bootstrap installs it with winget when absent. UV, managed Python and project tools are repository-local. Compilers, Git and Git LFS are host tools.
 
 On minimal Linux, bootstrap also needs curl or wget, tar and sha256sum or shasum. Linux VS Code debugging needs host gdb. The optional linux-release-static-analysis preset needs host clang++.
 
-The first bootstrap is the only direct platform-script entry point because it installs the pinned project-local `just` binary. After bootstrap, use the platform runner plus the root `justfile`; do not use a system `just` or duplicate the platform/preset mapping outside that file:
+Bootstrap provisions the repository-local Python tool environment. Afterwards invoke the root `justfile` directly with the host `just`; do not duplicate the platform/preset mapping outside that file:
 
-    tools/devenv/linux/run.sh just prepare-release
-    tools/devenv/linux/run.sh just build-release-applications
-    tools/devenv/linux/run.sh just check
+    just prepare-release
+    just build-release-applications
+    just check
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just prepare-release
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just build-release-applications
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just check
+    just prepare-release
+    just build-release-applications
+    just check
 
 `prepare-debug` / `prepare-release`, `build-*-applications`, `install-*-applications`, `format-*`, `check`, `pre-commit`, `pre-push`, `workspace-check` and `plan-check` have the same names on Linux and Windows. The recipes select the platform-specific bootstrap script, Conan profile and CMake preset. For focused diagnostics that have no recipe, call the platform runner explicitly with a locked managed tool; do not select a system Conan/CMake/Ninja/formatter by PATH order.
 
@@ -224,10 +224,10 @@ Choose the smallest relevant test first and then the complete acceptance gates f
 Useful standard checks:
 
     git diff --check
-    tools/devenv/linux/run.sh just format-all
-    tools/devenv/linux/run.sh just unit
-    tools/devenv/linux/run.sh just check
-    tools/devenv/linux/run.sh just full
+    just format-all
+    just unit
+    just check
+    just full
 
 Do not commit out/, generated reports, cache files, benchmark output or reconstruction output.
 

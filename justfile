@@ -1,10 +1,8 @@
 # Shared KSpaceJet development commands.
 #
-# The first bootstrap is intentionally invoked directly because it installs
-# project-local just. After bootstrap, use the platform runner plus one of
-# these recipes; do not depend on a system just binary.
+# Bootstrap ensures `just` is available as a host tool. This file deliberately keeps the
+# recipe names and platform-specific commands in one place.
 
-set minimum-version := "1.58.0"
 set default-list
 
 [linux]
@@ -80,6 +78,11 @@ install-release-applications:
 [windows]
 install-release-applications:
     .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-release-install
+
+# Verify the installed Windows Release applications without reconfiguring or rebuilding them.
+[windows]
+smoke-release-install:
+    .\tools\checks\windows\smoke_release_install.ps1 -InstallBinDirectory .\out\install\windows-vs2022-release\bin
 
 # Run staged-file formatting checks.
 [linux]
@@ -202,6 +205,10 @@ pre-push:
     .\tools\checks\windows\pre_push.ps1
 
 # Linux-only test and benchmark entry points; P0-002 owns Windows validation.
+[linux]
+prepare-unit-tests:
+    bash tools/devenv/linux/bootstrap.sh --prepare linux-release-unit-tests
+
 [linux]
 unit:
     bash tools/checks/linux/ci_unit.sh

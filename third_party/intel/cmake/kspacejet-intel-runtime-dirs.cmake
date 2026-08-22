@@ -5,9 +5,8 @@ get_filename_component(_ksj_intel_package_root "${CMAKE_CURRENT_LIST_DIR}/../../
 
 if(WIN32)
   set(KSJ_INTEL_RUNTIME_DIRS
-      "${_ksj_intel_package_root}/oneapi/ipp/2026.0/redist/intel64"
-      "${_ksj_intel_package_root}/oneapi/mkl/2026.1/redist/intel64"
-      "${_ksj_intel_package_root}/oneapi/compiler/2026.1/redist/intel64_win/compiler"
+      "${_ksj_intel_package_root}/oneapi/ipp/2026.0/lib" "${_ksj_intel_package_root}/oneapi/mkl/2026.1/lib"
+      "${_ksj_intel_package_root}/oneapi/compiler/2026.1/lib"
       CACHE INTERNAL "Bundled Intel runtime directories exported by Conan")
 else()
   set(KSJ_INTEL_RUNTIME_DIRS
