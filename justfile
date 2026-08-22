@@ -3,12 +3,6 @@
 # Bootstrap ensures `just` is available as a host tool. This file deliberately keeps the
 # recipe names and platform-specific commands in one place.
 
-[linux]
-set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
-
-[windows]
-set shell := ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
-
 # Re-provision the developer environment after the initial bootstrap.
 [linux]
 bootstrap:
@@ -16,7 +10,7 @@ bootstrap:
 
 [windows]
 bootstrap:
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/bootstrap.ps1
 
 # Prepare the platform-appropriate debug build directory.
 [linux]
@@ -25,7 +19,7 @@ prepare-debug:
 
 [windows]
 prepare-debug:
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Prepare windows-vs2022-debug
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/bootstrap.ps1 -Prepare windows-vs2022-debug
 
 # Prepare the platform-appropriate release build directory.
 [linux]
@@ -34,7 +28,7 @@ prepare-release:
 
 [windows]
 prepare-release:
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Prepare windows-vs2022-release
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/bootstrap.ps1 -Prepare windows-vs2022-release
 
 # Prepare the Linux-only application-test build tree.
 [linux]
@@ -48,7 +42,7 @@ build-debug-applications:
 
 [windows]
 build-debug-applications:
-    .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-debug --target ksj_cli ksj_gateway ksj_recon ksj_research
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 cmake --build --preset windows-vs2022-debug --target ksj_cli ksj_gateway ksj_recon ksj_research
 
 # Incrementally build all installed applications in release configuration.
 [linux]
@@ -57,7 +51,7 @@ build-release-applications:
 
 [windows]
 build-release-applications:
-    .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-release --target ksj_cli ksj_gateway ksj_recon ksj_research
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 cmake --build --preset windows-vs2022-release --target ksj_cli ksj_gateway ksj_recon ksj_research
 
 # Install the already built debug applications without preparing a build tree.
 [linux]
@@ -66,7 +60,7 @@ install-debug-applications:
 
 [windows]
 install-debug-applications:
-    .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-debug-install
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 cmake --build --preset windows-vs2022-debug-install
 
 # Install the already built release applications without preparing a build tree.
 [linux]
@@ -75,12 +69,12 @@ install-release-applications:
 
 [windows]
 install-release-applications:
-    .\tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-release-install
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 cmake --build --preset windows-vs2022-release-install
 
 # Verify the installed Windows Release applications without reconfiguring or rebuilding them.
 [windows]
 smoke-release-install:
-    .\tools\checks\windows\smoke_release_install.ps1 -InstallBinDirectory .\out\install\windows-vs2022-release\bin
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/checks/windows/smoke_release_install.ps1 -InstallBinDirectory ./out/install/windows-vs2022-release/bin
 
 # Run staged-file formatting checks.
 [linux]
@@ -89,7 +83,7 @@ format-staged:
 
 [windows]
 format-staged:
-    .\tools\checks\windows\format_check.ps1 --staged
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/checks/windows/format_check.ps1 --staged
 
 # Run full-repository formatting checks.
 [linux]
@@ -98,7 +92,7 @@ format-all:
 
 [windows]
 format-all:
-    .\tools\checks\windows\format_check.ps1 --all
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/checks/windows/format_check.ps1 --all
 
 # Run formatting checks against the current branch's changed files.
 [linux]
@@ -107,7 +101,7 @@ format-changed:
 
 [windows]
 format-changed:
-    .\tools\checks\windows\format_check.ps1 --changed
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/checks/windows/format_check.ps1 --changed
 
 # Verify local Markdown links without network access.
 [linux]
@@ -116,7 +110,7 @@ link-check:
 
 [windows]
 link-check:
-    .\tools\devenv\windows\run.ps1 python .\tools\checks\check_markdown_links.py --project-root .
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/checks/check_markdown_links.py --project-root .
 
 # Run the hermetic regression tests for the local Markdown link checker.
 [linux]
@@ -125,7 +119,7 @@ link-self-test:
 
 [windows]
 link-self-test:
-    .\tools\devenv\windows\run.ps1 python .\tools\checks\check_markdown_links.py --self-test
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/checks/check_markdown_links.py --self-test
 
 # Verify the generated execution-plan dashboard against its canonical ledger.
 [linux]
@@ -134,7 +128,7 @@ plan-check:
 
 [windows]
 plan-check:
-    .\tools\devenv\windows\run.ps1 python .\tools\checks\check_execution_plan.py --project-root . --check
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/checks/check_execution_plan.py --project-root . --check
 
 # Regenerate the derived execution-plan dashboard after a ledger update.
 [linux]
@@ -143,7 +137,7 @@ plan-write:
 
 [windows]
 plan-write:
-    .\tools\devenv\windows\run.ps1 python .\tools\checks\check_execution_plan.py --project-root . --write
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/checks/check_execution_plan.py --project-root . --write
 
 # Verify the required sibling KSpaceJet data workspace without reading datasets.
 [linux]
@@ -152,7 +146,7 @@ workspace-check:
 
 [windows]
 workspace-check:
-    .\tools\devenv\windows\run.ps1 python .\tools\checks\check_workspace_layout.py --project-root .
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/checks/check_workspace_layout.py --project-root .
 
 # Run the hermetic regression tests for the paired-workspace checker.
 [linux]
@@ -161,7 +155,7 @@ workspace-self-test:
 
 [windows]
 workspace-self-test:
-    .\tools\devenv\windows\run.ps1 python .\tools\checks\check_workspace_layout.py --self-test
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/checks/check_workspace_layout.py --self-test
 
 # Verify that the generated TypeRegistry stays synchronized with its source.
 [linux]
@@ -170,7 +164,7 @@ type-check:
 
 [windows]
 type-check:
-    .\tools\devenv\windows\run.ps1 python .\tools\type_registry\generate.py --project-root . --check
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/type_registry/generate.py --project-root . --check
 
 # Run the normal platform development check; workspace-check stays explicit for CI.
 [linux]
@@ -179,10 +173,10 @@ check:
 
 [windows]
 check:
-    .\tools\checks\windows\format_check.ps1 --all
-    .\tools\devenv\windows\run.ps1 python .\tools\checks\check_markdown_links.py --project-root .
-    .\tools\devenv\windows\run.ps1 python .\tools\checks\check_execution_plan.py --project-root . --check
-    .\tools\devenv\windows\run.ps1 cmake --preset windows-vs2022-release
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/checks/windows/format_check.ps1 --all
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/checks/check_markdown_links.py --project-root .
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 python ./tools/checks/check_execution_plan.py --project-root . --check
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/devenv/windows/run.ps1 cmake --preset windows-vs2022-release
 
 # Run the installed Git-hook checks on demand.
 [linux]
@@ -191,7 +185,7 @@ pre-commit:
 
 [windows]
 pre-commit:
-    .\tools\checks\windows\pre_commit.ps1
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/checks/windows/pre_commit.ps1
 
 # Run the optional local push smoke before pushing.
 [linux]
@@ -200,7 +194,7 @@ pre-push:
 
 [windows]
 pre-push:
-    .\tools\checks\windows\pre_push.ps1
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/checks/windows/pre_push.ps1
 
 # Linux-only test and benchmark entry points; P0-002 owns Windows validation.
 [linux]

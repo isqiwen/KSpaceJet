@@ -96,6 +96,22 @@ function Invoke-KSpaceJetDevNative {
   }
 }
 
+function Get-KSpaceJetSha256 {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $stream = [IO.File]::OpenRead($Path)
+  try {
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+      return -join ($algorithm.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") })
+    } finally {
+      $algorithm.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
+}
+
 function Add-WingetJustToPath {
   $wingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
   $justExecutables = @(Get-ChildItem -LiteralPath $wingetPackages -Filter "just.exe" -File -Recurse -ErrorAction SilentlyContinue |
@@ -225,7 +241,7 @@ function Test-ProjectUv {
   try {
     $reported = & $uvPath --version
     $uvExitCode = $LASTEXITCODE
-    $actualChecksum = (Get-FileHash -LiteralPath $uvPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actualChecksum = Get-KSpaceJetSha256 -Path $uvPath
     return $uvExitCode -eq 0 -and (($reported -split "\s+")[1] -eq $uvVersion) -and $actualChecksum -eq $uvBinaryChecksum
   } catch {
     return $false
@@ -252,7 +268,7 @@ function Install-ProjectUv {
     Write-KSpaceJetDevNote "downloading pinned uv $uvVersion"
     Invoke-WebRequest -Uri $url -OutFile $archivePath -UseBasicParsing
 
-    $actualChecksum = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actualChecksum = Get-KSpaceJetSha256 -Path $archivePath
     if ($actualChecksum -ne $uvChecksum) {
       Stop-KSpaceJetDev "uv archive SHA-256 mismatch"
     }
