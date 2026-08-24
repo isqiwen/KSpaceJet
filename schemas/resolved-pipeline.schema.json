@@ -7,8 +7,8 @@
   "required": [
     "kind",
     "pipeline_definition_artifact_digest",
-    "pipeline_definition_semantic_digest",
-    "providers"
+    "providers",
+    "nodes"
   ],
   "properties": {
     "$schema": {
@@ -20,14 +20,18 @@
     "pipeline_definition_artifact_digest": {
       "$ref": "#/$defs/digest"
     },
-    "pipeline_definition_semantic_digest": {
-      "$ref": "#/$defs/digest"
-    },
     "providers": {
       "type": "array",
       "minItems": 1,
       "items": {
         "$ref": "#/$defs/resolvedProvider"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/resolvedNodeConfig"
       }
     }
   },
@@ -52,11 +56,15 @@
     "resolvedOperator": {
       "type": "object",
       "required": [
-        "id"
+        "id",
+        "contract_digest"
       ],
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier"
+        },
+        "contract_digest": {
+          "$ref": "#/$defs/digest"
         }
       },
       "additionalProperties": false
@@ -88,6 +96,53 @@
         }
       },
       "additionalProperties": false
+    },
+    "resolvedNodeConfig": {
+      "type": "object",
+      "required": [
+        "id",
+        "config"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "config": {
+          "$ref": "#/$defs/authoredObject"
+        }
+      },
+      "additionalProperties": false
+    },
+    "authoredValue": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/authoredValue"
+          }
+        },
+        {
+          "$ref": "#/$defs/authoredObject"
+        }
+      ]
+    },
+    "authoredObject": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/authoredValue"
+      }
     }
   }
 }

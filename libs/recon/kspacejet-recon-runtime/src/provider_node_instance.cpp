@@ -155,9 +155,9 @@ find_operator(const ksj::provider::loader::ProviderDescriptor& descriptor,
     return ksj::base::Status::ValidationError(
       "ProviderNodeInstance start execution-plan digest does not match the supplied ExecutionPlan");
   }
-  if (config.start_facts.normalized_scan_facts_digest != execution_plan.inputs().scan_descriptor()) {
+  if (config.start_facts.normalized_scan_facts_digest != execution_plan.inputs().scan_facts()) {
     return ksj::base::Status::ValidationError(
-      "ProviderNodeInstance normalized scan-facts digest does not match the ExecutionPlan scan descriptor");
+      "ProviderNodeInstance normalized scan-facts digest does not match the ExecutionPlan scan facts");
   }
   node_plan = find_node(execution_plan, config.node_id);
   if (node_plan == nullptr) {

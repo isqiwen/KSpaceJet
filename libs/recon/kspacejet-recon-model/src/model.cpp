@@ -5,6 +5,7 @@
 #include "utf8.hpp"
 
 #include <ismrmrd/xml.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
@@ -16,6 +17,8 @@
 
 namespace ksj::recon {
 namespace {
+
+using Json = nlohmann::json;
 
 [[nodiscard]] Status invalid(std::string message) {
   return Status::InvalidArgument(std::move(message));
@@ -52,6 +55,32 @@ namespace {
   }
   std::sort(sorted.begin(), sorted.end());
   return std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end();
+}
+
+[[nodiscard]] Result<ArtifactDigest> derive_operator_contract_digest(const std::string_view operator_id,
+                                                                     const std::vector<ResolvedPort>& ports) {
+  std::vector<const ResolvedPort*> sorted_ports;
+  sorted_ports.reserve(ports.size());
+  for (const auto& port : ports) {
+    sorted_ports.push_back(&port);
+  }
+  std::ranges::sort(sorted_ports, {}, [](const ResolvedPort* port) -> const std::string& {
+    return port->name;
+  });
+
+  Json document{{"kind", "OperatorContract"}, {"operator_id", operator_id}, {"ports", Json::array()}};
+  for (const auto* port : sorted_ports) {
+    document["ports"].push_back({{"direction", port->direction == PortDirection::input ? "input" : "output"},
+                                 {"name", port->name},
+                                 {"type_ref", port->type_ref().value()}});
+  }
+
+  try {
+    return derive_domain_separated_sha256_digest(kOperatorContractDigestDomain, document.dump(),
+                                                 "OperatorContract artifact digest");
+  } catch (const nlohmann::json::exception& exception) {
+    return validation("OperatorContract identity cannot encode canonical UTF-8 JSON: " + std::string(exception.what()));
+  }
 }
 
 template <typename T> [[nodiscard]] bool has_unique_values(const std::vector<T>& values) {
@@ -220,9 +249,14 @@ template <typename OptionalLimit>
   if (!resolved_pipeline.ok()) {
     return resolved_pipeline.status();
   }
-  auto scan_descriptor = ArtifactDigest::parse(specification.scan_descriptor, "inputs.scan_descriptor");
-  if (!scan_descriptor.ok()) {
-    return scan_descriptor.status();
+  auto scan_facts = ArtifactDigest::parse(specification.scan_facts, "inputs.scan_facts");
+  if (!scan_facts.ok()) {
+    return scan_facts.status();
+  }
+  auto effective_pipeline_binding =
+    ArtifactDigest::parse(specification.effective_pipeline_binding, "inputs.effective_pipeline_binding");
+  if (!effective_pipeline_binding.ok()) {
+    return effective_pipeline_binding.status();
   }
   auto target_envelope = ArtifactDigest::parse(specification.target_envelope, "inputs.target_envelope");
   if (!target_envelope.ok()) {
@@ -232,7 +266,8 @@ template <typename OptionalLimit>
   if (!machine_policy.ok()) {
     return machine_policy.status();
   }
-  return PlanInputDigests::from_validated(std::move(resolved_pipeline).value(), std::move(scan_descriptor).value(),
+  return PlanInputDigests::from_validated(std::move(resolved_pipeline).value(), std::move(scan_facts).value(),
+                                          std::move(effective_pipeline_binding).value(),
                                           std::move(target_envelope).value(), std::move(machine_policy).value());
 }
 
@@ -1141,11 +1176,12 @@ Result<ArtifactDigest> ArtifactDigest::parse(const std::string_view value, const
   return ArtifactDigest(std::string(value));
 }
 
-PlanInputDigests PlanInputDigests::from_validated(ArtifactDigest resolved_pipeline, ArtifactDigest scan_descriptor,
+PlanInputDigests PlanInputDigests::from_validated(ArtifactDigest resolved_pipeline, ArtifactDigest scan_facts,
+                                                  ArtifactDigest effective_pipeline_binding,
                                                   ArtifactDigest target_envelope,
                                                   ArtifactDigest machine_policy) noexcept {
-  return PlanInputDigests{std::move(resolved_pipeline), std::move(scan_descriptor), std::move(target_envelope),
-                          std::move(machine_policy)};
+  return PlanInputDigests{std::move(resolved_pipeline), std::move(scan_facts), std::move(effective_pipeline_binding),
+                          std::move(target_envelope), std::move(machine_policy)};
 }
 
 OperatorPlanBinding OperatorPlanBinding::from_validated(std::string node_id,
@@ -2076,7 +2112,11 @@ Result<OperatorContract> OperatorContract::create(const OperatorContractSpec& sp
     return validation("ports must not contain duplicate port names.");
   }
 
-  return OperatorContract{specification.operator_id, std::move(resolved_ports)};
+  auto artifact_digest = derive_operator_contract_digest(specification.operator_id, resolved_ports);
+  if (!artifact_digest.ok()) {
+    return artifact_digest.status();
+  }
+  return OperatorContract{specification.operator_id, std::move(resolved_ports), std::move(artifact_digest).value()};
 }
 
 Result<NodePlanningRequirements> NodePlanningRequirements::create(const NodePlanningRequirementsSpec& specification,

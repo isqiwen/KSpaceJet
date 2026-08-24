@@ -5,7 +5,8 @@ set(PROJ_NAME ksj_nufft)
 add_library(
   ${PROJ_NAME} SHARED
   "${CMAKE_CURRENT_LIST_DIR}/src/bart/bart_nufft2.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/src/eigen/eigen_nufft_direct_nudft.cpp" "${CMAKE_CURRENT_LIST_DIR}/src/nufft.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/src/eigen/eigen_nufft_direct_nudft.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/eigen/eigen_radial_gridding.cpp" "${CMAKE_CURRENT_LIST_DIR}/src/nufft.cpp")
 add_library(KSpaceJet::nufft ALIAS ${PROJ_NAME})
 
 target_compile_features(${PROJ_NAME} PUBLIC cxx_std_20)

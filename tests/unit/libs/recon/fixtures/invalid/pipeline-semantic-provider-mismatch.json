@@ -4,6 +4,10 @@
     "id": "org.example.cartesian-image",
     "display_name": "Cartesian image reconstruction"
   },
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "dataset_group": "dataset"
+  },
   "allowed_profiles": [
     "offline-reference",
     "bounded-reconstruction-graph"

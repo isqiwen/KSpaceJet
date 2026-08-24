@@ -63,7 +63,7 @@
 
 Codex 可自行完成明确属于当前工作项的代码、测试、文档、格式化、局部重构和可逆配置修改。以下情况必须停止推进该工作项，记录 BLOCKED，并向用户提出一个精确问题：
 
-- 需要改变 ISMRMRD-only 输入边界，或引入任何外部 transport、session、gateway、Connector、私有协议或采集控制；
+- 需要在 P5-008/P5-009 已定义边界之外引入新的外部 Gateway Profile、Connector vendor adapter、scanner/acquisition control、私有协议或未批准的数据保留；
 - 需要授权访问真实病人数据、生产扫描仪、凭据、商业 Provider 或专有算法；
 - 需要为性能目标、硬件拓扑、临床用途、监管等级或发布兼容性作产品决定；
 - 需要删除、覆盖或迁移用户未确认的重要数据；
@@ -84,38 +84,40 @@ Codex 可自行完成明确属于当前工作项的代码、测试、文档、�
 
 ```yaml
 source: "docs/architecture/KSpaceJet_project_plan_and_acceptance.md#12-唯一执行台账"
-ledger_date: 2026-08-20
-execution_state: BLOCKED
-active_phase: null
-active_work_item: null
-next_task: null
+ledger_date: 2026-08-24
+execution_state: IN_PROGRESS
+active_phase: P8
+active_work_item: P8-004
+next_task: P8-004
 ready_items: []
 blocked_items:
-  - P0-002
   - P0-006
-accepted: 7
-applicable: 56
-coverage: 12.5%
+  - P0-007
+  - P0-010
+accepted: 15
+applicable: 68
+coverage: 22.1%
 ```
 
 | 阶段 | 目标 | 已接受 | 适用项 | 覆盖度 | 状态分布 |
 | --- | --- | ---: | ---: | ---: | --- |
-| P0 | 规范、基线和工程治理 | 7 | 10 | 70% | ACCEPTED: 7 · BLOCKED: 2 · PLANNED: 1 |
-| P1 | 可信离线 reference 基线 | 0 | 7 | 0% | PLANNED: 7 |
-| P2 | 图、artifact、compiler、verifier 和 CLI 计划工具 | 0 | 6 | 0% | PLANNED: 6 |
+| P0 | 规范、基线和工程治理 | 7 | 10 | 70% | ACCEPTED: 7 · BLOCKED: 3 |
+| P1 | 可信离线 reference 基线 | 3 | 9 | 33.3% | ACCEPTED: 3 · PLANNED: 6 |
+| P2 | 图、artifact、compiler、verifier 和 CLI 计划工具 | 1 | 7 | 14.3% | ACCEPTED: 1 · REOPENED: 1 · PLANNED: 5 |
 | P3 | 有界 generic CPU runtime | 0 | 6 | 0% | PLANNED: 6 |
 | P4 | Provider 产品化 | 0 | 6 | 0% | PLANNED: 6 |
-| P5 | 可选进程内 ISMRMRD feed 与宿主 API | 0 | 7 | 0% | PLANNED: 7 |
+| P5 | 外部集成网关与可选嵌入 ISMRMRD ingress | 1 | 12 | 8.3% | ACCEPTED: 1 · PLANNED: 11 · SUPERSEDED: 1 |
 | P6 | 并行、NUMA、GPU 与性能 | 0 | 7 | 0% | PLANNED: 7 |
 | P7 | Qualification、CI、安装、供应链和发布 | 0 | 7 | 0% | PLANNED: 7 |
+| P8 | 离线可视化与检查工具 | 3 | 4 | 75% | ACCEPTED: 3 · IN_PROGRESS: 1 |
 
 #### 最近验收证据（自动生成）
 
 | 工作项 | 证据记录 |
 | --- | --- |
-| P0-010 | [13.12 P0-010 ACCEPTED 证据](#1312-p0-010-accepted-证据) |
-| P0-009 | [13.11 P0-009 ACCEPTED 证据](#1311-p0-009-accepted-证据) |
-| P0-003 | [13.10 P0-003 ACCEPTED 证据](#1310-p0-003-accepted-证据) |
+| P8-003 | [13.22 P8-003 ACCEPTED 证据](#1322-p8-003-accepted-证据) |
+| P8-002 | [13.21 P8-002 ACCEPTED 证据](#1321-p8-002-accepted-证据) |
+| P8-001 | [13.20 P8-001 ACCEPTED 证据](#1320-p8-001-accepted-证据) |
 
 #### 当前阻塞项（自动生成）
 
@@ -123,8 +125,9 @@ coverage: 12.5%
 
 | 工作项 | 解锁后动作 |
 | --- | --- |
-| P0-002 | 在实际 Windows x64 + VS 2022 v143 + Windows SDK 主机/runner 上执行 debug/release bootstrap、build、install、installed help smoke 与 DLL depende… |
-| P0-006 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture owner 的 source/scope/review inputs；收到… |
+| P0-006 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture 及 GWY-DEC-001 至 007 owner/source/scop… |
+| P0-007 | 等待用户明确恢复 GitHub CI 工作；恢复后先只读复核 remote branch、PR、workflow run 与 `main` protection 的实际状态，再决定是否继续 P0-007。 |
+| P0-010 | 等待用户明确恢复 Linux 验证；恢复后仅在 `kspacejet-linux-test` 中继续，先确认 LFS payload，再执行 `just prepare-release` 与 `just check`，不得写入当前 Windows worktre… |
 
 <!-- KSJ-PLAN-DASHBOARD:END -->
 
@@ -155,11 +158,11 @@ KSpaceJet 是一个面向 MRI 重建的开源 C++20 框架。框架的责任是�
 
 | ID | 约束 |
 | --- | --- |
-| BND-001 | ISMRMRD 是唯一输入数据语义；当前 reference 输入为标准 ISMRMRD HDF5，未来调用方提交的内存对象也必须已具有相同的 ISMRMRD 语义。 |
-| BND-002 | KSpaceJet 从已提交的 ISMRMRD 数据开始；不实现、不配置、不链接或不测试扫描仪、采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备缓冲、网络 relay、采集侧 ACK/credit/read-gating/pause/reconnect 或任何采集传输协议。 |
+| BND-001 | ISMRMRD 是唯一 MRI 数据交换语义和持久化 image artifact 格式：当前 reference 输入为标准 ISMRMRD HDF5；未来调用方提交的内存对象以及经已选公开 Gateway Profile 规范化的外部流必须具有相同的 ISMRMRD 语义；对外或持久化的重建图像只能使用标准 ISMRMRD HDF5 的 ImageHeader、image data 与 MetaAttributes。CLI JSON stdout 是命令控制结果，不是图像 artifact。 |
+| BND-002 | KSpaceJet 不实现、不配置、不链接或不测试扫描仪、采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备缓冲或厂商私有 acquisition protocol。ksj-gateway 只能终止已选公开 Gateway Profile 的 TLS/session，并且不得发明私有 ACK/credit/read-gating/pause/reconnect 协议。 |
 | BND-003 | 不引入旧私有数据格式、旧队列表、BRF、ComQ、DPC 兼容层或专有重建算法。 |
 | BND-004 | Provider 是独立动态库、信任和生命周期边界；算法不能泄漏到 host ABI entrypoint、CLI 或网关。 |
-| BND-005 | 运行时仅拥有输入提交后的 materialization、buffer、排队、顺序、execution admission、结果 artifact/callback 交付；这些不是 Provider Operator，也不是外部采集或传输职责。 |
+| BND-005 | gateway 拥有外部连接、协议 decode、认证/授权、session、网关资源与公开交付；runtime 仅拥有规范化输入后的 materialization、buffer、排队、顺序、execution admission 与 result artifact。两者都不是 Provider Operator，也不接管厂商采集职责。 |
 | BND-006 | 所有长期异步数据必须由 host 管理、被资源账本计费且具有清晰所有权；借用的 AcquisitionView 不能跨回调保留。 |
 | BND-007 | 项目未发布；默认直接替换旧形状，不增加兼容 alias、双格式、迁移 shim 或版本协商。 |
 | BND-008 | 数值基线为 Eigen；Intel、FFTW、OpenCV、ITK、MATIO 等仅在私有实现边界出现，不暴露 vendor 类型。 |
@@ -177,6 +180,7 @@ v1 不是“有一个能运行的 demo”。只有下列条件同时满足才可
 - 已支持的 HDF5 和调用方提交的等价 ISMRMRD 输入在 runtime-frame 边界具有相同语义；
 - 在声明的 CPU、NUMA、内存和可选 GPU target envelope 下，正确性、资源上界、稳定性和性能证据齐全；
 - Linux 和 Windows 的支持范围、安装、CLI JSON 输出、文档、风险和已知限制均经过 release gate。
+- 若声明 external-integration-gateway mode，则 P5-009 至 P5-013 及其适用 P7 gate 也必须 ACCEPTED；离线 v1 证据不能替代 gateway mode 资格。
 
 ---
 
@@ -192,7 +196,7 @@ v1 不是“有一个能运行的 demo”。只有下列条件同时满足才可
 | Provider 基础 | provider SDK、loader、catalog、contracts、calibration、Cartesian、non-Cartesian、coil-combine、image-ops、conditioning Provider 及测试存在。 | 可作为 reference Provider 基线；尚不能自动推导“第三方生产可用”。 |
 | 图与运行时 | recon-model、recon-graph、synchronous graph compiler/verifier、FiringLease、bounded edge、resource ledger、frame slot、serial Cartesian 等实现和测试存在。 | 已具有 P1-P3 的部分实现，需要按 P0-001 建立已验证能力清单。 |
 | 离线应用 | ksj-recon 提供 Cartesian RSS 与 non-Cartesian RSS HDF5 命令；ksj 提供 pipeline validate 和 provider init。 | 有 reference vertical slices；CLI 产品面尚未闭环。 |
-| 外部集成目录 | ksj-gateway 的主程序明确标为 scaffold。按产品边界它不属于 KSpaceJet 重建范围，也不构成路线图或验收对象。 | 不得从该目录推断采集、传输、gateway 或在线服务能力。 |
+| 外部集成目录 | ksj-gateway 当前主程序明确标为 scaffold；用户已把它确定为未来唯一外部集成边界，架构见 `KSpaceJet_gateway_architecture.md`。 | 当前不具备 listener、TLS、认证、profile、session 或 online service 能力；不得从目录推断已实现。 |
 | 文档治理 | 已存在多个大型架构文档；旧架构规划提到 work-item schema 与 docs/work-items 目录，但当前仓库未发现其落地。部分 docs/conventions/README.md 链接也指向不存在文件或目录。 | P0 必须先建立真实的执行台账和文档链接基线；本文件暂为唯一进度账本。 |
 
 ### 2.1 当前第一目标
@@ -220,13 +224,14 @@ v1 不是“有一个能运行的 demo”。只有下列条件同时满足才可
 | 可执行文件 | 唯一职责 | 禁止承担的职责 |
 | --- | --- | --- |
 | ksj | 用户和开发者命令行：检查、生成、验证、解释、重放、比较、Provider 工具和本地运行入口。 | 不实现第二套 runtime，不把 JSON stdout 当日志。 |
-| ksj-gateway | 仓内保留的外部集成 scaffold；不是 KSpaceJet 产品能力或计划工作项。 | 不实现采集、传输、relay、认证、连接器或任何数据协议。 |
+| ksj-gateway | 未来唯一外部集成入口；当前仍是 installed scaffold。后续以共享 GatewayRunHost 接入 runtime，公开 profile 由 P5-009 冻结。 | 不实现厂商采集、设备控制、私有 wire protocol、Provider 算法或 gateway-to-recon 私有网络数据面。 |
 | ksj-recon | 执行 plan、管理调用方提交后的 ISMRMRD 数据、Provider、资源账本、scan lifecycle 和 run artifact。 | 不隐藏 Provider 算法，不依赖 research data plane，也不接管采集/传输。 |
 | ksj-research | 实验编排、证据冻结、跨框架比较、论文和性能报告。 | 不成为正常 runtime 或数据面的依赖。 |
 
 ### 3.2 逻辑数据流
 
-    Standard ISMRMRD HDF5 or caller-submitted host-owned ISMRMRD data
+    Standard ISMRMRD HDF5, caller-submitted host-owned ISMRMRD data,
+    or an accepted Gateway Profile normalized to host-owned ISMRMRD
                      |
                      v
     Structural + semantic validation / materialization / classifier / frame assembler
@@ -240,7 +245,7 @@ v1 不是“有一个能运行的 demo”。只有下列条件同时满足才可
                      v
     Result artifact or caller callback / run record / metrics
 
-每个箭头都必须有明确的所有权、失败语义、资源上限和可观察证据。调用方负责外部采集与传输；KSpaceJet 对已提交输入只执行本地资源保护和明确的 accept/reject/terminal 语义。
+每个箭头都必须有明确的所有权、失败语义、资源上限和可观察证据。外部 Connector 负责厂商采集与协议；ksj-gateway 只处理已选公开 Profile，KSpaceJet runtime 对规范化输入执行资源保护和明确的 accept/reject/terminal 语义。
 
 ### 3.3 核心持久 artifact
 
@@ -306,6 +311,15 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 | FUN-033 | trace、metrics、audit、crash breadcrumb、日志和配置 resolve/explain 足以定位失败和性能退化。 | P7 | AC-OBS-005 至 011 |
 | FUN-034 | CPU、NUMA、内存域、可选 GPU DevicePlan、异步取消和动态资源账本正确且无泄漏。 | P6 | AC-PERF-001 至 009 |
 | FUN-035 | benchmark、golden、fuzz/property、长稳、故障注入、跨平台安装、供应链和文档门禁共同构成 release qualification。 | P7 | AC-REL-001 至 010 |
+| FUN-036 | ksj-gateway 以一个已冻结的公开 Gateway Profile 提供 TLS、身份、授权、header-first admission 和已规范化的 ISMRMRD 外部集成入口；不定义私有 wire protocol。 | P5 | AC-GWY-001 至 005、009 |
+| FUN-037 | gateway 的连接/scan/run 生命周期、双资源账本、cancel/disconnect 和 HDF5 equivalence 可验证，且 socket buffer 不会跨异步边界。 | P5 | AC-GWY-003 至 005、007 |
+| FUN-038 | 独立 Connector 在自身信任边界处理厂商协议，并通过公开 profile/egress conformance；其制品不成为 Provider 或 runtime 依赖。 | P5/P7 | AC-GWY-006 至 009 |
+
+### 4.5 用户授权的离线可视化
+
+| ID | 必须具备的功能 | Target | 验收 |
+| --- | --- | --- | --- |
+| FUN-040 | `ksj-viewer` 是本地 Qt 桌面检查器：只读标准 ISMRMRD HDF5 的 header、acquisition 与 image，以及用户提供的 `PipelineDefinition`；它以现代、可用的 desktop workbench 展示 metadata、k-space、image 和 pipeline，并仅导出可视化派生产物。它不重建、不加载 Provider、不连接 gateway，MRI 交换与持久化 image artifact 仍唯一是 `.mrd`。 | P8 | AC-VWR-001 至 006 |
 
 ---
 
@@ -321,8 +335,10 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 ### 5.2 有界资源和实时性
 
 - 所有框架拥有的队列、pool、FrameSlot、local artifact staging、GPU buffer、batch 和 in-flight firing 都必须有 item 与 charged-byte 双上界。
-- 对调用方已提交的 ISMRMRD 输入，admission 必须先完成本地资源预留；无法接受时返回明确的本地 reject/terminal，绝不定义或暗示上游 ACK、pause、credit、重试或流控。
-- 慢 Provider、结果 artifact 写入和内部队列均不得导致无界堆积。KSpaceJet 只声明自己的本地拒绝、取消和失败语义；调用方负责后续上游数据如何处理。
+- 对调用方已提交的 in-process ISMRMRD 输入，admission 必须先完成本地资源预留；无法接受时返回明确的本地 reject/terminal，绝不定义或暗示上游 ACK、pause、credit、重试或流控。
+- 对 Gateway Profile，header admission、read gating、关闭和慢 peer 行为只能使用该公开 profile 的已冻结标准语义；不得以私有 ACK/credit 补齐。停止读取只能限制 KSpaceJet 进程内增长，不能宣称保证上游采集不丢失。
+- gateway 与 runtime 的 admission 必须同时预留各自的有界资源；任一失败必须可回滚且不留下部分可见 scan。
+- 慢 Provider、结果 artifact 写入、gateway decoder、egress 与内部队列均不得导致无界堆积。KSpaceJet 只声明已验证的拒绝、取消和失败语义。
 - 性能目标由 TargetEnvelope 和 MachinePolicy 参数化。没有测量环境、输入集和硬件拓扑时，不得在代码或本文件硬编码虚假帧率、延迟或内存指标。
 
 ### 5.3 性能指标定义
@@ -338,7 +354,9 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 
 ### 5.4 安全、供应链和故障隔离
 
-- 所有外部 JSON、HDF5 metadata、调用方提交的 ISMRMRD data、Provider manifest 和路径必须验证大小、schema、UTF-8、digest、边界和权限。
+- 所有外部 JSON、HDF5 metadata、调用方提交的 ISMRMRD data、Gateway Profile wire data、Provider manifest 和路径必须验证大小、schema、UTF-8、digest、边界和权限。
+- 非 loopback Gateway listener 必须在任何 MRI payload 前完成已选 profile 的 TLS/mTLS、身份和 route 授权；secret、原始 payload 与 PHI 不得写入仓库或日志。
+- gateway transport、decoder、session、egress 与 runtime 的 trust/resource boundary 必须分别可测；Connector/vendor SDK 不能进入 Provider 或 runtime。
 - Provider bundle 在加载前验证 ABI、export、identity、dependency、hash、license 和 SBOM；不信任 Provider 不得自动进入 production registry。
 - 进程内 trusted path 与 isolated-strict path 的保证必须分别声明。杀掉 worker 进程不等于 GPU kernel 已终止或显存已安全回收。
 - 任何 crash、timeout、cancel、provider failure、input submission failure 和 result-artifact failure 都必须被映射为可审计的 ScanLifecycle terminal outcome。
@@ -357,6 +375,7 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 | bounded-reconstruction-graph | Generic plan 编译、独立验证、有界同步执行、取消和完整 RunRecord。 | 多 scan 并发、任意 async Provider、外部采集/传输。 | P3 |
 | provider-development | SDK、in-process trusted Provider、contract、loader、第三方 conformance。 | 不可信 Provider 的 crash/hang 隔离。 | P4 |
 | embedded-incremental | 同进程宿主提交 ISMRMRD、明确本地 admission、状态、cancel 和 callback/artifact。 | socket/session/gateway、上游 flow control、未测硬件的 hard real-time。 | P5 |
+| external-integration-gateway | 经 P5-009 冻结的公开 Gateway Profile、TLS/mTLS、身份/route 授权、header-first admission、bounded connection/scan/egress 和 shared runtime bridge。 | 厂商设备协议、私有 wire、durable recovery、exactly-once、PACS/DICOM、HA、未测性能或临床宣称。 | P5/P7 |
 | isolated-provider-runtime | worker fault boundary、quota、watchdog、审计、恢复、已验证设备策略。 | 临床诊断或监管宣称，除非另有专门项目。 | P7 |
 
 ### 6.2 已冻结的决策
@@ -366,8 +385,15 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 | ADR-001 | 本文件是当前唯一进度账本；不把不存在的 docs/work-items YAML 目录当作已实施系统。 | 旧架构计划提出过工作项 schema 和目录，但当前仓库不存在，双重台账会导致状态漂移。 | P0-003 检查是否需要从本文件生成只读报告，生成物不得反向成为第二权威。 |
 | ADR-002 | 当前 Core diagnostics 保持 plain text；机器可读观测由 CLI JSON stdout、metrics、trace、RunRecord 和 audit artifact 提供。 | 根目录 AGENTS.md 的工程规则优先于长期架构文档中“结构化 JSON 日志”的冲突表述。 | P0-005 原子更新冲突文档和相应测试。 |
 | ADR-003 | KSpaceJet 的 ISMRMRD schema、generic reader、CLI、ScanDescriptor、planner 和 runtime 不得规定通道数上限。 | 当前 Cartesian reference route 的 1 至 64 仅是临时实现限制，必须被移除；256 及更大数据集只是普通 reconstruction case，不是框架能力上限。 | P1-007 删除通道上限并加入任意正整数通道数 generator/property tests；机器资源不足以 bytes/work 失败，不得报“超通道上限”。 |
-| ADR-004 | gateway、Connector、MRD session、网络 relay 与任何采集/传输职责不属于 KSpaceJet。 | 用户已明确项目输入仅为 ISMRMRD 数据；保留的 gateway scaffold 不构成产品承诺。 | 原 P5 中的网络/gateway 子范围已被 P5-004 scope-closure 取代；仅可在单独外部项目中重新立项。 |
+| ADR-004 | ksj-gateway 是 KSpaceJet 唯一的外部集成边界：它仅承载已选公开 Gateway Profile，终止 TLS/session、实施身份/route/资源/terminal policy，并经 GatewayRunHost 接入共享 runtime。Connector 的厂商协议/SDK 留在独立制品。 | 用户于 2026-08-23 明确要求真实外部集成网关；一个安全、可验证的边界比保留空 scaffold 或在 runtime 内散落 socket 代码更可审计。 | P5-008 冻结设计；P5-009 至 P5-013 依次冻结 profile、实现有界服务、接入 runtime、验证 Connector/egress 并资格化。未接受前不得宣称 service 能力。 |
 | ADR-005 | 先完成 feature-gated CPU 可信路径，再增量开放并行、NUMA、GPU 和隔离特性。 | 不能用未证实的并发能力替代正确性和资源闭环。 | P3 是 P6 的强前置条件。 |
+| ADR-006 | 输入和持久化重建 image 输出都只采用标准 ISMRMRD HDF5；输入以 runtime-owned `IsmrmrdHdf5ReplaySource` 进入，输出经 runtime-owned `IsmrmrdImageArtifactSink` 终结。移除 raw `.f32` image 与 JSON sidecar，不保留兼容路径。 | 用户于 2026-08-23 明确选择一个可由开源 ISMRMRD 工具直接读取、交流的 MRI data artifact，并于同日明确要求输入/输出成为统一 runtime 边界，而非 Provider Operator 或 CLI 中的文件逻辑。命令的 JSON stdout 仍是控制协议，不构成第二种 image 文件格式。 | P1-002 固定 source/sink 责任、image profile，并以官方 ISMRMRD C++ binding roundtrip 验证三条 reference route；P1-006 不得为持久化 image 新增并行 JSON sidecar。 |
+| ADR-007 | 每次 `ksj-recon` 重建必须同时显式提供标准 ISMRMRD 输入文件与作者化 `PipelineDefinition` JSON；仅有 `.mrd` 不能完成重建。`ksj-recon` 本身就是唯一重建命令，不再嵌套 `reconstruct` 子命令。Pipeline 可由用户编辑，声明输入语义 profile、Provider/Operator 选择、逻辑图、静态算法参数及内部 egress；它不得包含输入/输出路径、DLL/SO 或 contract 路径、扫描派生尺寸、线程/队列/内存等物理运行时参数。runtime 负责从 `.mrd` 派生 scan facts、以受控 binding 解析 Provider/contract、编译/验证计划，并绑定统一 Source/Sink。 | 用户于 2026-08-23 明确要求 Pipeline 成为与 `.mrd` 同等必要的 `ksj-recon` 输入，且用户可在其中选择重建算法和参数；同日明确 `ksj-recon` 不需要额外 `reconstruct` 子命令。将流程硬编码进 `cartesian-rss`、`noncartesian-rss`、`radial-rss` CLI flag 或 C++ route 不满足该产品契约。 | P2-001 明确作者配置与 scan facts 的归属；P2-002 增加参数/profile/resolver 语义；P2-007 以 `ksj-recon --input <scan.mrd> --pipeline <pipeline.json> --output <image.mrd>` 取代当前专用路由命令和 caller-supplied Provider 路径。 |
+| ADR-008 | Pipeline/scan-facts artifact ownership 必须先于离线 RunRecord 落地：P2-001 先冻结 authored Pipeline、scan-derived facts、effective binding 与 digest 关系，P1-006 再为每次 run 记录这些已冻结 identity。 | RunRecord 不能先于其所关联的用户 Pipeline 与 effective binding 定义来源；原先 `P2-001 → P1-006` 的依赖方向与 ADR-007 相反。用户已要求将可编辑 Pipeline 驱动的根命令作为后续重点。 | P2-001 依赖改为 P0-005、P1-002；P1-006 增加 P2-001 前置。此重排不提前接受 RunRecord，也不允许 P2-007 绕过 P1-006、P2-002 或 P2-004。 |
+| ADR-009 | 用户授权的 `ksj-viewer` 采用 Qt 6 Widgets，作为本地、只读的离线 inspection desktop application。它消费标准 `.mrd` 与 `PipelineDefinition`，可导出显示派生产物；不得成为 reconstruction runtime、Provider、gateway 或 research data plane 的依赖，也不创建第二种 MRI artifact。 | 用户于 2026-08-23 明确要求实现能够查看 k-space、image、metadata 和 pipeline 的工具，并明确选择 Qt。将它放在安装的 app surface 而不是开发脚本目录，才能拥有完整 runtime-dependency、help、UI smoke 与安装验证。 | P8-001 冻结 Qt Core/Gui/Widgets、应用与部署边界；P8-002 补齐标准 inspection reader；P8-003 实现各视图与派生导出。P8 是用户授权的附加范围，不阻塞 P0-P7 或 v1。 |
+| ADR-010 | `ksj-viewer` 的 source navigation 以 `InspectionReader` 递归、有界验证的**标准 ISMRMRD container**为根，而非硬编码 `/dataset` 或仅根级 group。每个 container 都以标准语义分类为 raw acquisition、image 和/或 waveform；用户只从可读 container 中选择，再进入 header、acquisition/k-space、image、waveform 等内容。HDF Group 的 `HDFView` 是文件树、对象检查、typed data view 与状态反馈的功能/交互参考；KSpaceJet 独立以 C++/Qt 实现。 | 用户于 2026-08-23 明确要求标准 ISMRMRD 文件直接打开、查看和重建，且明确指出标准 HDF5 group 名不是固定 API；真实 `cart_t1.mrd` 同时包含空的 `/dataset` 和可读的 `/dataset_1`、`/dataset_2`，手输默认组既不可靠也不符合 inspection workbench 的可发现性。必须保持 P8 的标准语义、只读、有界和无 Python/Matplotlib 依赖。 | P8-004 用单一有界 container discovery 取代仅根级 group discovery，并将 Viewer 重组为 HDFView 式 file root → `[RAW]/[IMAGE]/[WAVEFORM] container → content` navigation、对象 inspector、typed `Inspect`/`Open As`、页化 acquisition/coil/trajectory 检查、image cine/window-level；不能把任意 HDF5 浏览或无界缓存搬进 UI。 |
+| ADR-011 | 标准 ISMRMRD 是唯一必需的输入和可交换 image artifact 语义：任意可读标准 raw container 必须无需 `ksj_*` group 即可被查看和重建；正式 reconstructed image 只用标准 ISMRMRD `image_x` series、ImageHeader、image data 与 MetaAttributes 写出，不定义 `/ksj_recon`、`/ksj_debug` 或 `/ksj_meta` 结果 group。作者化 `PipelineDefinition` 保持为独立、必需的 JSON 输入；只有未来有明确产品理由时，才可在显式 derived file 内附加可选 `/ksj_pipeline`，它绝不替代、污染或成为标准 container 的前置条件，且不得原地修改用户输入文件。 | 用户于 2026-08-23 明确要求正式结果直接采用原生 ISMRMRD `image_x` 机制，KSpaceJet 的潜在扩展只剩 pipeline material；这保持与 Gadgetron、MATLAB、ismrmrd-python 等工具互操作，避免私有 MRI result artifact。当前 Sink 已使用官方 binding 写标准 image series。 | P8-004 只发现和展示标准 container；P2-002/P2-007 必须删除固定 `dataset` 假设，改为确定性 auto-or-explicit standard raw-container selection。若未来确需嵌入 pipeline material，另立 runtime-owned `/ksj_pipeline` work item，冻结 layout、schema、provenance、copy/append/readback/atomic-publication 验证；它不属于 P8-004 或已接受的 pure-image Sink。 |
+| ADR-012 | `ksj-viewer` 的主工作流采用 HDFView 式**File → hierarchy tree → selected-object inspector → typed data view → info/status**：菜单/工具栏承载打开、关闭、视图与帮助；打开 MRD 后默认只显示语义树和 selected-object inspector，typed-data 区域保持隐藏，不设置固定的 `Dataset overview` 或 `Image series` dashboard；树的选择只显示 object summary。显式 `Inspect`/`Open As` 才按 bounded typed options 打开 Header/XML 的 XML view、acquisition table/k-space 或 `image_x` image view。对象检查器固定为 `Object Attribute Info` 与 `General Object Info` 两页：后者使用紧凑 Name/Path/Type/Access form、标准 dataset semantics 与 member tables；XML preview 只位于显式打开的 XML typed view。image series 属于 `Images` 语义对象，raw acquisition container 的零 image series 是正常状态。它是 single-purpose、read-only ISMRMRD desktop application，而不是 HDFView 的 Java 代码移植、通用 HDF browser 或 editor。 | 用户于 2026-08-24 明确要求 UI、操作逻辑和功能以本地源码 `E:\hdfview`、安装目录 `D:\HDFView` 与 `HDFGroup/hdfview` 为参考，并使用 C++ Qt 重实现。内置 HDFView manual 证实其主窗口由 menu/toolbar/file bar/tree/metadata/info panel 构成，树选中对象驱动 metadata，`Open`/`Open As` 打开 table/image typed view。用户随后在真实 raw MRD 的视觉复核中指出 file-level `Dataset overview` 和空 `Image series` 区域重复且无价值。KSpaceJet 复用这些可用性原则，但不能扩大 MRI 数据和持久化边界。 | P8-004 替换当前 card/dashboard 重心，完成 HDFView 式 shell、语义对象树、`Object Attribute Info`/`General Object Info` inspector、context `Inspect`/`Open As` 及 data view tabs；测试必须证明只读、有界、标准 MRD-only、默认不显示冗余 dashboard、无 generic HDF traversal/edit/save/URL/file conversion/format support。 |
 
 ### 6.3 待决产品参数
 
@@ -381,6 +407,7 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 | 数据与隐私 | 是否仅 synthetic/public、脱敏规则、artifact 保留期、访问权限 | fixture、logging、capture、upload。 |
 | 输出契约 | image encoding、metadata、ordering、artifact/callback、partial image 规则 | writer、callback、CLI、golden。 |
 | 信任等级 | in-process trusted、isolated worker、签名、SBOM、第三方发布策略 | loader、runtime、release gate。 |
+| Gateway integration policy | Gateway Profile、transport/TLS/mTLS、listener 网络区、route/Connector、upstream admission、egress、资源上限与数据保留 | P5 gateway 架构、部署、安全、隐私与 qualification。 |
 
 #### 6.3.1 P0-006 参数登记与阻塞证据（2026-08-20）
 
@@ -393,11 +420,12 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 | MachinePolicy 与部署拓扑 | schema/模型具备 host bytes、CPU permits、NUMA、memory domain、device 等字段；唯一 JSON instance 是 `org.example.dev-host` fixture（16 GiB、8 permits、1 NUMA、host-only）。当前主机观测为 Linux `6.12.101+deb13-amd64` x86_64、Intel i7-14700K、28 logical CPUs、1 NUMA node、67,077,595,136 B RAM、RTX 4060 Ti 16,380 MiB/driver 550.163.01、Intel I226-LM PCI device。 | schema/fixture/model 不含 deployment identity、owner 或 review date。本机命令可复现，但只是本次 build host；未发现 committed deployment config。 | **BLOCKED**：deployment owner 必须为每个目标环境给出 CPU affinity/permits、NUMA、RAM reserve、OS、container/bare-metal、NIC 需求，以及明确 CPU-only 或 GPU backend/device/VRAM/driver/stream budget、适用范围与 review date。本机 GPU 不能推断 runtime support；P6-004 仍是 GPU DevicePlan 的前置项。 |
 | 性能 SLO | benchmark CMake/工具和空的 report template 存在；默认 preset 关闭 performance/benchmark/native-arch 选项。reference route 的 `acquisitions_read`、minimum drain `1` 和 fixture token-bucket 值是内部派生/测试值，不是测量结果。 | `docs/benchmark_reports/` 没有已接受 report；无 timed boundary、样本、raw artifacts、owner 或 review。 | **BLOCKED**：performance owner 必须提供 first output、completion、throughput、queue time、p50/p95/p99（含单位）、case/目标机/版本、timed boundary、样本和 raw artifacts，并指定 review date。 |
 | 数据、隐私与保留 | research Gadgetron manifest 具有 pinned source/hash；raw payload 不提交、本地 research storage 保留。`logging.file.retention_days=30` 是 disabled-by-default 的日志文件配置；RunRecord 仅禁止 reason code 带 PHI。 | research manifest 没有具名 case/data owner；不存在 de-identification、access 或 retention policy/review。 | **BLOCKED**：data-governance owner 必须决定允许的 synthetic/public/approved case 类别、license/redistribution、de-identification/PII、访问控制、日志/结果 artifact retention 与删除规则，并给出 source、适用范围和 review date。 |
-| 输出契约 | 当前 reference CLI 写 native-endian row-major f32 RSS binary 和 JSON sidecar；writer 使用 truncate。P1-002 已声明它只是 developer artifact。 | `apps/kspacejet-recon`/runtime source 没有正式 image artifact spec、owner 或 review。 | **BLOCKED**：output owner 必须冻结正式 image encoding、metadata/provenance、ordering、partial/callback、overwrite/durability、failure 和 retention/access policy，并给出 source、范围和 review date。 |
+| 输出契约 | 用户（output owner）于 2026-08-23 以 ADR-006 冻结了唯一文件交换格式：标准 ISMRMRD HDF5 ImageHeader、image data 与 MetaAttributes；`.f32 + JSON sidecar` 必须移除。P1-002 只实现并验证此 development image profile，使用 test-time synthetic HDF5，不依赖或复制 raw corpus。 | 用户指令（2026-08-23）；P1-002 负责写入字段映射、临时文件验证和原子发布。此决定不提供 deployment owner、retention/access 或 callback policy。 | **BLOCKED（其余治理）**：data/output owner 仍必须冻结 ordering、partial/callback、deployment overwrite/durability/failure 与 retention/access policy，并给出 source、范围和 review date。格式选择本身已不再阻塞 P1-002。 |
 | Provider trust 与第三方发布 | loader 可用 caller-supplied absolute path、trusted root 和 optional bundle digest，但明确是 trusted in-process ABI boundary；catalog 的 `implemented-development` 不是 release/trust approval。 | 未提交 trusted root/allowlist、签名、SBOM、第三方审核或 isolation policy；无 owner/review。 | **BLOCKED**：security/release owner 必须定义 trusted root、digest/signing/SBOM/hash、第三方准入/撤销、in-process trust tier 与 isolated-provider activation rule，并给出 source、范围和 review date。 |
+| Gateway 外部集成 | 已有 ksj-gateway scaffold、blocking IPv4 socket 基元、HDF5 reader、HostFrameAssembler、ScanLifecycle 与 ResourceVectorLedger；均不能证明公共网络服务。架构候选见 `KSpaceJet_gateway_architecture.md`。 | 未选择公开 Gateway Profile/transport binding；无 listener 网络区、PKI、principal/route、Connector ownership、upstream flow、egress、spool/retention、SLO 或 deployment owner/review。 | **BLOCKED / P5-009 前置**：architecture、security、deployment、integration、output 和 data-governance owner 必须共同提供 GWY-DEC-001 至 007 的来源、范围、值和 review date；未齐全时不得实现或对外监听。 |
 | 参数表示权威 | JSON TargetEnvelope schema 与 C++ `planning_inputs.hpp` value model 的字段并不一致，且未发现 JSON TargetEnvelope parser/serializer；两者都不能单独成为部署参数 authority。 | schema 仅结构验证，未定义 owner/source/review metadata。 | **BLOCKED**：architecture owner 必须指定可审计的单一参数 artifact/serialization 和与 C++ model 的一致性计划；在此之前不得从任何一侧生成或接受产品 policy。 |
 
-采集设备、scanner、gateway、session、网络 relay/transport 参数按 ADR-004 不在本登记范围。P0-006 的阻塞不改变 P0-002 的 Windows BLOCKED 记录，亦不允许由 Linux 或本机事实替代 Windows deployment evidence。
+采集设备、scanner、厂商私有协议和设备控制仍按 ADR-004 不在本登记范围；已选 Gateway Profile 的 transport/security/deployment 参数现在必须由 P0-006 登记。P0-006 的阻塞不改变 P0-002 已接受的 Windows Release developer-install evidence，亦不允许由 Linux 或本机事实扩张为 deployment 或 qualification evidence。
 
 ---
 
@@ -418,34 +446,34 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 
 ### 7.2 固定验证入口
 
-首次 bootstrap 是唯一直接调用平台脚本的入口，因为它安装项目锁定的 `just`。之后的日常开发命令均通过 platform runner 和根 `justfile`；不要误用系统 PATH 中的 `just`、Conan、CMake、Ninja 或 formatter。
+Linux bootstrap 直接通过 apt 确保安装 `just`，由 apt 的幂等性处理已安装 package；Windows bootstrap 会在缺少时通过 `winget` 安装 `Casey.Just`。两端均不下载项目私有副本、锁定版本或校验版本。bootstrap 仍直接调用平台脚本以 provision 仓库内 Python 工具；之后的日常开发命令直接使用根 `justfile` 的同名 recipe。对无 recipe 的聚焦诊断，使用 platform runner 调用锁定的 Conan、CMake、Ninja 或 formatter，不得依赖它们的系统 PATH。
 
 Linux 首次准备：
 
     bash tools/devenv/linux/bootstrap.sh
-    tools/devenv/linux/run.sh just prepare-release
-    tools/devenv/linux/run.sh just build-release-applications
+    just prepare-release
+    just build-release-applications
 
 Linux 格式与静态基线：
 
     git diff --check
-    tools/devenv/linux/run.sh just format-all
-    tools/devenv/linux/run.sh just type-check
+    just format-all
+    just type-check
 
 Linux 单元测试：
 
-    tools/devenv/linux/run.sh just unit
+    just unit
 
 Linux 完整检查和 benchmark smoke：
 
-    tools/devenv/linux/run.sh just check
-    tools/devenv/linux/run.sh just full
+    just check
+    just full
 
 Windows 基础门禁：
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just check
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just pre-push
+    just check
+    just pre-push
 
 产品 application 与 unit/benchmark/research 测试必须使用不同 build tree。不得以 application build 成功替代 unit test，也不得把测试 preset 同时配置为 application build。
 
@@ -456,7 +484,7 @@ Windows 基础门禁：
 | ID | 通过条件 |
 | --- | --- |
 | AC-BLD-001 | 新 clone 的 Linux 环境在依赖前提满足时能 bootstrap、export local recipes、configure linux-release-unit-tests、build 和 ctest。 |
-| AC-BLD-002 | Windows MSVC 2022 debug/release 至少有 configure、build、install smoke；失败时报告缺失 host prerequisite 而不是静默跳过。 |
+| AC-BLD-002 | Windows MSVC 2022 Release 至少有 configure、build、install smoke；2026-08-22 起 P0 developer-environment evidence 以用户指定的 Release 路径为准。若任一后续工作项需要 Debug，它必须单独声明并记录 configure、build、install evidence；失败时报告缺失 host prerequisite 而不是静默跳过。 |
 | AC-BLD-003 | Git LFS Intel payload 的 manifest、hash、Linux/Windows runtime dependency 通过仓库验证。 |
 | AC-BLD-004 | docs 站内链接、引用目录、命令和 target 均存在；失效链接会由检查阻止合并。 |
 | AC-TYP-001 | 修改 registry 而未更新生成 C++/C header 时，type registry check 必定失败。 |
@@ -483,6 +511,8 @@ Windows 基础门禁：
 | AC-DAT-006 | FrameSlot 只有在真实 completion 条件达成后 Ready；max count 只用于资源规划，不能结束一个 frame。 |
 | AC-DAT-007 | 参数化 fixture/generator 能接受任意正整数 channel 数（至少覆盖 1、64、256 和大于 256 的 case）并走相同 generic code path；不得以 channel count 拒绝。若实际 bytes/work 无法预留，必须报告资源不足而非通道上限。 |
 | AC-DAT-008 | 一次 scan 结束时，所有 incomplete frame 都转为明确 terminal outcome，绝不靠零填充猜测数据长度。 |
+| AC-DAT-009 | 所有 HDF5 reference route 经同一 normalized ISMRMRD semantic-frame ingress：header/layout/finite-value validation、AcquisitionClassifier、control/lane flag 解释和 host-owned materialization 不得由每条 route 重复或矛盾实现。 |
+| AC-DAT-010 | Frame key projection 显式保留 encoding、slice、contrast、phase、repetition、set、segment 和必要的 calibration/trajectory 语义；不得把多 echo、cine、EPI 或 calibration acquisition 静默混为一个 frame，也不得凭 flag 数值猜测它们属于 imaging。 |
 
 #### AC-SCH / AC-PLN / AC-RT：并行语义、图、计划与运行时
 
@@ -580,7 +610,20 @@ Windows 基础门禁：
 | AC-CLI-015 | doctor 报告 CPU/NUMA、dynamic library、Intel payload、文件权限、配置和可执行修复建议；不得探测或配置网络端口、扫描仪或采集设备。 |
 | AC-CLI-016 | 未实现 command 不能伪装成功；应在 help/JSON 中明确 scaffold 或 unavailable。 |
 
-#### AC-FED / AC-OBS / AC-PERF / AC-REL：嵌入输入、观测、性能和发布
+#### AC-VWR：Qt 离线检查器
+
+| ID | 通过条件 |
+| --- | --- |
+| AC-VWR-001 | `ksj-viewer` 是由 CLI11 声明 help/version 的 Qt Widgets desktop application；正常 UI 路径实际创建 `QApplication` 与主窗口，且不以 `WIN32_EXECUTABLE` 隐藏诊断或自动化入口。 |
+| AC-VWR-002 | viewer 只链接 `KSpaceJet::ismrmrd`、`KSpaceJet::recon_graph` 和 Qt Core/Gui/Widgets；不得链接 recon runtime、Provider loader/module、gateway、research 或 `mri_debug`，也不得执行、加载或发现 Provider。 |
+| AC-VWR-003 | Windows Release build 与 install tree 均部署 Qt 所需的最小平台插件（含 `platforms/qwindows.dll`）；`--ui-smoke` 在实际 QApplication 路径通过，不能以 `--help`、`dumpbin` 或手工 PATH 替代插件加载验证。 |
+| AC-VWR-004 | inspection reader 只读标准 ISMRMRD HDF5 的 header、acquisition 和 image；acquisition 按需/有界读取，image/header/meta 的轴、类型与属性保留标准语义，错误输入给出确定性诊断，不保留 raw data。 |
+| AC-VWR-005 | metadata、k-space、image 和 pipeline 视图复用同一 reader/parser；k-space 不伪装为重建图像，pipeline 不复制 parser 或执行图，PNG/SVG/CSV/JSON 等 export 被标记为显示派生产物而非第二种 MRI artifact。 |
+| AC-VWR-006 | viewer 在 1280×800 及以上提供 HDFView 式 Qt Widgets 主窗口：File/Window/Tools/Help 菜单、常用操作工具栏、当前文件栏、左侧 hierarchy tree、右侧 tabbed object inspector/data views 及跨宽度的 info/status panel。树 selection 只更新 General/ISMRMRD Header/Attributes inspector；打开 typed data view 必须显式使用 `Inspect`/`Open As`。界面可现代化，但功能层级和信息密度必须可对照 HDFView；不得改变 P8-003 的只读数据、parser、export 或依赖边界。以 widget structure/state tests、真实 QApplication UI smoke 与用户视觉复核验收。 |
+| AC-VWR-007 | Viewer 只显示由 `InspectionReader` 在 `InspectionReadLimits` 内递归验证通过的标准 ISMRMRD semantic object tree；不得假设路径为 `/dataset`。文件 root 下按 `[RAW]`、`[IMAGE]`、`[WAVEFORM]` 语义展示可切换 container → Header / Acquisitions (k-space) / Images / Waveforms，空、私有或非标准 group 不会阻止有效 container 的发现且不作为标准 source。对象 context menu 只能给出受支持的 `Inspect`、`Open As…`、copy path 或关闭 source；无对应内容必须明确不可用，不得伪造图像或 waveforms。UI 不得直接进行任意 HDF5 traversal、保存 raw payload、无界预读、generic file/object/attribute edit/save、URL loading 或非-MRD format support。以 synthetic nested empty+raw+image+waveform container、focused reader/presentation/widget tests 及 Windows Release UI smoke 验证。 |
+| AC-VWR-008 | `Open As…` 以类型特定且有界的 option dialog 开启 acquisition table/k-space 或 image view：Acquisition 使用 Reader 的 header-only、页化索引显示标准 ordinal/flags/encoding/sample/channel/trajectory facts，只在用户选择时读取一个 bounded payload 生成 coil-aware k-space 与 trajectory 显示派生；Image 在不保留 source pixels 的前提下支持 standard `image_x` series 的 ordinal cine、z/channel、auto/manual window-level、zoom、pixel probe 和 histogram（后两者仅对当前有界 display derivative）。不支持的内容必须显式不可用。以 header-only reader、presentation/widget tests 与 Windows Release UI smoke 验证。 |
+
+#### AC-FED / AC-GWY / AC-OBS / AC-PERF / AC-REL：嵌入输入、网关、观测、性能和发布
 
 | ID | 通过条件 |
 | --- | --- |
@@ -594,6 +637,15 @@ Windows 基础门禁：
 | AC-FED-008 | 本地 admission 在接受输入前完成资源预留；资源不足只返回本地 reject，不提供上游 ACK、pause、credit 或 retry 语义。 |
 | AC-FED-009 | bounded internal queue、slow Provider 和 artifact writer failure 不会无限增长，也不会无声丢弃已接受 input 或 image。 |
 | AC-FED-010 | paced HDF5 replay 与 in-process feed 的 burst/ordering corpus 可验证 runtime 高水位不超过 plan，结果与 HDF5 oracle 等价。 |
+| AC-GWY-001 | 每个 deployed endpoint 只接受 P5-009 冻结的单一公开 Gateway Profile；规范、精确版本、license、transport binding、serialization 和 conformance vectors 都可审计。不得私有 framing、隐式 fallback 或协议降级。 |
+| AC-GWY-002 | 非 loopback listener 在任何 MRI payload 前完成 TLS/mTLS、principal、route 与 profile 授权；认证/证书/限速失败有固定资源上限且不泄露 secret。 |
+| AC-GWY-003 | connection、gateway scan 与 reconstruction run 状态独立；normal/reject/cancel/fail/disconnect/drain 有确定映射，gateway 不伪造 runtime admitted/completed。 |
+| AC-GWY-004 | wire buffer 和 parser scratch 不跨异步边界；已验证的 OwnedIngressEvent 与 HDF5 replay 在 runtime-frame boundary 的 classification、frame identity、completion 与 terminal 语义等价。 |
+| AC-GWY-005 | header-first admission 对 gateway/runtime 资源做原子预留和回滚；所有 connection/decode/scan/egress/runtime 域有 item 与 charged-byte 上限，不能无界增长或静默丢弃。 |
+| AC-GWY-006 | egress 使用 OutputGrant；partial/result/terminal、slow peer、delivery timeout 与断线的语义明确且可测，不宣称 durable recovery、cross-connection dedupe 或 exactly-once。 |
+| AC-GWY-007 | fake-peer 与 mutation/fuzz corpus 覆盖 fragmentation、truncation、非法长度/UTF-8/order、认证失败、route 越权、资源耗尽、slow peer、cancel、disconnect 和 Provider/runtime failure。 |
+| AC-GWY-008 | Connector 独立于 Provider/runtime/网关进程；它通过已选公开 profile 的正负 conformance harness，厂商 SDK/凭据不进入 KSpaceJet 默认产品面。 |
+| AC-GWY-009 | Gateway config、PKI、route、资源上限、数据/输出保留和审计有 source/owner/scope/review date；PHI、raw payload 与 secret 不进入仓库或普通日志。 |
 | AC-OBS-001 | RunRecord 和 verification record 的 schema、identity、write timing 和 failure path 有单元与端到端测试。 |
 | AC-OBS-002 | audit event 在权限、admission、Provider identity、terminal、output 和安全决策上不可伪造、可排序、可关联。 |
 | AC-OBS-003 | config resolve/explain 输出来源、默认值、优先级、digest 和脱敏后的实际值。 |
@@ -649,7 +701,7 @@ Windows 基础门禁：
 - 改 Provider 时，必须同步更新 contract、catalog、CMake、bundle install list、SDK conformance、provider test 和 README。
 - 改 runtime terminal/resource 语义时，必须同步更新 plan verifier、RunRecord、metrics、fault tests 和文档。
 - 改 CLI 时，必须同步更新 CLI11 declaration、help、JSON envelope、exit code、app test 和 docs。
-- 任何将调用方提交的 ISMRMRD 输入扩展为网络协议、session、gateway、Connector 或采集控制的提议都超出本项目范围；停止并要求一个单独外部项目的明确授权。
+- 任何 Gateway Profile、Connector、session、transport、数据保留或采集控制变更都必须服从 P5-008 架构和对应 P5 工作项。不得绕过 P5-009 的公开 profile 冻结，或把厂商协议/私有 wire/设备控制塞入 runtime、Provider 或 app。
 
 ### 8.3 任务完成时的提交边界
 
@@ -670,9 +722,10 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P2 计划编译与独立验证 | 让语义 Pipeline、artifact、compiler、verifier 和 CLI 工具成为可证明一致的边界。 | P1 的 artifact/data 基线 ACCEPTED。 | valid/invalid/property corpus、plan identity、CLI JSON protocol 通过。 |
 | P3 有界 CPU runtime | 把现有同步组件收口为由 plan 驱动、资源闭环、终止正确的 generic runtime。 | P2 compiler/verifier ACCEPTED。 | serial equivalence、resource high-water、terminal/fault/lease 证据通过。 |
 | P4 Provider 产品化 | 形成可审计的 SDK、bundle、loader、conformance、run record 和隔离路线。 | P3 baseline ACCEPTED。 | trusted development Provider 流程完整；isolated-provider-runtime 的隔离前提可验证。 |
-| P5 可选进程内 ISMRMRD feed | 仅在有嵌入宿主需求时，完成 host-owned ISMRMRD feed、本地 run API 和等价性测试。 | P3 bounded correctness 和明确 embedding 需求。 | 不创建网络服务、gateway、session、Connector 或上游 flow control；本阶段不属于 v1 必经路径。 |
+| P5 外部集成网关与可选嵌入 ingress | 将受控外部集成限定在一个公开 Gateway Profile，同时保留独立的 in-process ISMRMRD feed 路径。 | P5-008 架构设计只依赖 P0-005；任何外部实现还需 P0-006、P1/P2/P3 的对应强依赖和已冻结 profile。 | gateway mode 只有 P5-013 与适用 P7 gate ACCEPTED 后才可宣称；不实现厂商采集、私有协议或未批准的上游控制。 |
 | P6 并行、NUMA、GPU 与性能 | 以 feature-gated 方式按能力增加并行性和硬件利用。 | P3 的 bounded correctness ACCEPTED；MachinePolicy 已填写。 | 每个启用 feature 均有正确性、资源、cancel 和性能证据。 |
 | P7 Qualification 与发布 | 让质量门在远程 CI、可安装包、长期运行、供应链和文档中可重复。 | P0-P4 ACCEPTED，启用的 P5/P6 工作项 ACCEPTED。 | 适用 AC-REL 全通过，mode claim 与证据一致。 |
+| P8 离线可视化与检查工具 | 交付用户授权的 Qt 本地桌面检查器，保持 `.mrd` / PipelineDefinition 的唯一语义边界。 | P0-002、P1-002、P2-002 ACCEPTED；Qt dependency、插件部署和数据边界先冻结。 | `AC-VWR-001` 至 `005` 通过；它是独立附加能力，不改变或阻塞 P0-P7/v1 release gate。 |
 
 阶段不能通过“多数任务完成”进入下一阶段。一个 BLOCKED 的强依赖会阻止其所有后续强依赖；只有明确定义 activation predicate 的 NOT_APPLICABLE 才能解除该依赖。
 
@@ -691,34 +744,37 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P0-003 | 固定本文件为唯一状态账本，建立状态转换检查和恢复流程；禁止重新引入无同步机制的第二 TODO/工作项系统。 | AGENTS、docs/architecture、可选 tools/checks。 | 无。 | 第 0、12、13 节完整；AC-BLD-004；对任一任务能从状态、依赖和下一步恢复。 |
 | P0-004 | 修复或删除所有断链、缺失目录、过时 app 角色描述和无效构建命令；增加轻量 link/path check。 | docs/README、docs/conventions、docs/architecture、README、tools/checks。 | P0-001。 | AC-BLD-004；链接检查必须能在无网络情况下发现相对路径错误。 |
 | P0-005 | 解决规范冲突，至少包括 plain-text core diagnostics 对 structured log 主张、采集/transport/gateway scope claim、profile 名称和 artifact authority。每项冲突只留一个规范。 | AGENTS、docs/architecture、apps README、schemas README、tests。 | P0-001、P0-004。 | AC-ART-004、AC-OBS-007、AC-REL-007；冲突扫描无双重强制语义。 |
-| P0-006 | 建立 MachinePolicy 和 ISMRMRD reconstruction-case 参数登记：数据形状、算法配置、CPU/NUMA/GPU、SLO、隐私、Provider trust 和输出 policy；不得登记框架 channel 上限或采集链路参数。 | schemas、docs/architecture、本文件第 6.3 节、部署 config。 | P0-001。 | 参数均有 source/owner/review date；缺失参数明确 BLOCKED，不猜测默认值。 |
+| P0-006 | 建立 MachinePolicy、ISMRMRD reconstruction-case 及 Gateway integration policy 参数登记：数据形状、算法配置、CPU/NUMA/GPU、SLO、隐私、Provider trust、输出、公开 profile、TLS/身份、Connector、网络区和保留 policy；不得登记框架 channel 上限或厂商采集链路参数。 | schemas、docs/architecture、本文件第 6.3 节、部署 config。 | P0-001。 | 参数均有 source/owner/review date；缺失参数明确 BLOCKED，不猜测默认值。 |
 | P0-007 | 建立远程 CI 和分支保护计划；若用户授权，实际创建 CI workflow/现有 runner pipeline 和 required checks。 | .github 或现有 CI 目录、tools/checks、GitHub settings。 | P0-002。 | AC-REL-001、002；无远程写入授权时只产出设计和 BLOCKED 证据。 |
 | P0-008 | 将本文件升级为可快速查看的 Master Plan：从唯一台账派生阶段完成度、当前项、READY/阻塞项和最近证据，并以离线检查器阻止其与台账漂移。 | 本文件、README、docs/README、tools/checks。 | P0-001。 | 总览只读派生自第 12 节，不复制单项状态；检查器验证第 10/12 节 ID 集合、状态、唯一 READY/活动项、READY 依赖、入口链接和总览一致性。 |
 | P0-009 | 固化双仓库数据边界：KSpaceJet 不保存 MRI 原始重建数据；开发工作区必须与同级 `KSpaceJet-ismrmrd-data` 仓库配套，后者是唯一 raw ISMRMRD dataset 归属。删除旧 project-internal research raw-data 目录及专用 downloader/test，不迁入数据仓库。 | AGENTS、README、tools/devenv、tools/checks、research/benchmarks、canonical plan。 | P0-003。 | 离线检查必须拒绝 KSpaceJet 已跟踪或物理存在的 `.mrd`、`.h5`、`.hdf5`、`.ismrmrd` payload，并验证同级数据仓库、origin 与 manifest 结构；Linux/Windows pre-commit 都必须执行该检查，所有旧 local-data 引用必须清除，文档给出可复制布局。 |
-| P0-010 | 将 `just` 纳入项目级开发环境 bootstrap，并以根 `justfile` 提供 Linux/Windows 相同语义的 prepare、incremental build、install、format 和 check 入口；首次 bootstrap 是唯一允许直接调用平台脚本的引导例外。 | `justfile`、`tools/devenv`、`.vscode/tasks.json`、`.githooks`、README、docs/conventions、tools/checks。 | P0-003。 | 两端 bootstrap 必须下载并校验固定版本的 project-local `just`，而非使用系统 PATH；两端 runner、VS Code 和 Git hook 均须选择同一 `justfile` recipe；Linux 必须实际 bootstrap、验证 binary、解析/格式化 justfile 并运行代表性 recipes。Windows 接线须静态检查，真实 Windows 运行证据纳入 P0-002。 |
+| P0-010 | 将宿主机 `just` 与根 `justfile` 定义为 Linux/Windows 共享的 prepare、incremental build、install、format 和 check 入口；Linux bootstrap 直接用 apt 确保安装，Windows bootstrap 在缺少时用 winget 安装。 | `justfile`、`tools/devenv`、`.vscode/tasks.json`、`.githooks`、README、docs/conventions、tools/checks。 | P0-003。 | 不得下载项目私有 `just`、校验、缓存或版本锁定 `just`；Linux bootstrap 必须直接使用 `sudo apt-get update` 和 `sudo apt-get install --yes --no-install-recommends just`，由 apt 的幂等性处理已安装 package；Windows bootstrap 必须只在缺少时以 `winget install --id Casey.Just --exact` 安装；VS Code 与 Git hook 均须选择同一 `justfile` recipe；Linux 必须以宿主机 `just` 实际 bootstrap、解析/格式化 justfile 并运行代表性 recipes。Windows 接线须静态检查，真实 Windows 运行证据纳入 P0-002。 |
 
 ### P1：可信离线 reference 基线
 
 | ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
 | --- | --- | --- | --- | --- |
 | P1-001 | 冻结公开/合规 HDF5 fixture manifest，包含数据来源、SHA-256、encoding、预期 terminal、golden tolerance 和可再生成方式。 | tests fixtures、tools、docs、ISMRMRD reader。 | P0-002、P0-006。 | AC-DAT-001 至 004、AC-REF-001/008；生成和验证必须不依赖私有数据。 |
-| P1-002 | 定义并实现标准 image output artifact。当前 native-endian row-major f32 加 JSON sidecar 仅作为 developer artifact；生产 reference 输出需明确 HDF5 image schema、metadata 和 provenance。 | recon-runtime output、apps/kspacejet-recon、schemas、tests。 | P1-001、P0-005。 | AC-ART-006 至 008、AC-REF-002/006/010/011；roundtrip/interoperability fixture 通过。 |
+| P1-002 | 定义并实现唯一的 runtime-owned 标准 ISMRMRD HDF5 I/O 边界：`IsmrmrdHdf5ReplaySource` 将输入重放到 runtime，`IsmrmrdImageArtifactSink` 固定 dataset/image series、ImageHeader 映射、float magnitude image data 和 MetaAttributes provenance 后终结输出；CLI 只绑定路径，Provider 不得直接读写文件。直接替换并删除 native-endian row-major `.f32` 与 JSON sidecar。 | recon-runtime I/O、apps/kspacejet-recon、tests、docs。 | P0-005。激活前提：ADR-006 已冻结格式与边界；本项只用 test-time generated synthetic ISMRMRD HDF5 image 验证，不依赖 P1-001 的公开 raw-fixture manifest。 | AC-DAT-001、AC-ART-007/008、AC-REF-002/010/011；官方 ISMRMRD binding roundtrip/interoperability、source/sink focused tests、三条 route 和 CLI negative test 通过。完整 input/pipeline/config/result/timing identity 与 RunRecord 关联仍唯一归属 P1-006，不能以本项的 image-bound provenance 取代。 |
 | P1-003 | 审计并验收 2-D fully sampled Cartesian RSS reference；把支持矩阵与 IFFT/RSS/orientation/scale golden 固定下来，并确保 reference route 不含 channel-count cap。 | cartesian_rss_hdf5、cartesian Provider、coil combine、tests。 | P1-001、P1-002、P1-007。 | AC-REF-001 至 007；执行 Cartesian focused CTest、normal/optional branch/negative cases。 |
 | P1-004 | 审计并验收 2-D non-Cartesian direct-adjoint RSS reference；明确无 DCF、trajectory correction、SENSE 的界限。 | noncartesian_rss_hdf5、noncartesian Provider、coil combine、tests。 | P1-001、P1-002。 | AC-REF-008 至 013；执行 non-Cartesian focused CTest 与 golden compare。 |
 | P1-005 | 实现或收口 scan/frame completion、classification、key separation、incomplete/duplicate/missing acquisition terminal semantics。 | acquisition_classification、host_frame_assembler、cartesian_frame_slot、scan_lifecycle、tests。 | P1-001、P0-006。 | AC-DAT-005、006、008、AC-RT-011/012；resource 和 terminal 负向测试通过。 |
-| P1-006 | 将每次离线 run 的 input、plan/verifier、Provider/config、terminal、output hash 写入最小 RunRecord，并提供验证读取。 | recon-model run_record、recon-runtime、apps、schemas、tests。 | P1-002、P1-003、P1-004。 | AC-ART-003、006 至 008、AC-OBS-001 至 004。 |
+| P1-006 | 将每次离线 run 的 input、plan/verifier、Provider/config、terminal、output hash 写入最小 RunRecord，并提供验证读取；持久化 image 不得借此重新引入 JSON sidecar，必要的 image-bound provenance 必须使用 ISMRMRD MetaAttributes。 | recon-model run_record、recon-runtime、apps、schemas、tests。 | P1-002、P1-003、P1-004、P2-001。 | AC-ART-003、006 至 008、AC-OBS-001 至 004。 |
 | P1-007 | 删除 reference CLI 的 1 至 64 通道上限，并保证 ISMRMRD schema、generic reader、CLI、ScanDescriptor、planner 和 runtime 对任意正整数 channel count 走同一 generic path。算法特有限制只可由 Provider contract 声明。 | ScanDescriptor、ExecutionPlan、FrameSlot、CLI、fixtures、benchmarks。 | P0-006、P1-001、P1-005。 | AC-DAT-004/007、AC-PERF-001/004；资源不足以 bytes/work 明确失败，绝不因 channel count 失败。 |
+| P1-008 | 建立统一 ISMRMRD semantic-frame ingress，使 HDF5 reference route 从同一 header/layout/flag/classification/frame-key/materialization 核心进入有界组帧；这是完成 sibling data repo 所有真实重建 Provider 的共同基础，而不是兼容层。 | kspacejet-ismrmrd、recon-runtime、cartesian/noncartesian HDF5 routes、synthetic tests。 | P0-002、P0-005、P0-009。 | AC-DAT-001、003、005、006、008 至 010；必须让当前 Cartesian route 首先切换到统一入口，不能把真实数据逻辑继续塞入 CLI 或单一路线。 |
+| P1-009 | 完成 development-only 的 2-D radial gridding 与显式 analytic DCF Provider。保留现有 direct-NUDFT/direct-adjoint 作为独立 oracle；新增 `radial-rss` 显式路线，不把它伪装成旧 `noncartesian-rss` 的兼容或别名行为。 | kspacejet-nufft、kspacejet-noncartesian-recon Provider、recon-runtime radial route、ksj-recon、synthetic tests。 | P1-008。 | AC-REF-008 至 011、013；2-D radial 与 `radial_analytic_ramp` DCF 必须在 contract/config 中显式；gridding/FFT workspace 必须 caller-owned 且有上界；同一 DCF 的 direct NUDFT oracle、determinism、shape/nonfinite/mismatch/workspace negative、Provider contract/catalog/CMake/identity 与新 route 选择均须通过。明确排除 trajectory/phase correction、SENSE、coil compression、3-D/cine/EPI/partial-Fourier/GRAPPA、性能和临床 claim。 |
 
 ### P2：图、artifact、compiler、verifier 和 CLI 计划工具
 
 | ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
 | --- | --- | --- | --- | --- |
-| P2-001 | 审计 artifact 权威归属，移除重复/自引用 digest、重复 profile owner 或混合 semantic/physical 字段；所有新字段归属唯一。 | recon-model、recon-graph、schemas、pipeline docs、fixtures。 | P0-005、P1-006。 | AC-ART-001 至 005、AC-PLN-001 至 004。 |
-| P2-002 | 完成 PipelineDefinition 静态验证、Resolver 和 ResolvedPipeline determinism，并让 catalog/contract/type/config 诊断可解释。 | pipeline_definition、artifact_json、operator_contract_json、provider catalog、CLI、tests。 | P2-001。 | AC-PLN-001 至 007、AC-CLI-009；valid/invalid fixture 和 JSON output tests。 |
+| P2-001 | 审计 artifact 权威归属，移除重复/自引用 digest、重复 profile owner 或混合 semantic/physical 字段；所有新字段归属唯一。明确 Pipeline 作者化静态算法配置与 runtime/compiler 从 ISMRMRD 派生的 scan facts/effective binding 的边界。 | recon-model、recon-graph、schemas、pipeline docs、fixtures。 | P0-005、P1-002。 | AC-ART-001 至 005、AC-PLN-001 至 004。 |
+| P2-002 | 完成 PipelineDefinition 静态验证、作者可编辑参数与正式 ISMRMRD input profile、Resolver 和 ResolvedPipeline determinism，并让受控 Provider/contract/type/config 诊断可解释。input profile 必须以 auto-or-explicit 的标准 raw-container selection 替代固定 `dataset` group：auto 仅在恰有一个可读 raw container 时成功，多个候选必须确定性失败并要求 pipeline 指定路径。 | pipeline_definition、artifact_json、operator_contract_json、provider binding/resolver、CLI、tests。 | P2-001。 | AC-PLN-001 至 007，以及 AC-CLI-009 的 validate/schema/semantic/resolver 报告层；valid/invalid fixture、参数/profile/解析负例和 JSON output tests。完整 explain/render/dry-run、compiler/verifier/admission 报告仍由 P2-005 接受。 |
 | P2-003 | 完成 ExecutionPlan compiler 的资源、terminal、placement、Provider firing、PartitionCapability 与 WorkKey 输出；只能按已声明的并行语义构造实际 ISMRMRD group。 | execution_plan_compiler、synchronous graph compiler、planning inputs、resource vector、Provider contracts、schemas、tests。 | P2-002、P0-006。 | AC-SCH-001/002/006/009/010、AC-PLN-008 至 012、AC-RT-004。 |
 | P2-004 | 强化 independent verifier，与 compiler 私有实现隔离；增加 mutated plan、small graph exhaustive/property、非法 partition/resource/terminal 和 differential corpus。 | synchronous graph verifier、plan storage、tests/fuzz tooling。 | P2-003。 | AC-SCH-002 至 010、AC-PLN-013 至 016；compiler/verifier verdict matrix 通过。 |
 | P2-005 | 扩展 ksj 的 pipeline validate、explain、render、dry-run；每个命令具有 CLI11 help、text/json、exit code 和 app protocol test。 | apps/kspacejet-cli、recon graph/model、tests/apps、docs。 | P2-002、P2-004。 | AC-CLI-001 至 003、007 至 010。 |
 | P2-006 | 建立 schema structural 与 semantic validation 的双层测试规则；schema 合法但 resolver/compiler/verifier 拒绝的 corpus 必须持续存在。 | schemas、fixtures、tests/unit/libs/recon、tools/checks。 | P2-002、P2-004。 | AC-ART-004、AC-PLN-013 至 015；单独 schema pass 不可让测试 green。 |
+| P2-007 | 用 PipelineDefinition 驱动 `ksj-recon` 根命令：每次必须接收 `--input <scan.mrd>`、`--pipeline <pipeline.json>` 和 `--output <image.mrd>`；runtime 从 profile 的 auto-or-explicit **standard raw container** selection 选择 ISMRMRD frame adapter、解析 Provider、编译/验证并执行图，再以统一 Sink 写出结果。删除专用 route 命令、caller-supplied DLL/contract flag、`--dataset` 与 C++ 中临时拼接的 PipelineDefinition，不保留兼容路径或额外 `reconstruct` 子命令。 | apps/kspacejet-recon、recon-runtime、recon-graph、provider loader/binding、reference pipeline fixtures、tests、docs。 | P1-002、P1-006、P2-002、P2-004。 | AC-ART-003/006 至 008、AC-CLI-006/009/010、AC-PLN-001 至 016；三条 synthetic reference route 以用户 pipeline 文件端到端通过，single raw container 自动选择、multiple raw containers 的明确歧义失败以及 pipeline 显式 path 选择都须覆盖。 |
 
 ### P3：有界 generic CPU runtime
 
@@ -742,17 +798,23 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P4-005 | 设计并实现 isolated worker/supervisor 路线、trust tier、quota、watchdog、crash reconciliation 和 rolling upgrade。 | recon runtime、process-runtime、platform、schemas、tests/fault. | P4-001、P3-003、P0-006。 | AC-RT-009/014、AC-PRV-006；不能只 kill host 来模拟 GPU safety。 |
 | P4-006 | 把 audit、RunRecord、crash breadcrumb、config resolve/explain 和 Provider identity 形成可重放事故证据链。 | run_record、config、crash、logging、CLI、schemas、tests。 | P1-006、P4-001、P3-006。 | AC-OBS-001 至 004、007、010。 |
 
-### P5：可选进程内 ISMRMRD feed 与宿主 API
+### P5：外部集成网关与可选嵌入 ISMRMRD ingress
 
 | ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
 | --- | --- | --- | --- | --- |
 | P5-001 | 冻结仅限同进程的 caller-to-framework ISMRMRD feed contract：ownership、callback lifetime、input identity、completion 与 terminal mapping。 | docs/architecture、schemas、io、fixtures。 | P0-005、P0-006、P3-003。 | AC-FED-001 至 004；不得添加 socket、session、transport、gateway 或 source-control 语义。 |
 | P5-002 | 实现 feed materialization 和 HDF5/feed equivalence harness；所有异步路径仅持有 host-owned buffer。 | io/recon runtime、schemas、tests/fuzz。 | P5-001、P3-003。 | AC-DAT-001/002、AC-FED-001 至 004；无 borrowed view 跨异步边界。 |
 | P5-003 | 实现本地/embedded run lifecycle、admission、run list/show/cancel、RunRecord 和受保护的 control API；它不得承载 raw-data transport。 | apps/kspacejet-recon、recon-runtime、config、tests/apps。 | P5-002、P4-006。 | AC-FED-005 至 008、AC-CLI-014/015。 |
-| P5-004 | 将 ksj-gateway、Connector、MRD session、relay、网络 auth 与采集/传输控制从 KSpaceJet 路线图和默认产品 claim 中移除。 | AGENTS、docs/architecture、apps/kspacejet-gateway、CMake/docs。 | P0-005。 | AC-FED-003、AC-REL-007；不得实现 gateway 代替此 scope-closure 任务。 |
+| P5-004 | 历史 scope-closure：将 ksj-gateway、Connector、MRD session、relay、网络 auth 与采集/传输控制从 KSpaceJet 路线图和默认产品 claim 中移除；已由 P5-008 取代。 | AGENTS、docs/architecture、apps/kspacejet-gateway、CMake/docs。 | P0-005。 | 此任务的历史验收为 AC-FED-003、AC-REL-007；不得以它作为当前 gateway 实现依据。 |
 | P5-005 | 使本地 admission、internal queue、Provider saturation 与结果 artifact writer 具有有界资源、确定 reject/terminal 和高水位观测。 | bounded edge/ledger、runtime、tests/fault。 | P5-003、P3-001。 | AC-FED-008 至 010、AC-RT-016 至 019。 |
 | P5-006 | 建立 HDF5 replay 与 in-process feed 的端到端 equivalence、cancel、Provider crash、restart 和 result idempotence suite。 | replay tooling、runtime、fixtures、tests/system。 | P5-002、P5-003、P5-005、P4-005。 | AC-DAT-002、AC-FED-001/004/007/010、AC-OBS-010。 |
 | P5-007 | 扩展 ksj replay、dataset validate、local run 与 run status 命令，只通过共享 runtime/embedded API，不创建第二数据面或 gateway 命令。 | apps/kspacejet-cli、io、tests/apps、docs。 | P5-003、P5-006。 | AC-CLI-011、014、AC-FED-005 至 010。 |
+| P5-008 | 重置外部集成边界并冻结 `ksj-gateway` 的候选稳定架构：公开 profile 选择门、Connector 信任边界、连接/scan/运行时生命周期、资源、安全、输出和实施分层。输出 `KSpaceJet_gateway_architecture.md`；不写 listener 或私有协议实现。 | AGENTS、README、docs/architecture、apps README、canonical plan。 | P0-005。 | AC-GWY-001 至 004（架构/边界部分）、AC-REL-007；必须明确当前 scaffold 仍不是服务，并把未决产品输入列为阻塞条件。 |
+| P5-009 | 冻结一个可互操作的公开 Gateway Profile：精确标准/版本、TLS transport binding、身份/授权、header-first admission、错误/terminal 映射、input/output schema 与 byte-level conformance corpus。 | gateway contracts/schema、fixtures、docs、tests。 | P5-008、P0-006。 | AC-GWY-001 至 004、009；不允许临时私有 framing、版本协商或 vendor 原始协议。 |
+| P5-010 | 实现安全 listener、public-profile decoder/encoder、连接与单 scan session 状态机、认证/授权和有界网络资源；以 fake peer 做协议与负向测试。 | gateway transport/session/orchestrator、platform、config、tests。 | P5-009、P3-001。 | AC-GWY-002、003、005、007、009；现有 blocking IPv4 socket primitives 不可直接充当生产栈。 |
+| P5-011 | 将已验证的外部规范化输入接入共享 runtime：host-owned materialization、双账本 admission、ScanLifecycle/RunRecord 映射、cancel/disconnect 与 HDF5 equivalence。 | gateway host、recon-model/graph/runtime、io、tests。 | P5-010、P1-005、P2-004、P3-003。 | AC-DAT-001 至 004、AC-GWY-004 至 006；gateway 不复制 planner/runtime 或把 socket buffer 交给 Provider。 |
+| P5-012 | 完成有界 egress、结果交付/失败语义、Connector conformance harness 与部署形态；站点 Connector 仍是独立制品和信任边界。 | gateway egress/contracts、apps、test peer、docs。 | P5-011、P1-002、P4-006。 | AC-GWY-006 至 009、AC-OBS-001 至 011；不承诺 durable recovery、exactly-once、PACS/DICOM 或厂商 SDK。 |
+| P5-013 | 对已选 Gateway Profile 做跨平台安装、端到端 fault/slow-peer/fuzz/security/数据治理 qualification，并记录真实互操作证据。 | install、system tests、security/operations docs、qualification evidence。 | P5-012、P7-002、P7-003、P7-005、P7-006。 | AC-GWY-001 至 009、AC-REL-003 至 010；无真实批准的对端、部署和 policy 时保持 BLOCKED。 |
 
 ### P6：并行、NUMA、GPU、容量与性能
 
@@ -774,19 +836,28 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P7-002 | 建立 Linux 和 Windows clean-install、help/version、dynamic dependency closure、Provider load 和 basic reconstruction smoke。 | CMake install、apps、Provider packaging、CI scripts。 | P4-002、P4-003、P7-001。 | AC-BLD-002、AC-REL-003。 |
 | P7-003 | 建立 static analysis、memory diagnostics、TSAN 或等效并发检查、fuzz/property corpus 与已知 sanitizer suppression policy。 | CMakePresets、tools/static analysis、tests/fuzz、CI。 | P3-001 至 P3-004、P6-001。 | AC-REL-006；所有 suppression 必须有 issue/expiry/owner。 |
 | P7-004 | 完成 SBOM、license、hash/signature、Provider trust policy、LFS payload verification 和 secret/credential policy。 | conan, third_party, provider packaging, docs, CI. | P4-001、P7-001。 | AC-BLD-003、AC-REL-004/005。 |
-| P7-005 | 完成长稳、fault injection、input-submission pressure、result-artifact failure、Provider worker failure 和 resource leak report。 | ksj-research、system tests、runtime、CI artifacts。 | P3-006、P4-005、P6-002 至 P6-005。 | AC-REL-006、AC-RT-006；启用 P5 时附加 AC-FED-009/010。 |
+| P7-005 | 完成长稳、fault injection、input-submission pressure、result-artifact failure、Provider worker failure 和 resource leak report。 | ksj-research、system tests、runtime、CI artifacts。 | P3-006、P4-005、P6-002 至 P6-005。 | AC-REL-006、AC-RT-006；启用 embedded P5 时附加 AC-FED-009/010，启用 Gateway mode 时附加 AC-GWY-005 至 007。 |
 | P7-006 | 审核 release docs、CLI reference、mode claim、known limitation、target envelope、non-clinical statement 和 rollback policy。 | README、docs、apps help/tests、release manifest。 | P0-004、P0-005、P7-002、P7-004。 | AC-REL-007 至 009；文档与 executable behavior 一致。 |
 | P7-007 | 执行最终 qualification review：列出适用/不适用 AC、风险、残余 BLOCKED 项和 mode。只在证据充分时提升 release profile。 | 本文件、CI reports、release artifacts。 | P0-P4、启用的 P5/P6 和 P7-001 至 P7-006 ACCEPTED。 | AC-REL-010；生成 signed-off qualification report，不得用 README 状态替代。 |
+
+### P8：离线可视化与检查工具（用户授权的附加范围）
+
+| ID | 目标和输出 | 主路径 | 依赖 | 验收和验证 |
+| --- | --- | --- | --- | --- |
+| P8-001 | 冻结 Qt 6 Widgets desktop viewer foundation：新增 `qt/6.8.3`、`ksj-viewer` 安装应用、CLI11 help/version、实际 QApplication UI smoke 与 Windows Qt platform-plugin deployment；写明唯一 `.mrd`/PipelineDefinition 只读边界。 | conanfile.py、CMake、apps/kspacejet-viewer、tests/apps、install checks、docs。 | P0-002、P1-002、P2-002。 | AC-VWR-001 至 003；Windows Release configure/build/install 和 build/install UI smoke。 |
+| P8-002 | 在 `KSpaceJet::ismrmrd` 提供标准 HDF5 inspection reader：Header、streaming bounded Acquisition 与 Image/Header/MetaAttributes read model；不复制 HDF5 实现，不保留 raw payload。 | libs/io/kspacejet-ismrmrd、synthetic tests、docs。 | P8-001、P1-002。 | AC-VWR-004；normal/malformed/oversize/axis/meta fixtures 与 focused tests。 |
+| P8-003 | 实现 Qt metadata、k-space、image、pipeline 与 export 视图；共享 P8-002 reader 和 P2 parser，明确采样可视化与重建图像的区别。 | apps/kspacejet-viewer、tests/apps、docs。 | P8-002、P2-002。 | AC-VWR-005；UI smoke、view-model/renderer tests、export provenance/negative tests。 |
+| P8-004 | 按用户反馈将 `ksj-viewer` 重构为 HDFView-inspired、MRD-aware Qt desktop workbench：File/Window/Tools/Help、tool/file bar、standard MRD semantic tree、对象 inspector、typed `Inspect`/`Open As…` data views、页化 acquisition/coil/trajectory、`image_x` cine/window-level/zoom/probe/histogram、信息状态区和空状态；打开 MRD 的默认状态仅为语义树加 General/Object Attribute inspector，不显示固定 `Dataset overview` 或 `Image series` dashboard，Header/XML 只能经显式 inspect 打开 XML view，raw source 的零 image series 视为正常；以 HDF Group HDFView 的 UI 与操作逻辑为参考，但独立以 C++/Qt 实现。 | apps/kspacejet-viewer、libs/io/kspacejet-ismrmrd、tests/unit/apps、tests/unit/libs/io/kspacejet-ismrmrd、docs。 | P8-003。 | AC-VWR-006、AC-VWR-007、AC-VWR-008；recursive container/header 与 widget structure/state tests、Windows Release build/UI smoke 和用户视觉复核。 |
 
 ### 10.1 明确不在 v1 主线内的项目
 
 除非用户明确新增范围，下列事项不得阻塞 P0 至 P7：
 
-- GUI、移动端、Web dashboard；
+- GUI、移动端、Web dashboard；用户已于 2026-08-23 明确授权的 P8 Qt 离线 `ksj-viewer` 是唯一例外，但它仍不阻塞 P0 至 P7 或 v1；
 - DICOM/PACS、诊断工作站、临床流程、医疗器械监管或诊断宣称；
 - 云端多节点调度、跨院数据同步；
 - 厂商私有 scanner protocol、旧 DPC/BRF/ComQ 兼容；
-- 扫描仪/采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备 ring、网络 transport、MRD session、gateway、Connector 或采集端流控；
+- 扫描仪/采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备 ring、厂商私有 transport、设备 MRD session、Connector vendor SDK 或采集端流控；P5-008 至 P5-013 的公开 Gateway Profile 路线是明确例外；
 - 私有或专有重建算法；
 - 未被 Provider contract、TargetEnvelope 和 benchmark 证据支持的 GRAPPA、SENSE、partial Fourier、adaptive coil combine、trajectory correction 等算法。
 
@@ -820,8 +891,8 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 
 ## 12. 唯一执行台账
 
-**更新时间**：2026-08-20，P0-010 已 ACCEPTED；P0-002 仍等待真实 Windows 主机，P0-006 仍等待产品参数 authority
-**当前可执行任务**：无；第 12 节没有 READY、IN_PROGRESS 或 VERIFYING 项。不得伪造下一项；只在 P0-002 的真实 Windows host 或 P0-006 的完整 owner/source/review inputs 到位后，按本节状态机恢复。
+**更新时间**：2026-08-24，`P0-002` 已以用户指定的 Windows Release 路径完成 bootstrap、Conan/CMake configure、四个 application build/install、installed-help/version 和 DLL closure；`P0-007` 因用户要求暂缓 GitHub CI 而 BLOCKED，`P0-010` 因用户暂停 Linux 验证而 BLOCKED，二者均不在当前范围。`P1-002` 的 runtime-owned 标准 ISMRMRD source/sink 边界已通过 focused Windows Release 验证并 ACCEPTED；`P1-008` 的统一 ISMRMRD semantic-frame ingress 与 `P1-009` 的 development-only 2-D radial gridding/analytic DCF Provider 也均已 ACCEPTED。用户已冻结 `ksj-recon --input <scan.mrd> --pipeline <pipeline.json> --output <image.mrd>` 为唯一未来重建入口，并进一步冻结标准-first MRD container 原则：不假设 `/dataset`，任何 private `ksj_*` group 均不得成为查看或重建的前提。`P2-002` 的固定 `dataset` profile 因此 REOPENED，待 P8 的 shared discovery evidence 后改为 auto-or-explicit container selection。用户已明确授权 Qt 6 desktop `ksj-viewer` 作为不阻塞 v1 的附加范围；P8-004 已按 `E:\hdfview` / HDFView 的 UI 与操作原则完成 native C++/Qt shell 重构，并依用户视觉反馈将对象检查器收口为 HDFView 式紧凑双页。Windows unit-test target-only build 现在会部署其运行时 DLL 闭包和 Qt platform plugin，直接启动与裸 CTest 已验证；P8-004 仍待用户视觉复核。
+**当前执行任务**：`P8-004`（IN_PROGRESS）。基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`；P8-003 保持 ACCEPTED，其数据读取、parse-only pipeline、display-derivative export 和依赖边界不可回退。当前工作树已提供有界 recursive standard container discovery 与 HDFView-inspired File/Window/Tools/Help、toolbar/file bar、semantic tree、`Object Attribute Info`/`General Object Info` inspector、typed Inspect/Open As 和 Info/status shell；focused Windows tests、Release build、install 和 UI/export smoke 均已有 evidence。下一精确行动是使用真实 sibling-data `cart_t1.mrd` 完成用户视觉复核，然后再决定是否转 VERIFYING。
 **状态权威**：本节是本文件中唯一允许修改任务状态的位置。任务目录第 10 节不维护重复状态。
 
 ### 12.1 P0 台账
@@ -829,15 +900,15 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
 | --- | --- | --- | --- | --- | --- |
 | P0-001 | ACCEPTED | 无 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`；同一未提交 code/test/fixture diff 在独立本地 clone 的新 `.venv`/unit build tree 上完成 bootstrap、321-step build、35/35 CTest。主工作树复验也通过；完整证据见第 13.1 节。 | P0-002：验证 Linux/Windows toolchain、Conan、LFS、preset、install 与 check scripts。 | 仅 Linux component evidence；Windows、install、app/system、性能和 qualification 尚未由本项验证。 |
-| P0-002 | BLOCKED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含已接受但未提交的 P0-001 code/test/fixture/docs diff。Linux LFS、bootstrap、unit、application build/install、clean-prefix help 与 check scripts 全部通过；完整命令和 Windows 阻塞见第 13.2 节。 | 在实际 Windows x64 + VS 2022 v143 + Windows SDK 主机/runner 上执行 debug/release bootstrap、build、install、installed help smoke 与 DLL dependency closure 记录。 | `AC-BLD-002` 未满足：当前仅有 Linux kernel，且无 PowerShell、MSVC/VS 或 Windows runner；Linux evidence 不能替代 Windows acceptance。 |
+| P0-002 | ACCEPTED | P0-001 | 2026-08-22：真实 Windows x64 已完成 Release-only acceptance。VS Build Tools `17.14.39`/MSVC `14.44.35207`、Windows SDK `10.0.26100.0`、Git LFS、host `just`、Conan/CMake 与 Intel payload 均经实际 bootstrap/verify；`just prepare-release`、`just build-release-applications`、`just install-release-applications` 和 `just check` 均成功。修正 Intel OpenMP library/runtime 目录、MSVC `/Zc:__cplusplus`/`/bigobj`，以及 Windows 安装 DLL 的冲突处理；四个已安装应用 `--help` 与 `ksj --version` 均 exit 0。`dumpbin /DEPENDENTS` 扫描 install tree 的 270 个 EXE/DLL，未发现非安装树或非 Windows 系统 DLL 的缺失依赖。完整证据见第 13.2 节。 | `P0-007`：检查本地 CI baseline，制定最小 CI/branch-protection 设计；外部写入须用户授权。 | 此项只验证 Windows Release developer install smoke，不构成 Debug、性能/容量、Provider isolation、临床或 release qualification 证据。 |
 | P0-003 | ACCEPTED | 无 | `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` / tree `01c12fcd1b52fe45a86a3a26691bcfbf264e6589` 已将 `AGENTS.md`、唯一 execution ledger、检查器和交付文件提交到当前实际仓库；完整证据见第 13.10 节。 | 无 READY 项；维持唯一台账并在后续状态变更后运行 `check_execution_plan.py --write --check`。 | 当前只有本地 commit，未推送/创建远程 branch；但 P0-003 的本地仓库交付/commit 验收已满足。 |
 | P0-004 | ACCEPTED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含未提交的 P0-001/P0-002 evidence diff。已修复五个真实本地 Markdown 断链、过时路径/命令和应用角色说明；新增离线 link/path gate，最终扫描为 75 个 Markdown 文件、151 个本地 link，零错误；完整证据见第 13.6 节。 | P0-005：列出冲突原文，并同一变更更新全部主规范、help 和测试。 | 外部 URL 不联网验证；当前 Linux 主机不能执行 Windows PowerShell hook。remote merge enforcement 仍属于 P0-007。 |
-| P0-005 | ACCEPTED | P0-001, P0-004 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含未提交的 P0-001/P0-004 diffs。五个 canonical profile、schema/fixture/test、active help、artifact authority、plain-text diagnostics 和历史文档边界已原子收口；完整证据见第 13.7 节。 | P0-006：只收集真实 TargetEnvelope/MachinePolicy 参数或精确记录缺失输入。 | P4/P5/P7 mode 仍未接受；P0-002 的 Windows evidence 仍 BLOCKED，不能扩大任何能力宣称。 |
-| P0-006 | BLOCKED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含 P0-001/P0-004/P0-005 的未提交改动。第 6.3.1/13.8 节证明没有 committed、deployment-owned TargetEnvelope 或 MachinePolicy；fixture、reference defaults、research case 和本机硬件均已明确降级为非产品证据。 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture owner 的 source/scope/review inputs；收到后重新打开 P0-006 并按每项复核。 | 不得猜测 channel 上限、SLO 或 GPU 配置；不把 test fixture、reference-route value 或当前 Linux host 自动提升为产品 envelope。 |
-| P0-007 | PLANNED | P0-002 | main 无 GitHub Actions/.gitlab CI 文件和 required status evidence。 | 先制定最小 CI matrix；外部 repo settings 改动仅在被授权时执行。 | remote workflow/branch protection 尚未配置。 |
-| P0-008 | ACCEPTED | P0-001 | 用户要求的 Master Plan 视图已在第 0.4 节作为受控派生总览落地：显示阶段覆盖度、当前/READY/阻塞项、最近验收证据和阻塞恢复动作；完整证据见第 13.9 节。第 12 节仍是唯一状态权威。 | 后续状态变更只改第 12 节，然后运行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；无 READY 时保持无下一项。 | 总览不能直接改变状态。P0-002 的 Windows 与 P0-006 的参数 authority BLOCKED 均不因本项解除；当前 Linux 主机无法执行 Windows hook。 |
+| P0-005 | ACCEPTED | P0-001, P0-004 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含未提交的 P0-001/P0-004 diffs。五个 canonical profile、schema/fixture/test、active help、artifact authority、plain-text diagnostics 和历史文档边界已原子收口；完整证据见第 13.7 节。 | P0-006：只收集真实 TargetEnvelope/MachinePolicy 参数或精确记录缺失输入。 | P4/P5/P7 mode 仍未接受；P0-002 的 Windows Release evidence 不扩大任何能力宣称。 |
+| P0-006 | BLOCKED | P0-001 | 基线为 `8c31b30419ed330688b3f1b90f14a4498503317d` / tree `4455dc2fb45214952b710fa5519d8d084e9efad5`，并包含 P0-001/P0-004/P0-005 的未提交改动。第 6.3.1/13.8 节证明没有 committed、deployment-owned TargetEnvelope 或 MachinePolicy；fixture、reference defaults、research case 和本机硬件均已明确降级为非产品证据。2026-08-23 用户新增真实 Gateway 方向后，第 6.3.1 已追加公开 profile、PKI、Connector、网络区、egress 和保留 policy 的缺失输入。 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture 及 GWY-DEC-001 至 007 owner/source/scope/review inputs；收到后重新打开 P0-006 并按每项复核。 | 不得猜测 channel 上限、SLO、GPU 配置、Gateway Profile、TLS/PKI、Connector 或数据保留；不把 test fixture、reference-route value 或当前 Linux host 自动提升为产品 envelope。 |
+| P0-007 | BLOCKED | P0-002 | 2026-08-22：已在隔离 branch `codex/p0-007-release-ci` 创建并推送 Release-only workflow，PR `#1` 曾产生实际 `linux-release-quality` 与 `windows-release-build-install` contexts；历史实现/失败记录保留在第 13.13 节。2026-08-23 用户明确要求“现在先跳过所有 GitHub CI 相关的内容”，因此停止把任何 run、PR、workflow 或 protection 状态当作当前工作。 | 等待用户明确恢复 GitHub CI 工作；恢复后先只读复核 remote branch、PR、workflow run 与 `main` protection 的实际状态，再决定是否继续 P0-007。 | 暂不监控、取消、触发或修改远端 workflow/run/PR/branch protection，也不推送任何与 GitHub CI 有关的本地改动；既有远端状态不是 ACCEPTED 证据。 |
+| P0-008 | ACCEPTED | P0-001 | 用户要求的 Master Plan 视图已在第 0.4 节作为受控派生总览落地：显示阶段覆盖度、当前/READY/阻塞项、最近验收证据和阻塞恢复动作；完整证据见第 13.9 节。第 12 节仍是唯一状态权威。 | 后续状态变更只改第 12 节，然后运行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；无 READY 时保持无下一项。 | 总览不能直接改变状态；P0-002 已有 Windows Release evidence，但 P0-006 的参数 authority 仍 BLOCKED，且当前 Linux 主机无法执行 Windows hook。 |
 | P0-009 | ACCEPTED | P0-003 | 已确立并验证双仓库 raw-data contract：KSpaceJet 无原始 MRI payload，唯一外部数据归属为同级 `KSpaceJet-ismrmrd-data`。旧 `research/benchmarks/datasets/`、专用 downloader/test 已按用户授权删除（先移入 Trash）；完整证据见第 13.11 节。 | 无 READY 项；后续开发保持 sibling workspace，预提交自动检查 `check_workspace_layout.py`，数据仓库完整性在 sibling 中运行 `tools/verify-data.sh`。 | Windows PowerShell hook 未在本 Linux host 执行；其静态接线已与 Linux 同步，实际 Windows toolchain/host 证据仍只属于 P0-002。 |
-| P0-010 | ACCEPTED | P0-003 | project-local `just 1.58.0` 已由两端 bootstrap/runner、根 justfile、VS Code、hook 与开发文档收敛；Linux 实测和 Windows static wiring 证据见第 13.12 节。系统 `/usr/bin/just` 1.40.0 仅为审计观察，不能作为项目工具。 | 无 READY 项；后续使用 platform runner 加 `just <recipe>`，仅在没有 recipe 的聚焦诊断中直接调用锁定工具。 | 当前无 Windows PowerShell/MSVC host；真实 Windows binary/bootstrap/recipe evidence 仍由 P0-002 补充，不得把本项当作 Windows release qualification。 |
+| P0-010 | BLOCKED | P0-003 | 基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`，开始时有 26 个用户/先前工作树条目，均须保留。2026-08-23 已确认 Docker `29.7.2` 的 Linux/amd64 backend 可用，并已保留命名、非自动删除的 `kspacejet-linux-test`；它以 `/source:ro` 挂载仓库，在容器自己的工作副本中运行。缺失 `just` 的首次 apt bootstrap、第二次 apt 幂等 bootstrap 与 direct host `just --unstable --fmt --check` 已实际通过；后续 Linux Intel Git-LFS 传输在用户指示“不用处理 Linux”后停止，容器保留且未删除。 | 等待用户明确恢复 Linux 验证；恢复后仅在 `kspacejet-linux-test` 中继续，先确认 LFS payload，再执行 `just prepare-release` 与 `just check`，不得写入当前 Windows worktree、raw-data sibling 或任何 GitHub CI 资源。 | 用户当前明确暂缓 Linux；因此所需的 Linux `prepare-release`/`check` 全链路未完成，P0-010 不得 ACCEPTED。 |
 
 ### 12.1.1 P0-001 基线能力矩阵（2026-08-20，ACCEPTED）
 
@@ -850,6 +921,9 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | gateway、research 与 online/transport | scaffold 或不在产品范围 | 否 | 否 | 否 | 否 | 不构成 gateway、online service、relay 或 transport 能力。 |
 | 性能、容量与发布资格 | benchmark/基础代码可观察 | 无 reconstruction workload、target machine、长期运行或 release evidence。 | 否 | 否 | 否 | 不作吞吐、延迟、256-channel、production-ready 或 clinical claim。 |
 
+2026-08-23 范围修订：上表关于 gateway “不在产品范围”的历史判断由 P5-008 取代；其
+scaffold/无测试/无系统证据的观察仍然有效，不能被新架构解释为已实现能力。
+
 当前 Cartesian 与 non-Cartesian reference route 的 `kMaximumChannels = 64` 是 P1-007 必须移除的临时实现限制，不是框架容量声明；本矩阵不把它解释为 64-channel 支持或 256-channel 反证。
 
 ### 12.2 P1 台账
@@ -857,23 +931,26 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
 | --- | --- | --- | --- | --- | --- |
 | P1-001 | PLANNED | P0-002, P0-006 | HDF5 reader 与测试存在；fixture manifest 的合规/identity 状态未审计。 | 清点 tests 中 HDF5 fixture，建立 manifest draft。 | 不得上传/使用真实患者数据。 |
-| P1-002 | PLANNED | P1-001, P0-005 | 当前 ksj-recon 输出为 raw f32 加 JSON sidecar。 | 定义标准 HDF5 image artifact 及 interop test，而不删除 developer diagnostic route。 | 输出标准和外部 consumer 尚未冻结。 |
+| P1-002 | ACCEPTED | P0-005 | 基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`；ADR-006 已按用户指令冻结唯一 ISMRMRD I/O 格式与 runtime source/sink 责任。P1-001 仍等待 P0-006 的公开 raw-fixture/data-governance authority，但本项只以 test-time generated synthetic ISMRMRD HDF5 image 做互操作验证，因而不绕过该依赖。Source/Sink、三条 route、CLI 负例、官方 binding 读回和既有 destination 原子替换均已通过；完整接受证据见第 13.17 节。 | `P2-001`：冻结 authored Pipeline、scan-derived facts、effective binding 与 digest 的唯一归属，为无专用子命令的通用重建入口建立前置模型。 | 仅开发期 offline image profile；不接受 public external consumer、partial/callback、retention/access、deployment durability、performance、release 或 clinical claim。ADR-007 已冻结未来产品入口必须以 PipelineDefinition 驱动；当前专用 route façade 仅为待 P2-007 替换的开发期实现，不能被当作长期 `ksj-recon` 契约。 |
 | P1-003 | PLANNED | P1-001, P1-002 | Cartesian IFFT2 plus RSS 和 optional conditioning 有实现/测试。 | 读取 route README/contract/fixtures，制作 support matrix 与 golden test plan。 | 当前 route 仅是 development reference。 |
 | P1-004 | PLANNED | P1-001, P1-002 | non-Cartesian adjoint plus RSS 有实现/测试。 | 制作明确的 non-DCF/non-SENSE support matrix 与 golden test plan。 | 不得宣称完整 non-Cartesian clinical reconstruction。 |
 | P1-005 | PLANNED | P1-001, P0-006 | FrameSlot、classifier、assembler、scan lifecycle 已有源码/测试。 | 以 missing/duplicate/incomplete corpus 审计 completion/resource 分离。 | 现有 coverage 需实际运行验证。 |
-| P1-006 | PLANNED | P1-002, P1-003, P1-004 | RunRecord model/schema 及测试存在。 | 核对离线 applications 是否每 run 写出完整 record。 | source 有实现不代表 CLI 已交付 artifact。 |
+| P1-006 | PLANNED | P1-002, P1-003, P1-004, P2-001 | RunRecord model/schema 及测试存在。 | 在 P2-001 已冻结 input/Pipeline/effective binding identity 后，核对离线 applications 是否每 run 写出完整 record。 | source 有实现不代表 CLI 已交付 artifact。 |
 | P1-007 | PLANNED | P0-006, P1-001, P1-005 | 当前 Cartesian CLI 对 physical channel 采用 1 至 64 的临时 reference 限制；这与框架无通道上限的产品边界冲突。 | 删除该限制，建立任意正整数 channel generator/property corpus，并验证资源错误以 bytes/work 报告。 | reference Provider 可能仍有其自身算法 layout 限制，必须声明在 Provider contract。 |
+| P1-008 | ACCEPTED | P0-002, P0-005, P0-009 | 基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`。共享 ingress 已集中 header/layout/finite/flag/classifier/frame-key 语义，generic replay、Cartesian RSS、non-Cartesian RSS 均已迁移；full FrameKey 包括 encoding/slice/contrast/repetition/set/phase/average/segment，binding resolver 不能覆盖它。Windows Release runtime target 已涵盖 exact required-index completion、EndOfInput incomplete terminal、duplicate/missing、bad trajectory/layout 与新 ingress 负向例；完整证据见第 13.15 节。 | 当前无 READY 项；等待 `P0-006` 收齐 TargetEnvelope/MachinePolicy authority 后按依赖重新选择。 | borrowed HDF5 view 只在 callback 内；路由在该边界同步复制到各自有界 host-owned destination，未引入无用途的第二通用 staging buffer。`P1-009` 已在此共同入口上另行验证一个 sibling radial HDF5 的 development-only 运行；当前 non-Cartesian direct-adjoint 仍是无 DCF reference，P0-006 继续阻塞产品/性能/临床 claim。 |
+| P1-009 | ACCEPTED | P1-008 | 基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`，开始时已有 P1-008 及用户/先前工作树改动，均已保留。新增独立 `radial_gridding_reconstruct`（`radial_analytic_ramp`，内部仅 `radians_per_pixel`）与 `radial-rss` route；旧 direct-adjoint 保持独立 reference，带相同 DCF 的 direct NUDFT 仅作为 gridding oracle。Windows Release synthetic/Provider/app/install 验证和 sibling `zen-2d-radial-2025` 的显式 `encoded-matrix-index` 当前二进制运行均通过；完整证据见第 13.16 节。 | 当前无 READY 项；等待 `P0-006` 收齐 TargetEnvelope/MachinePolicy authority 后按依赖重新选择。 | 仅 development-only 2-D radial；旧 `noncartesian-rss` 语义未改，不扩展为 spiral、trajectory/phase correction、SENSE、coil compression、3-D/cine/EPI/PF/GRAPPA。sibling raw payload 仅经显式路径只读用于本项 development-only execution evidence；不得复制、symlink、vendor、Git-LFS 跟踪或纳入本仓库。P0-006 仍禁止产品 case、正式 artifact、性能和临床/发布 claim。 |
 
 ### 12.3 P2 台账
 
 | ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
 | --- | --- | --- | --- | --- | --- |
-| P2-001 | PLANNED | P0-005, P1-006 | recon-model/graph、schemas、canonical JSON、artifact tests 已存在。 | 画出 artifact field owner matrix 并寻找重复/自引用。 | 不能在未决语义下加 compatibility field。 |
-| P2-002 | PLANNED | P2-001 | PipelineDefinition resolver/validation 及 fixtures 已存在。 | 将 CLI 支持、schema 验证和 semantic resolver 的覆盖分开审计。 | schema pass 不是 acceptance。 |
+| P2-001 | ACCEPTED | P0-005, P1-002 | 基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`；以 runtime-owned `ScanFacts`、`EffectivePipelineBinding` 和 in-memory `PlanBuildRequest` 直接替换 caller-supplied digest tuple/portable PlanBuildRequest artifact。Pipeline 的静态算法配置与 runtime-derived scan facts/effective config 分离；ExecutionPlan 固定引用 resolved pipeline、scan facts、effective binding、TargetEnvelope 和 MachinePolicy 的唯一 identity。Windows Release recon CTest 6/6、`ksj_recon` 链接、type registry、JSON syntax、workspace/link/plan/diff 与 focused format 均通过；完整证据见 13.18。 | `P2-002` 已解锁：将作者可编辑参数、正式 `ismrmrd` input profile 与受控 Provider/contract resolver 从当前保留字段提升为可验证语义。 | 不引入 compatibility field、用户手填扫描尺寸、Provider module/contract 路径、输出路径或物理运行时策略；P2-007 前仍保留临时专用 CLI façade。 |
+| P2-002 | REOPENED | P2-001 | 原 2026-08-23 Windows Release parameter/profile/resolver evidence 保留，但用户随后冻结“任意标准 MRD container、非固定 `/dataset`”原则，现有 `inputProfile.dataset_group == "dataset"` 结构/schema/parser 已不再符合 ADR-011。P8-004 先交付 shared bounded discovery/classification evidence；随后本项以 direct replacement 将 profile 改为 auto-or-explicit standard raw-container selection，并补 schema/semantic/CLI negative corpus。 | P8-004 接受后，替换 `dataset_group` profile 语义、schema、canonical JSON、fixtures、parser/resolver 与 docs；`auto` 仅允许唯一 raw candidate，multiple raw candidates 必须要求 pipeline 的 explicit absolute container path。 | 原有 parameter/binding/resolver evidence 不可被用于证明新的 container selector。不得保留 `dataset_group`/固定 `dataset` 兼容字段、不得把 group path 移到 CLI、不得以私有 `ksj_*` group 作为输入。 |
 | P2-003 | PLANNED | P2-002, P0-006 | synchronous graph compiler/ExecutionPlan/resource vector 已存在；尚未证明 PartitionCapability/WorkKey 是权威输入。 | 先形成 Provider contract → ScanDescriptor → WorkKey → reservation → ExecutionPlan 字段矩阵与 valid/invalid fixture。 | 不得假定 GPU/parallel feature 已可用，也不得从 header 自动推断独立性。 |
 | P2-004 | PLANNED | P2-003 | independent verifier 和 extensive tests 已存在。 | 检查 verifier 是否不依赖 compiler 私有状态；添加 undeclared partition、fake Cartesian WorkKey、missing join/reservation 的 mutated-plan matrix。 | 未跑 tests。 |
 | P2-005 | PLANNED | P2-002, P2-004 | ksj 目前只含 pipeline validate/provider init。 | 按 CLI11/API boundary 分别实现 planned tool，不复制 runtime。 | 新 command 不可显示为已可用直到 app tests 通过。 |
 | P2-006 | PLANNED | P2-002, P2-004 | schemas README 已声明结构和语义验证分层。 | 增加 schema-valid/semantic-invalid corpus inventory 和 CI gate。 | 当前 corpus completeness 未知。 |
+| P2-007 | PLANNED | P1-002, P1-006, P2-002, P2-004 | 当前 `ksj-recon` 的 `cartesian-rss`、`noncartesian-rss`、`radial-rss` 命令从 caller-supplied module/contract path 和 route flags 在 C++ 中临时拼接 PipelineDefinition；用户不能编辑它，且现有 route config 混入 scan-derived facts。 | 以必选 `--input`、`--pipeline`、`--output` 的 `ksj-recon` 根命令替换三条专用命令；建立三条 user-editable reference pipeline fixture、runtime input profile adapter、受控 Provider binding、source/sink binding 与端到端/负例测试。 | 不得保留旧 CLI aliases、额外 `reconstruct` 子命令或允许 `.mrd` 单独重建；P2-001/002/004/P1-006 未 ACCEPTED 前不得开始实现。 |
 
 ### 12.4 P3 台账
 
@@ -904,10 +981,16 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P5-001 | PLANNED | P0-005, P0-006, P3-003 | 尚未定义 caller-to-framework in-process ISMRMRD feed contract。 | 仅在存在 embedding 需求时定义 ownership/lifetime/terminal contract 与 fixtures。 | 不得引入 public binding、session、socket 或 transport。 |
 | P5-002 | PLANNED | P5-001, P3-003 | 未观察到通用 in-process feed materialization/equivalence harness。 | 建立 HDF5 与 caller-submitted ISMRMRD feed semantic equivalence corpus。 | 仅保留 host-owned input；不能测试采集设备。 |
 | P5-003 | PLANNED | P5-002, P4-006 | ksj-recon 当前为 offline CLI，尚无 embedded local run control API。 | 先定义 local run lifecycle/status/cancel API，禁止 raw-data transport scope。 | 隔离 Provider 不是该项强前置。 |
-| P5-004 | PLANNED | P0-005 | ksj-gateway main 是 scaffold；用户已明确 transport/gateway 不在 KSpaceJet 范围。 | 移除所有产品 claim/default route，保留或删除目录须作为 scope-closure 变更处理。 | 不得将该项改造成 gateway 实现。 |
+| P5-004 | SUPERSEDED | P0-005 | 2026-08-23：该项原为 scope-closure；用户随后明确要求 `ksj-gateway` 必须成为真实外部集成网关。保留历史任务和事实，但不得继续按删除/收口方向改动。 | 无；由 P5-008 接管。 | P5-004 从未证明 gateway 能力；现有 executable 仍只是 scaffold，直到后继工作项完成验收。 |
 | P5-005 | PLANNED | P5-003, P3-001 | resource/edge 基础存在；本地 host API 未见完整 admission evidence。 | 定义 accepted-input 后的 bounded internal queue、Provider saturation 和 artifact writer contract。 | 不定义 ACK/read-gating/slow-source 语义。 |
 | P5-006 | PLANNED | P5-002, P5-003, P5-005, P4-005 | 尚无 HDF5 与 in-process feed 的端到端 equivalence suite。 | 建立 equivalence、cancel、Provider crash、restart、result idempotence tests。 | P5 是可选能力包，不阻塞 v1。 |
 | P5-007 | PLANNED | P5-003, P5-006 | ksj 尚无 local run status command。 | 仅增加 replay/dataset/local-run 命令与 app tests。 | 禁止 capture、gateway、session 或第二数据面。 |
+| P5-008 | ACCEPTED | P0-005 | 2026-08-23：用户明确授权将 `ksj-gateway` 重置为真实外部集成网关。开始基线为 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`；现有程序仅有 CLI scaffold，平台 socket 仅是 blocking IPv4 基元，尚无 TLS、认证、framing、异步 I/O 或公开 profile。 | 已接受候选稳定架构及其所有规范入口；只有 P0-006 的 GWY-DEC-001 至 007 齐全后，P5-009 才可变为 READY。 | 此项只接受候选稳定设计，不实现网络 listener；任何外部服务、吞吐、可靠性或临床 claim 均仍禁止。 |
+| P5-009 | PLANNED | P5-008, P0-006 | 未选择可公开互操作的 transport/profile，且 P0-006 缺少 deployment/security/output/data authority。 | 收到所有 owner/source/review inputs 后，先冻结一个 profile contract 和 conformance vectors。 | 不得以 MRD/ISMRMRD 名称假定存在已选网络 binding。 |
+| P5-010 | PLANNED | P5-009, P3-001 | 当前只有 blocking IPv4 socket 基元；无 TLS、auth、framing、IPv6/DNS 或 session runtime。 | 选择受维护网络/TLS 依赖并实现 public-profile fake-peer testbed。 | 不能把现有 socket wrapper 或无界 MessageLoop/BlockingQueue 直接暴露给外部 peer。 |
+| P5-011 | PLANNED | P5-010, P1-005, P2-004, P3-003 | HDF5 reader、HostFrameAssembler、ScanLifecycle、ResourceVectorLedger 存在，但没有 network-owned input materializer 或 verified gateway bridge。 | 建立 header-first admission、owned event bridge 与 runtime equivalence/fault corpus。 | runtime/Provider 保持内部共享库；不得发明 gateway-to-recon 私有数据面。 |
+| P5-012 | PLANNED | P5-011, P1-002, P4-006 | 正式 image artifact/RunRecord evidence 和 Connector conformance 仍未接受。 | 冻结 egress/terminal semantics 与外部 Connector conformance harness。 | 不创建 vendor SDK、PACS/DICOM 路由、持久 raw spool 或 exactly-once 语义。 |
+| P5-013 | PLANNED | P5-012, P7-002, P7-003, P7-005, P7-006 | 无 clean install、security/fuzz、slow-peer、approved peer 或 deployment qualification evidence。 | 在批准的 synthetic/fake-peer 和真实互操作环境中执行完整 qualification。 | 用户当前暂停 Linux 和 GitHub CI；它们不能被本项绕过。 |
 
 ### 12.7 P6 台账
 
@@ -933,6 +1016,15 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P7-006 | PLANNED | P0-004, P0-005, P7-002, P7-004 | README/docs 分散且部分链接可能失效。 | 自动核对 command/help/mode claim 对齐。 | release target未定义。 |
 | P7-007 | PLANNED | P0-P4, enabled P5/P6, P7-001 至 P7-006 | 无 qualification report。 | 建立 checklist，等所有强依赖 ACCEPTED 后执行。 | 不得提前做 isolated-provider/deadline claim。 |
 
+### 12.9 P8 台账
+
+| ID | Status | 依赖 | 基线观察/证据 | 下一精确行动 | 已知限制 |
+| --- | --- | --- | --- | --- | --- |
+| P8-001 | ACCEPTED | P0-002, P1-002, P2-002 | 已新增 `qt/6.8.3`、第五个安装应用 `ksj-viewer`、CLI11 help/version、真实 QApplication 主窗口和 Qt 官方 `windeployqt` deployment helper；build/install tree 的 `platforms/qwindows.dll`、直接 UI smoke 与 install JSON protocol 均已实测通过。viewer 仅链接 `KSpaceJet::ismrmrd`、`KSpaceJet::recon_graph`、Qt Core/Gui/Widgets；其 executable/platform plugin import closure 不含 Qt Network/OpenGL/Quick/QML/WebEngine。完整证据见 13.20。 | `P8-002` 已启动：定义 inspection reader read model、API ownership、synthetic fixture 和 focused tests。 | `ksj-viewer` 仍只是 deployable UI shell，不读取 `.mrd` 或 pipeline、没有 image/k-space/metadata 真实视图或 export；Windows global install surface 可能包含其他应用的未使用 Qt package DLL，但 viewer import closure 已独立核验。 |
+| P8-002 | ACCEPTED | P8-001, P1-002 | `InspectionReader` 已作为 `KSpaceJet::ismrmrd` 的标准 HDF5、只读、有界 inspection public read model 交付：XML/header/acquisition/image/MetaAttributes、callback-scoped payload、axis/type contract、per-reader limits、named-field HDF5 header mapping、deterministic malformed diagnostics 和 normal/malformed/oversize/axis/meta synthetic corpus 均有 focused Windows Release evidence；public header 已安装。完整证据见 13.21。 | 已完成；由 `P8-003` 消费该 reader 完成 Qt presentation/export。 | 不复制 HDF5 或在 KSpaceJet 保存 raw data；无界 full-file load 不可接受；本项不接入 Qt UI、Pipeline parser 或 export。 |
+| P8-003 | ACCEPTED | P8-002, P2-002 | `ksj-viewer` 已交付共享 `InspectionReader` 与唯一 `PipelineDefinition::parse_json()` 的 app-local Qt presentation/export 层：metadata/k-space/image/pipeline 视图、PNG/SVG/CSV/JSON labelled display-derivative export、synthetic focused corpus、Windows build/install UI/export smoke 和 import-closure audit 均已通过。完整证据见 13.22。 | 无 READY 项；保持 P8 结果，等待用户解除现有 P0 policy / GitHub CI / Linux 阻塞或授权新的独立工作项。 | k-space 只为 acquisition magnitude projection，绝非 reconstructed image；export 不是第二种 MRI image artifact；仅有 Windows Release developer evidence，不构成 Linux、临床、service、性能或 release qualification claim。 |
+| P8-004 | IN_PROGRESS | P8-003 | 用户指定本地源码 `E:\hdfview`、安装目录 `D:\HDFView` 与 `HDFGroup/hdfview` 为 UI/操作参考；`InspectionReader` 递归、有界发现 standard raw/image/waveform container，`ViewerWindow` 提供浅色紧凑的 HDFView-inspired File/Window/Tools/Help shell、semantic tree、`Object Attribute Info`/`General Object Info` inspector 和 Info/status。打开 standard MRD 默认只显示 tree 与 inspector，typed-data 区域隐藏；不再显示固定 `Dataset overview` 或 `Image series` dashboard。选择 Header/XML 后必须显式 `Inspect`/`Open As…` 才打开 XML typed view；`Images` 是独立语义对象，raw acquisition source 的零 image series 是正常状态。2026-08-24 已重跑 focused reader/viewer CTest 2/2、Release `ksj_viewer` build、build-tree UI smoke、install 与 installed UI/export smoke，均通过；完整进行中证据见 13.23。基线仍为 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`。 | 先修复 Windows unit-test executable target-only build 后未部署 Conan/Qt runtime DLL 的问题：将 runtime staging 绑定到 test target post-build，并验证不调用 `conanrun.bat` 的直接 executable/CTest 启动；随后以真实 `E:\KSpaceJet-ismrmrd-data\datasets\zen-2d-cartesian-2025\cart_t1.mrd` 在 build/install Viewer 完成用户视觉复核。 | 不复制/链接 HDFView Java/SWT code；不新增 QML/Quick/WebEngine、Python、Matplotlib、外部图标包、reconstruction、Provider/gateway 或新的 MRI artifact；不变成 generic HDF4/HDF5/NetCDF/FITS browser/editor，不支持 generic object/attribute edit/save、URL loading 或无界 hyperslab；正式 reconstructed image 只使用标准 ISMRMRD `image_x`，不创建 `/ksj_recon`、`/ksj_debug` 或 `/ksj_meta`；不将 `ksj_*` group 设为 input prerequisite；真实 raw data 只读且不进入 KSpaceJet。 |
+
 ---
 
 ## 13. 证据、变更和决策日志
@@ -954,6 +1046,9 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | 2026-08-20 | 将 canonical governance/contract 交付提交到当前实际仓库。 | P0-003 | commit `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` / tree `01c12fcd1b52fe45a86a3a26691bcfbf264e6589`，pre-commit gate 通过。 | P0-003 ACCEPTED；P0-002 与 P0-006 保持 BLOCKED，当前无 READY 项。 |
 | 2026-08-20 | 固化双仓库 raw-data 边界并删除旧 KSpaceJet local-data 工作流。 | P0-009 | 用户明确要求所有原始数据只留在同级 `KSpaceJet-ismrmrd-data`；旧 local raw data、metadata、downloader 与 test 已移除，离线 workspace checker、两端 pre-commit 接线和数据仓库 verifier 均已验证。 | P0-009 ACCEPTED；当前无 READY 项，P0-002/P0-006 的既有外部 BLOCKED 条件不变。 |
 | 2026-08-20 | 建立 checksum-pinned project-local `just` 和跨平台统一开发入口。 | P0-010 | Linux/Windows bootstrap、runner、根 `justfile`、VS Code 和 hook 收敛到同名 recipe；Linux 实际 bootstrap、format、build/install、unit 和 check 通过，Windows 接线/命令长度经静态审查。 | P0-010 ACCEPTED；当前没有 READY 项，P0-002 的真实 Windows host 需求与 P0-006 的参数 authority 仍独立 BLOCKED。 |
+| 2026-08-23 | 用户恢复外部集成网关产品方向。 | P5-004, P5-008 至 P5-013, P0-006 | 用户明确要求 ksj-gateway 必须成为真正的外部集成网关。旧 P5-004 的删除/收口方向与该明确要求冲突；当前源码审计确认它仅是 scaffold，socket 基元也不具备生产网络能力。 | P5-004 置 SUPERSEDED，由 P5-008 接管候选稳定架构；P5-009 至 P5-013 拆分 public profile、listener、runtime bridge、Connector/egress 和 qualification。未实现任何服务；P0-006 增加 Gateway policy 输入。 |
+| 2026-08-23 | 用户将主目标从真实数据兼容性审计更正为完成 `KSpaceJet-ismrmrd-data` 所需的 Provider 与重建核心框架。 | P1-008, P1/P2/P3/P4 | 现有 Cartesian/non-Cartesian RSS CLI 仅是窄的单帧开发 reference；真实数据集还要求统一 semantic-frame ingress、正确的 Cartesian crop/组帧、NUFFT/DCF、partial-Fourier、SENSE/GRAPPA、dynamic/multi-echo、EPI 与 3-D 路线。 | 新建并启动 P1-008 作为共同 core implementation 起点；后续 Provider 依赖其 normalized acquisition/classification/frame-key/completion 语义。不得把 compatibility/reject 报告误当成重建完成。 |
+| 2026-08-23 | 统一 ISMRMRD semantic-frame ingress 验证完成，开始真正的 radial reconstruction Provider。 | P1-008, P1-009 | shared ingress 已迁移 generic replay、Cartesian RSS、non-Cartesian RSS；Windows Release runtime CTest、application build、TypeRegistry、format、plan/link/diff checks 均通过。HDF5 borrowed view 在 callback 中被同步复制到有界 host destination，FrameSlot 以 required coverage 和 EndOfInput 而非 count/control flag 完成。 | P1-008 ACCEPTED；P1-009 成为唯一 IN_PROGRESS，先交付 bounded 2-D linear-gridding 与 analytic DCF 数值核心，再经独立 route 调用新 Provider Operator。 |
 
 ### 13.1 P0-001 ACCEPTED 证据
 
@@ -968,7 +1063,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 - Known limitations: 未验证 Windows、install、真实远端 LFS transfer、application end-to-end/golden artifact、system/fault/soak、性能/容量或 release qualification；Provider loader 仍为 in-process；不得作 online/gateway/GPU/256-channel/clinical 或 production-ready 宣称。
 - Next READY item at the time of acceptance: `P0-002`。
 
-### 13.2 P0-002 BLOCKED 证据
+### 13.2 P0-002 ACCEPTED 证据
 
 - Work item: `P0-002`; requirements/acceptance: `FUN-001`, `AC-BLD-001` 至 `AC-BLD-003`。
 - Base commit/tree: `8c31b30419ed330688b3f1b90f14a4498503317d` / `4455dc2fb45214952b710fa5519d8d084e9efad5`；工作树还包含已接受但未提交的 P0-001 code/test/fixture/docs diff。本项没有源码、测试或公开 contract 改动。
@@ -983,6 +1078,19 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 - Impacted successor items: `P0-007`、`P1-001`、`P4-002`、`P7-002` 及其强依赖链均不能因本项进入 ACCEPTED。
 - Unblock condition: 在真实 Windows host/runner 上，对 debug 和 release 分别运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Prepare windows-vs2022-debug` / `windows-vs2022-release`，随后以 `tools\devenv\windows\run.ps1 cmake --build --preset windows-vs2022-<config>` 和 `windows-vs2022-<config>-install` 完成 build/install，并从干净 install tree 运行 `ksj.exe --help` 等 basic smoke，记录实际输出、DLL dependency closure 和失败（如有）。
 - Proposed next owner/action: 具备上述 Windows host/runner 的维护者或 CI runner；完成前保持 `P0-002` 为 `BLOCKED`，不作跨平台或 release-qualified 宣称。下一可执行项为 `P0-004`。
+- 2026-08-21 Windows resumption evidence: 当前工作区在 Windows `10.0.26220.0` 上运行，PowerShell `5.1.26100.9202`、Git 和 `git-lfs/3.7.1` 可用。初次执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Prepare windows-vs2022-debug` 在 PowerShell 解析阶段失败：`bootstrap.ps1:99` 与 `:334` 的 `$LASTEXITCODE:` 被判定为无效变量引用。将这两处改为 `${LASTEXITCODE}:` 后，`[System.Management.Automation.Language.Parser]::ParseFile(...)` 无错误；重跑同一 bootstrap 的实际输出为 `[kspacejet-devenv] Visual Studio 2022 v143 C++ Build Tools are missing; install the C++ workload and a Windows SDK`。因此没有执行 CMake configure/build/install，也没有生成任何 Windows build/install 或 DLL closure 证据。
+- Latest missing prerequisite and unblock: 在本 Windows 主机或可用 Windows x64 runner 安装 Visual Studio 2022 v143 的 C++ Build Tools workload 与 Windows SDK，使 bootstrap 检出后，先重跑 debug bootstrap，再依照第 12 节完成 debug/release 的 build、install、已安装程序 help smoke 和 DLL dependency closure。不能以当前 CMake `4.2.0`、Git/Git LFS 或 Linux 历史结果代替 MSVC/SDK 证据。
+- 2026-08-21 host-just policy update: 用户撤回 project-local `just` 版本锁定后，Windows bootstrap 将 `just` 作为 host prerequisite。`where just` exit 1（无匹配）；`powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Verify` 的实际输出为 `[kspacejet-devenv] host prerequisite is missing: just`。因此 P0-002 的 Windows unblock 现在同时要求 `just`、VS 2022 v143 C++ Build Tools 和 Windows SDK；该变更不以任何系统 `just` 版本作为供应链或 release 证据。
+- 2026-08-21 automatic Windows just installation: 用户进一步明确 bootstrap 应安装非锁定 `just`。`winget search --id Casey.Just --exact --accept-source-agreements` 返回 `Just Casey.Just 1.58.0`；bootstrap 使用 `winget install --id Casey.Just --exact --accept-package-agreements --accept-source-agreements` 安装成功。该 package 未创建 WinGet Links entry，故 bootstrap 改为定位 `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Casey.Just_*\just.exe`、将其目录加入当前进程和 user PATH；直接运行该 executable 输出 `just 1.58.0`。之后 `bootstrap.ps1 -Verify` 已越过 just 前提并正确报告 VS 2022 v143 C++ Build Tools 缺失。观察到的 winget package version 不是仓库锁定、checksum 或 release evidence；P0-002 现在仅等待 VS/SDK prerequisite。
+
+- 2026-08-22 Windows resumption/update: 用户授权后安装 `Microsoft.VisualStudio.2022.BuildTools` 的 VCTools workload；`vswhere -products * -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json` 返回 BuildTools `17.14.39`，`isComplete=true`、`isLaunchable=true`、`isRebootRequired=false`，MSVC 目录为 `14.44.35207`。实际 `bootstrap.ps1 -Prepare windows-vs2022-debug` 暴露 PowerShell regex `^14\\.4` 不能匹配该目录名；修正为 `^14\.4` 后，PowerShell parser 无错误且 bootstrap 越过 MSVC 检查。Conan 发现此前 Boost source folder 损坏并重取 `boost_1_91_0.tar.bz2`（204.6 MB），但 `archives.boost.io` 三次分别在约 17.6 MB、97.8 MB、95.0 MB 后报 `Read timed out`/`IncompleteRead`；最终输出为 `ERROR: boost/1.91.0: Error in source()`、`ConanConnectionError: Download failed`，以及 bootstrap 的 `project tool failed with exit code 1: conan install . --output-folder=out/build/windows-vs2022-debug --profile:host=conan/profiles/windows-msvc2022-debug --build=missing`。临时后台日志位于 `%TEMP%\KSpaceJet-bootstrap\windows-debug-bootstrap-fc7e2756780e4ba59bc44161ecf9efda.{stdout,stderr}.log`。P0-002 保持 BLOCKED，直到网络或受信任预热 cache 提供完整 Boost source；未执行 CMake configure/build/install。
+
+- 2026-08-22 Windows Release acceptance: 用户明确指定以 Release 推进本项，故不把未完成的 Debug download 当作验收要求。`powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Verify` exit 0，报告 `just 1.58.0`、Python `3.13.5`、Conan `2.31.2`、CMake `3.31.6`、Ninja `1.13.0`、clang-format `19.1.7` 与 cmake-format `0.6.13`；`git lfs fsck` exit 0（`Git LFS fsck OK`）。`py -3 tools/devenv/verify_intel_payload.py --platform windows-x86_64` 和 `py -3 -m py_compile third_party/intel/conanfile.py` 均 exit 0。
+- Windows Release implementation/contract impact: `CMakeLists.txt` 对 MSVC C++ 增加 `/Zc:__cplusplus` 和 `/bigobj`；`third_party/intel/conanfile.py` 与其 CMake build module 将 OpenMP/runtime 目录修正为 payload 实际 `oneapi/*/lib`。`cmake/KSpaceJetBuildSupport.cmake` 不再让 `install(RUNTIME_DEPENDENCY_SET)` 对 build staging DLL 与 Conan source DLL 做歧义解析；Windows install 明确复制已发现 Conan `bin/*.dll` 与 Intel `lib/*.dll`，对大小写不敏感 basename 的多来源计算 SHA-256，并在内容不同情况下 `FATAL_ERROR`。这改变了 Windows install 的第三方 DLL surface；无 public API、ABI、schema 或 CLI contract 改动。
+- Windows Release commands/results: `just prepare-release` exit 0；`just build-release-applications` exit 0，产出 `ksj.exe`、`ksj-gateway.exe`、`ksj-recon.exe` 与 `ksj-research.exe`；`just install-release-applications` exit 0；`just check` exit 0（658 个 C/C++ clang-format、107 个 CMake cmake-format、73 Markdown/162 local links、execution-plan check 与 `cmake --preset windows-vs2022-release` 均通过）。cmake-format 对两个既有 indirect install-form 只报告 warning，未失败。
+- Installed Release smoke/closure: `out/install/windows-vs2022-release/bin` 中四个应用的 `--help` 均 exit 0，`ksj.exe --version` exit 0；gateway/research help 仍明确为 unimplemented scaffold。使用 VS 2022 `dumpbin /DEPENDENTS` 扫描 install tree 的 270 个 EXE/DLL（包含 Provider DLL），按 install tree 文件、`%WINDIR%\\System32` 与 API-set 名称解析后，`closure_missing=0`。关键第三方 DLL `fmt.dll`、ITK、MATIO、OpenCV、IPP、MKL 与 `libiomp5md.dll` 都在 install `bin`。当前 242 个 Conan/Intel DLL 的 basename 在本配置下唯一，安装目录中均有匹配 SHA-256；此闭包与实际启动共同构成 Windows Release developer-install evidence。
+- Platform/toolchain: Windows `10.0.26220.0`、PowerShell `5.1.26100.9202`、VS 2022 Build Tools `17.14.39`、MSVC `19.44.35228.0`、Windows SDK target `10.0.26100.0`、Git LFS `3.7.1`、host just `1.58.0`。
+- Known limitations/next READY item: 该项只接受用户指定的 Release developer install smoke；不证明 Debug、clean-machine redistribution, minimal DLL bundle、performance/capacity、Provider load、fault/soak、clinical 或 release qualification。当前 bundle 保守包含 242 个 Conan/Intel DLL（约 826.8 MiB），最小化分发属于后续 qualification/package work。下一 READY 项为 `P0-007`；不进行任何远程 CI、secret 或仓库设置写入，除非用户明确授权。
 
 ### 13.3 决策记录规则
 
@@ -1088,7 +1196,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 - Focused validation: `tools/devenv/linux/run.sh python -B -m py_compile tools/checks/check_workspace_layout.py` exit 0；`tools/devenv/linux/run.sh python tools/checks/check_workspace_layout.py --self-test` exit 0（6/6，覆盖 valid sibling、missing contract path、wrong origin、symlinked sibling、tracked/untracked raw payload）；同 checker `--project-root .` exit 0。`bash tools/verify-data.sh` 在 `../KSpaceJet-ismrmrd-data` exit 0（`Verified 6 dataset directories.`）；该 repo 仍为 clean，HEAD `8a5e1dec165e55e17e5afeed0f85af7f831c4668`，origin 为 `git@github.com:isqiwen/KSpaceJet-ismrmrd-data.git`。
 - Complete validation: `tools/devenv/linux/run.sh python tools/checks/check_markdown_links.py --project-root .` exit 0（73 Markdown files、162 local links）；`tools/devenv/linux/run.sh python tools/checks/check_execution_plan.py --self-test` exit 0（13/13）；同 checker `--write` / `--check` exit 0（55 work items）；`bash -n tools/checks/linux/pre_commit.sh tools/checks/linux/ci_check.sh`、`git diff --check`、tracked raw suffix scan、live legacy-reference scan 和 deleted-path assertions 均 exit 0；`bash tools/checks/linux/ci_check.sh` exit 0（link/dashboard/format scope 与 `linux-release` configure）。
 - Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, Python 3.13.5；checker 只用 Python standard library、Git 与本地 filesystem，不访问网络、不下载/复制 raw data。
-- Known limitations: 当前 Linux host 无 `powershell` / `pwsh`，所以 Windows pre-commit runtime 未执行；其明确的 `Invoke-KSpaceJetCommand python tools/checks/check_workspace_layout.py --project-root $repoRoot` 接线已静态审查。该限制不改变 P0-002 对真实 Windows toolchain/install 的 BLOCKED 事实。checker 按当前项目的 raw ISMRMRD suffix contract 识别 payload，不替代 data repo 的完整 manifest/checksum verifier。
+- Known limitations: 历史 Linux host 无 `powershell` / `pwsh`，当时 Windows pre-commit 仅静态审查；2026-08-22 在真实 Windows linked worktree 的 commit hook 中发现 Git hook 注入 `GIT_DIR`/`GIT_WORK_TREE` 会让 checker 对 sibling data repository 调用错误的 Git worktree。按状态机 P0-009 已 REOPENED 并修复：`run_git` 现清除本地 worktree Git environment variables，新增回归 self-test；Windows `--self-test`（7 tests，symlink case 因 host privilege 跳过）、显式模拟 hook environment、`just workspace-check` 以及完整 pre-commit 均通过，故重新 ACCEPTED。该修复不改变 P0-002 的 Windows Release-only developer-install scope。checker 按当前项目的 raw ISMRMRD suffix contract 识别 payload，不替代 data repo 的完整 manifest/checksum verifier。
 - Next READY item: 无。只有 P0-002 收到真实 Windows x64 + VS 2022 + SDK runner，或 P0-006 收到完整产品参数 authority 后，才能按第 12 节重新选择工作项。
 
 ### 13.12 P0-010 ACCEPTED 证据
@@ -1102,20 +1210,171 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 - Platform/toolchain: Debian GNU/Linux 13 (trixie), Linux 6.12.101 x86_64, GCC/G++ 14.2.0, repository-local `just 1.58.0`, Python 3.13.5, Conan 2.31.2, CMake 3.31.6, Ninja 1.13.0, clang-format 19.1.7, cmake-format 0.6.13.
 - Known limitations: 当前 host 无 `powershell` / `pwsh`、Windows kernel、MSVC 或 Windows SDK，因此未执行 Windows binary download/bootstrap/PowerShell recipe；静态审查不能替代该运行证据。P0-002 仍是此真实 Windows validation 的唯一 BLOCKED owner，且本项不宣称 Windows build/install/release qualification。开发者不得使用系统 `just`；首次 bootstrap 仍是有意保留的引导例外。
 - Next READY item: 无。只有 P0-002 的 Windows host 或 P0-006 的完整参数 authority 到位后，才能依第 12 节状态机重新激活任务。
+- 2026-08-21 reopened/regression resolution: 在真实 Windows 10.0.26220、PowerShell 5.1.26100.9202 中，P0-002 的首次 bootstrap 尝试暴露 `bootstrap.ps1:99`、`:334` 将 `$LASTEXITCODE:` 置于双引号字符串内，导致 `InvalidVariableReferenceWithDrive` 解析失败。该发现使原 Windows static-wiring evidence 失效，P0-010 已先置为 `REOPENED`。两处均改为 `${LASTEXITCODE}:`；随后以 `[System.Management.Automation.Language.Parser]::ParseFile` 验证 `tools/devenv/windows` 与 `tools/checks/windows` 下全部 PowerShell 脚本均无解析错误，并静态断言 legacy `$LASTEXITCODE:` 为零、正确的 `${LASTEXITCODE}:` 为两处。`py -3 -m json.tool .vscode/tasks.json`、`py -3 tools/checks/check_execution_plan.py --project-root . --write`、同命令的 `--check`、`py -3 tools/checks/check_markdown_links.py --project-root .`（73 files、162 local links）和 `git diff --check` 均 exit 0。实际 bootstrap 随后正确到达 prerequisite 检查并报告缺少 VS 2022 v143 C++ Build Tools 和 Windows SDK；该外部前提仍只阻塞 P0-002，不阻塞本项静态入口修复的重新验收。
+- 2026-08-21 host-just migration: 用户明确要求不锁定 `just` 版本，故 P0-010 重新打开并替换旧 contract。删除 `tools/devenv/tool-versions.env` 的全部 `KSJ_JUST_*` 数据、Linux/Windows bootstrap 的下载/checksum/cache 安装路径、runner 的 project-local PATH prepend/版本检查以及 `justfile` 的 minimum-version；两端 bootstrap 现在只检查 host `just` 存在，所有标准文档示例直接执行 `just <recipe>`，runner 仅保留给 locked Python tooling 的聚焦诊断和 hook/recipe 内部调用。`D:\Git\bin\bash.exe -n tools/devenv/linux/bootstrap.sh tools/devenv/linux/run.sh tools/checks/linux/install_hooks.sh`、Linux bootstrap `--help`、全部 Windows devenv/check PowerShell parser check、Windows bootstrap `-Help`、obsolete just-lock reference scan、VS Code task JSON、Markdown link check（73 files、162 links）和 `git diff --check` 均通过。当前 `where just` 无结果，Windows bootstrap `-Verify` 正确报 `host prerequisite is missing: just`，且当前没有可用 Linux host 运行新的直接 `just` acceptance；P0-010 保持 BLOCKED，直到取得该实际证据。
+- 2026-08-21 automatic-Windows-install revision: Windows bootstrap 不再把 `just` 作为先验前提；它在缺少命令时使用 winget 安装，并在 package 没有创建 WinGet Links 时解析 `Casey.Just_*\just.exe`、更新当前和 user PATH。PowerShell parser check 通过；实际 `bootstrap.ps1 -Verify` 已在同一进程解析该 executable，并仅因 VS v143/SDK 前提失败。README、AGENTS、开发/检查/commit 文档和 P0-010 contract 已说明 Linux 仍要求 host just、Windows 使用 winget 自动安装，且均不锁定仓库版本。P0-010 仍 BLOCKED：改动后的 Linux bootstrap 和 direct `just` recipes 尚未在真实 Linux GCC 14 host 上执行，Git Bash 静态语法检查不能代替该证据。
+- 2026-08-22 apt revision: 用户选择 apt 作为 Linux 缺少 `just` 时的安装策略。`tools/devenv/linux/bootstrap.sh` 现在先以 `command -v just` 复用现有安装；只有缺失时才调用 `sudo apt-get update` 和 `sudo apt-get install --yes --no-install-recommends just`，`--verify` 与 `--offline` 均不会触发安装。Linux runner 在 `just` 缺失时指向 bootstrap。`D:\Git\bin\bash.exe -n tools/devenv/linux/bootstrap.sh tools/devenv/linux/run.sh tools/checks/linux/install_hooks.sh` 与 `D:\Git\bin\bash.exe tools/devenv/linux/bootstrap.sh --help` 通过；`tools/devenv/windows` 和 `tools/checks/windows` 的全部 PowerShell 脚本经 `Parser::ParseFile` 无错误；Linux apt guard 静态断言、`py -3 tools/checks/check_execution_plan.py --project-root . --write`/`--check`、`py -3 tools/checks/check_markdown_links.py --project-root .`（73 files、162 local links）、`.vscode/tasks.json` JSON parse、obsolete just-lock scan 和 `git diff --check` 均通过。当前仅有 Windows host，无法实际执行 apt 安装、复用分支或 Linux recipes，故 P0-010 BLOCKED，直到取得真实 Linux x86_64 + apt + GCC/G++ 14 运行证据。
+- 2026-08-22 apt idempotence revision: 用户要求不再对 Linux `just` 作显式存在判断，因为 apt 本身不会重复安装已安装 package。正常 bootstrap 现在无条件执行 `sudo apt-get update` 与 `sudo apt-get install --yes --no-install-recommends just`；只有 `--verify` 或 `--offline` 保持只读检查并要求现有 `just`。`D:\Git\bin\bash.exe -n tools/devenv/linux/bootstrap.sh tools/devenv/linux/run.sh tools/checks/linux/install_hooks.sh`、bootstrap `--help` 以及静态断言（`ensure_host_just` 无 `command -v just` 且包含两个 apt 命令）通过；PowerShell parser、计划 write/check、Markdown link check（73 files、162 local links）、VS Code JSON、obsolete just-lock scan 和 `git diff --check` 也通过。仍缺真实 Linux x86_64 + apt + GCC/G++ 14 的运行证据，P0-010 保持 BLOCKED。
+- 2026-08-22 Windows stale-PATH runner revision: 用户从 VS Code task 报告 `tools/devenv/windows/run.ps1 just prepare-release` 在新终端未继承 Winget user PATH 时错误报 missing `just`。runner 现仅为当前进程扫描 `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Casey.Just_*\just.exe` 并前置该目录，不写 user PATH、不重装 package。全部 `tools/devenv/windows`/`tools/checks/windows` PowerShell parser checks 通过；移除该目录后的模拟环境中，`powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just --version` 输出 `just 1.58.0`，同样的 `just --list` 正常列出 recipes。`check_execution_plan.py --write`/`--check`、Markdown link check（73 files、162 local links）、obsolete just-lock scan 和 `git diff --check` 均通过。该 Windows regression 已修复；P0-010 仍仅因真实 Linux apt/GCC 14 运行证据缺失而 BLOCKED。
+
+- 2026-08-22 VS Code direct-just revision: 用户指出 post-bootstrap VS Code tasks 不应再通过 `run.ps1 just` 或 `run.sh just` 间接启动。`.vscode/tasks.json` 的 Linux/Windows prepare、build、install 共 12 项现全部为 `"command": "just"` 加同名单 recipe argument；首次 bootstrap 任务仍直接调用各平台 bootstrap 脚本。`py -3 -m json.tool .vscode/tasks.json` 与 PowerShell 映射断言通过，验证所有 12 项的 command、单一 recipe argument 与 bootstrap 保留行为；以 User/Machine PATH 重建新进程语义后直接运行 `just --list`，正常列出 18 个 recipes。`tools/devenv/README.md` 现在明确要求 Winget 首次安装后重启已开启的 VS Code/终端，再直接调用 `just`；runner 的 PATH fallback 只用于聚焦诊断。`py -3 tools/checks/check_execution_plan.py --project-root . --write`/`--check`、`py -3 tools/checks/check_markdown_links.py --project-root .`（73 files、162 local links）、obsolete just-lock scan 和 `git diff --check` 均通过。P0-010 仍 BLOCKED，直到取得真实 Linux x86_64 + apt + GCC/G++ 14 的 bootstrap、direct-just 和完整检查运行证据。
+- 2026-08-22 VS Code process-resolution regression: 用户实际运行 direct task 得到 `Path to shell executable "E:\\KSpaceJet\\just" does not exist`，证明 Windows VS Code `type: "process"` 未以 shell/PATH 查找 `just`，使前一条 direct-task 接线证据失效。12 个 post-bootstrap prepare/build/install task 均改为 `"type": "shell"`，保留 `"command": "just"` 与单一 recipe argument；bootstrap 仍是 platform-script `process` task。`py -3 -m json.tool .vscode/tasks.json` 和映射断言验证 12 项均为 shell/direct-just、recipe 对应且 bootstrap 未改变；以 User/Machine PATH 重建的 PowerShell 子进程执行 `& just --list` 成功列出 18 个 recipes。计划 write/check、Markdown link check（73 files、162 local links）、obsolete just-lock scan 与 `git diff --check` 均通过。首次 Winget 安装后，已开启的 VS Code 仍必须重启以获得 user PATH；P0-010 仅因真实 Linux x86_64 + apt + GCC/G++ 14 验收证据仍缺失而 BLOCKED。
+
+- 2026-08-22 Windows environment-notification revision: 用户在完全重新打开 VS Code 后仍得到 `just : 无法将“just”项识别为 cmdlet`。检查实际 user PATH 已包含 `C:\Users\wangqiwen\AppData\Local\Microsoft\WinGet\Packages\Casey.Just_Microsoft.Winget.Source_8wekyb3d8bbwe`，且其中存在唯一 `just.exe`，但当前进程不能解析，证明旧环境未收到 PATH 更新。`Add-WingetJustToPath` 现无论 PATH 条目是否早已存在，都会发送 `WM_SETTINGCHANGE` / `Environment` 广播。变更后 `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Verify` exit 0，并输出 `just 1.58.0`、`developer environment is ready`。全部 8 个 Windows PowerShell 脚本 parser check、12 个 direct shell-`just` VS Code task mapping、tasks JSON、plan write/check、Markdown link check（73 files、162 local links）和 `git diff --check` 均通过。必须完全退出所有 VS Code 窗口后重开并复验任务；真实 Linux x86_64 + apt + GCC/G++ 14 acceptance 仍缺失，故 P0-010 保持 BLOCKED。
+
+- 2026-08-22 runner simplification: 用户确认新开终端即可直接调用 `just`，故删除 `tools/devenv/windows/run.ps1` 的 `Add-WingetJustToCurrentPath` 和 `just` 专用分支。bootstrap 是唯一负责 Winget package 发现、user PATH 更新和环境通知的入口；runner 只前置 `.venv\\Scripts` 并执行聚焦的受管工具。`bootstrap.ps1 -Verify` exit 0 并显示 `just 1.58.0`；`run.ps1 python --version` 输出 `Python 3.13.5`；以 User/Machine PATH 重建环境后 `just --list` 列出 18 个 recipes。全部 8 个 Windows PowerShell parser、12 个 shell/direct-`just` VS Code task 映射、计划 write/check、Markdown link check（73 files、162 local links）和 `git diff --check` 均通过。P0-010 仍仅因真实 Linux x86_64 + apt + GCC/G++ 14 验收证据缺失而 BLOCKED。
+
+- 2026-08-23 resumed: 原 BLOCKED 条件已有可复现的本地解锁路径：Docker `29.7.2` 报告 Linux/amd64 server，而 `wsl.exe -l -v` 没有可用于验证的常规发行版。`P0-010` 已按状态机由该可用环境恢复为 READY 并立即选为 `IN_PROGRESS`；以 `/source` 只读 bind mount 和容器内临时工作副本执行，不接触当前 Windows worktree、同级 raw-data 仓库或任何 GitHub CI 资源。下一步是执行缺失 `just` 的首次 apt bootstrap、第二次 apt 幂等 bootstrap、direct host `just` format/prepare/check 全链路，并只按实际输出决定 ACCEPTED 或 BLOCKED。
+
+- 2026-08-23 persistent-container directive: 用户明确要求保留当前 Linux Docker 环境，并让以后所有 Linux 测试都经由同一容器执行。当前 `ksj-p0-010-linux-validation` 在此指令之前以 `AutoRemove=true` 启动，因而不能直接变更为永久容器；必须在其退出前从其 filesystem 建立 checkpoint，再启动命名、非自动删除的 `kspacejet-linux-test`。该持久容器只能挂载当前仓库为 `/source:ro`，并在容器自身的独立工作副本中运行 bootstrap/build/test；这保留 Linux tool/cache，同时不写入 Windows 工作树或 raw-data sibling。
+
+- 2026-08-23 host-just formatter compatibility: Debian 13 apt 的 `just 1.40.0` 在真实容器中拒绝裸 `just --fmt --check`，并明确要求启用 unstable feature；该命令 exit 1 后停止了首次全链路。`just --unstable --fmt --check` 已在该 Debian host 与当前 Windows host 的 `just` 上成功，仍是直接使用宿主 `just`，不下载、不缓存也不锁定仓库版本。后续 Linux validation 改用显式 `--unstable` formatter mode；其余 recipe 均保持裸 `just <recipe>`。
+
+### 13.13 P0-007 BLOCKED 证据（含历史记录）
+
+- Work item: `P0-007`; requirements/acceptance: `FUN-035`, `AC-REL-001`、`AC-REL-002`。用户已明确本轮 Windows 只使用 Release 路径；本设计不把 Debug 作为 P0-007 的 gate。
+- Base commit/tree: `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`。开始时已有 22 个未提交条目，均未回退、覆盖或混入本项。
+- Exact local/remote read-only investigation: `git remote -v` 显示 `origin git@github.com:isqiwen/KSpaceJet.git`，`git ls-remote --heads origin main` 返回同一 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4`。`rg --files`、`git ls-files .github .gitlab-ci.yml azure-pipelines.yml Jenkinsfile .circleci` 和工作树目录检查均未发现 CI workflow；仓库也没有 `CODEOWNERS`、`SECURITY.md` 或 `CONTRIBUTING.md`。对 `https://api.github.com/repos/isqiwen/KSpaceJet/branches/main/protection` 的只读 `curl.exe --include` 查询返回 `HTTP/1.1 401 Unauthorized` / `{"message":"Requires authentication"}`，不能以无凭据观察替代 protection evidence。GitHub Actions 页面仅显示首次启用引导，而非既有 run。
+- Existing local gates: `tools/checks/linux/ci_check.sh` 已覆盖 Markdown link、execution-plan、format 和 Release configure；`tools/checks/linux/ci_unit.sh` 覆盖 Release unit configure/build/CTest；`just prepare-app-tests` + `just app-tests` 覆盖 Linux Release app tests；`just type-check` 覆盖 TypeRegistry。`just check` 本身不执行 type registry、unit 或 app tests。Windows 当前只存在 Release/Debug product presets 且 `BUILD_TESTING=OFF`，没有 Windows CTest/app-test preset；现有 Windows Release build/install/help/DLL closure 是 P0-002 developer evidence，不能冒充 P7 clean-install qualification。
+- Proposed GitHub Actions carrier and trigger: 创建单一 `KSpaceJet CI` workflow，触发 `pull_request`/`push` 的 `main` 和 `workflow_dispatch`；`permissions: contents: read`；以 PR number 或 ref 为并发组并取消同组旧 run。`actions/checkout` 使用完整 history，以保证 `ci_check.sh` 可解析 PR base；Intel LFS payload 不作为 artifact，bootstrap 按现有 verifier/pull 逻辑取得所需内容。
+- Proposed Release-only required checks: (1) `linux-release-quality` 在 x86_64 Linux、默认 GCC/G++ 14、Git/Git LFS、apt/sudo、curl/wget、tar 和 hash 工具齐备后，先正常 bootstrap，再执行 `just prepare-release`、`KSJ_FORMAT_SCOPE=all just check`、`just type-check`、Release unit prepare/build/CTest 和 `just prepare-app-tests`/`just app-tests`；(2) `windows-release-build-install` 在 `windows-2022`、VS 2022 v143/SDK host 上于同一 PowerShell session 初始 bootstrap 后执行 `just prepare-release`、`just check`、`just type-check`、`just build-release-applications`、`just install-release-applications`、四个 installed `--help`、`ksj --version` 与既有 app JSON protocol script。`linux-release-unit-tests` 有 bootstrap/CMake preset 但没有 `just prepare-unit-tests` recipe；在 workflow 落地前必须将该映射补入 root justfile 或以获批准的等价单一入口处理，不能把 preset mapping 随意复制进 YAML。
+- Artifact/retention design: 初始 CI 不缓存或上传 `out/`、install tree、Conan cache、`.venv`、Intel LFS payload 或任何数据；仅在失败时上传 `out/build/**/CMakeFiles/CMakeConfigureLog.yaml` 和 `Testing/Temporary/**`，`retention-days: 14`、无文件时忽略。无 `conan.lock`，因此 dependency-resolution/cache policy 留给 P7-004；benchmark、static-analysis、clean-install/closure、Provider load 和长稳 artifacts 留给 P7，不加入本 P0 required checks。
+- Proposed main protection/ruleset: 两个实际 workflow context 均须成功且分支为最新；PR 才能合并；至少一名 approval、推送新 commit 后撤销旧 approval、全部 review conversation 已解决；禁止 force push 与删除。管理员 bypass、允许推送者和单维护者 review policy 是 owner 必须决定的产品治理输入；不假定或创建 `CODEOWNERS`。
+- Historical unblock condition: 在此历史记录时，用户尚未明确授权创建/推送 workflow、配置 remote protection/ruleset 或使用 GitHub 管理权限；owner 也未决定 review/bypass/maintainer policy。当前用户已授权 Release-only workflow 与 `main` protection 的远端写入；按上述设计落地、运行至少一个 PR/push 的两个成功 check，记录实际 context 名称、run URL、失败日志 artifact 和 protection/ruleset evidence，才可接受本项。
+- Impact/next action: `P7-001` 仍受本项阻塞。当前无 READY 项；不得以 Release 本机构建或本地 hook 替代远程 CI/branch protection。
+
+- 2026-08-22 resumption: 用户已明确授权创建并推送 Release-only GitHub Actions workflow、配置 `main` protection。`gh` command 在当前 Windows host 不存在；本项已由 BLOCKED 转为 IN_PROGRESS，先验证可用的 GitHub API 或 SSH 写入权限，再实施本节已定义的 workflow 与 protection 设计。该授权不扩大到 Debug、benchmark、clean-install qualification、Provider load、性能或任何产品发布宣称。
+- 2026-08-22 authenticated remote preflight: 通过现有 Git Credential Manager HTTPS credential 调用 GitHub REST API（未输出 credential）确认登录账户 `isqiwen` 对 `isqiwen/KSpaceJet` 具有 `admin=true`、`maintain=true`、`push=true`、`pull=true`；`GET /branches/main/protection` 为 `404`，`GET /rulesets` 为空，`GET /actions/workflows` 为零。SSH `git push --dry-run origin HEAD:refs/heads/codex/p0-007-release-ci` 成功，因此可在隔离 branch 上创建 workflow、PR 和真实 checks，随后按实际 context 配置 classic `main` protection。
+- 2026-08-22 first remote run: PR `#1` 的 workflow run `32578740197` 已产生实际 contexts `linux-release-quality` 与 `windows-release-build-install`，但两者均失败，故尚未配置 required checks。Windows `windows-2022` runner 缺少 `winget`，而 Linux `ubuntu-24.04` apt 提供的未锁定 `just 1.21.0` 不支持非必要的 `set default-list`。修复为移除该 setting，并在 CI 同一 Windows PowerShell step 中仅当 `just` 和 `winget` 均不存在时以 runner 自带 Chocolatey 提供 host `just`；随后重推 PR 取得第二次真实结果。
+
+- 2026-08-22 second remote run: PR `#1` 的 workflow run `32578991507` 再次产生上述两个 contexts，但仍均失败，故 protection 继续保持未配置。Linux `just 1.21.0` 不接受 conditional top-level `set shell :=`；Windows fallback 已通过 Chocolatey 提供 `just 1.58.0` 且首次 bootstrap 完成，但 recipe 内再启动的 `powershell.exe` 不提供 `Get-FileHash`，使第二次 bootstrap 的受管 UV 校验失败。修复为删除这两个非必要 conditional setting，Windows recipes 逐条显式以 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File` 执行，并将 bootstrap 的两个 SHA-256 计算替换为 .NET `SHA256` 流式实现。修复后本机 `just --list`、`just --fmt --check`、`just check`、PowerShell parser、`bootstrap.ps1 -Verify` 和 workflow YAML 解析均成功；下一步为提交、推送并等待第三次真实 CI 结果。
+
+- 2026-08-22 third remote run: PR `#1` 的 workflow run `32579993693` 中两个实际 contexts 均已执行 normal bootstrap，但都在 `conan install` 失败：干净 runner 没有 `~/.conan2/profiles/default` / `C:\Users\runneradmin\.conan2\profiles\default`，而原命令只显式传入 `--profile:host`，Conan 因而为 build context 隐式寻找默认 profile。修复为 Linux/Windows bootstrap 均把已选择的项目 profile 同时传为 `--profile:host` 和 `--profile:build`；当前支持的路径都是 native build，故不存在跨编译 build-profile 推断。修复后本机 Windows `just prepare-release` 与 `just check` 成功；下一步为提交、推送并等待第四次真实 CI 结果。保护仍未配置。
+
+- 2026-08-22 user-directed Conan HTTP timeout: 用户要求避免网络慢速下载造成 Conan failure。Linux/Windows bootstrap 的 `conan install` arguments 均新增 `-cc core.net.http:timeout=300`；它是单次命令 core conf，不写入用户 `global.conf`，不改变 Conan/just/dependency version，也不影响 Git LFS transport。受管 Conan `install --help` 确认 `-cc, --core-conf` 支持，且本机 Windows `just prepare-release` 在该参数下完整成功。该修复提交为 `5b6123f1dec392618a1a201510e9bb31ccfa73ba`；workflow concurrency 已将不含该参数的 run `32580409882` 正常取消，并启动 `32581901234` 验证最新 commit。保护继续保持未配置，直至最新两个真实 checks 均成功。
+
+- 2026-08-23 user-directed deferral: 用户明确要求“现在先跳过所有 GitHub CI 相关的内容”。`P0-007` 因而从 `IN_PROGRESS` 变为 `BLOCKED`：不再查询、监控、取消或触发任何 GitHub Actions run，不再修改/push workflow、PR 或 `main` protection，亦不将已有远端 run 解释为 acceptance。该决定不撤销本地 Windows Release、Conan profile 或 HTTP-timeout 的既有事实，但它们不足以满足 `AC-REL-001/002`。解阻条件是用户明确指示恢复 GitHub CI 工作；届时必须先重新读取实际 remote 状态，不能依赖此处的历史 run 记录。
+
+### 13.14 P5-008 ACCEPTED 证据
+
+- Work item: `P5-008`; dependency `P0-005` 已 ACCEPTED。contract impact 仅为产品边界、架构、ADR、mode、requirements、acceptance 和 front-door 文档；未新增 public ABI、schema、CLI、CMake install surface 或 network listener。
+- 基线：`978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`。开始时已存在的 dirty worktree 未被回退、覆盖或纳入本项范围。
+- 已交付：`docs/architecture/KSpaceJet_gateway_architecture.md` 冻结一个唯一外部边界、public-profile gate、独立 Connector 信任边界、connection/scan/runtime 生命周期、双账本准入、TLS/mTLS 基线、egress/terminal 语义和 P5-009 至 P5-013 路线；AGENTS、README、docs 与 application front door、ADR-004、FUN-036 至 FUN-038、AC-GWY-001 至 AC-GWY-009 和 P0-006 决策门已原子对齐。
+- Exact local validation (Windows, 2026-08-23): `py -3 tools/checks/check_execution_plan.py --self-test` — 13 tests passed; `just plan-check` — dashboard current (62 work items); `just link-check` — 74 Markdown files / 169 local links passed; `git diff --check` — passed (only Git's CRLF normalization warning).
+- Limitations/next action: `ksj-gateway` 仍是 scaffold，未监听端口、未处理 peer、未建立 TLS、未实现 Connector 或 runtime bridge。`P5-009` 仍为 PLANNED，且受 `P0-006` BLOCKED；必须先由 architecture/security/deployment/integration/output/data-governance owner 提供 GWY-DEC-001 至 007 的来源、范围、取值和 review date。
+
+### 13.15 P1-008 ACCEPTED 证据
+
+- Work item: `P1-008`; requirements/acceptance: `FUN-004`、`FUN-005`、`AC-DAT-001`、`AC-DAT-003`、`AC-DAT-005`、`AC-DAT-006`、`AC-DAT-008`、`AC-DAT-009`、`AC-DAT-010`。
+- State history and baseline: `IN_PROGRESS → VERIFYING → ACCEPTED` on 2026-08-23. Base commit/tree: `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`; existing user and prior-worktree changes were preserved.
+- Changed surface: added `ismrmrd_semantic_ingress` to recon-runtime and its focused synthetic tests; migrated generic `ismrmrd_hdf5_replay`, Cartesian RSS and non-Cartesian RSS to it; changed the generic replay resolver to bind only order/placement; extended `FrameSemanticKey`, hashing, serial order and Provider key serialization with `segment`. The public pre-release replay binding API was directly replaced, with no compatibility alias.
+- Semantic/materialization evidence: one normalizer performs HDF5 header/layout/finite validation, decodes control facts separately from semantic lanes, invokes the common `AcquisitionClassifier`, rejects unknown/unsupported acquisition semantics fail-closed, and projects the complete frame key. HDF5 sample/trajectory spans remain borrowed only in the reader callback; each route copies them synchronously into its own bounded host-owned FrameSlot, HostFrameAssembler or executor ingress storage. This deliberately avoids a second unbounded/common staging copy while preventing a borrowed view from crossing an asynchronous boundary.
+- Completion/terminal evidence: the shared generic replay continues through `SerialCartesianPipeline`; `KSpaceJetCartesianFrameSlot.AppliesAllEndOfInputMissingPoliciesWithoutCountGuessing` and `KSpaceJetSerialCartesianPipeline.ResolvesPartialFailAndCertifiedSkipAtEndOfInput` cover exact required-index readiness and EndOfInput incomplete outcomes. The migrated HDF5 tests cover duplicate/missing Cartesian coverage, mixed FrameKey rejection, control flags that do not imply completion, non-imaging lanes, malformed sample/trajectory layout, nonfinite values, reserved/unsupported flags, reverse readout rejection, and resolver-visible normalized facts.
+- Exact Windows Release validation (2026-08-23): `conan install . --output-folder=out/build/windows-vs2022-release-unit-tests --profile:host=conan/profiles/windows-msvc2022-release --profile:build=conan/profiles/windows-msvc2022-release -c tools.build:skip_test=False -cc core.net.http:timeout=300 --build=missing`; separate unit-tree CMake configure; `cmake --build out/build/windows-vs2022-release-unit-tests --config Release --target ksj_recon_runtime_tests --parallel 4` exit 0; generated `conanrun.bat` plus the build-bin and Intel runtime `PATH` then `ctest --test-dir E:\KSpaceJet\out\build\windows-vs2022-release-unit-tests -C Release -R "^recon\.kspacejet-recon-runtime\.ksj_recon_runtime_tests$" --output-on-failure` exit 0 (1/1). Bare CTest was not used as acceptance evidence because its DLL search path lacks the generated Conan/Intel runtime environment.
+- Additional validation: `just build-release-applications` exit 0 (all four applications); `py -3 tools/type_registry/generate.py --project-root . --check` exit 0; Windows managed `clang-format --dry-run --Werror` on all changed C++/headers/tests exit 0; `py -3 tools/checks/check_execution_plan.py --self-test` 13/13; `just plan-check`, `just link-check` (74 Markdown files / 169 local links) and `git diff --check` all exit 0.
+- Limitations and next item: no sibling raw payload was copied, symlinked, vendored, or tracked in this repository; `P1-009` subsequently used an explicit read-only sibling path only for development execution evidence. This does not accept a standardized output artifact, RunRecord, arbitrary-channel capacity, product envelope, performance, image-quality, or clinical behavior. There is currently no READY item.
+
+### 13.16 P1-009 ACCEPTED 证据
+
+- Work item: `P1-009`; requirements/acceptance: `FUN-023`, `AC-REF-008` through `AC-REF-011`, and `AC-REF-013`. State history: `IN_PROGRESS` → `VERIFYING` → `ACCEPTED` on 2026-08-23. Base commit/tree: `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`; existing user and prior-worktree changes were preserved.
+- Changed pre-release surface: added the public numerical `radial_gridding` workspace API; added installed Provider contract/catalog/CMake identity for `radial_gridding_reconstruct`; and added the declarative CLI11 `ksj-recon radial-rss` command plus `kspacejet.radial-rss-*` JSON results. The command requires an explicit raw coordinate convention: `cycles-per-fov`, `radians-per-pixel`, or `encoded-matrix-index`; there is no alias or compatibility mode under `noncartesian-rss`.
+- Reconstruction core evidence: `radial_gridding_reconstruct` accepts only `radial_analytic_ramp` and canonical `radians_per_pixel`. It uses 2-D periodic linear Cartesian gridding followed by a caller-owned inverse transform. Its image grid, FFT intermediate, source/destination line buffers, and density vector are all accounted by the Provider scratch formula `(2*rows*cols + 2*max(rows, cols))*sizeof(complex<float>) + samples*sizeof(float)` (maximum 4,464,640 bytes under the contract). The actual Provider limits each image axis to a power of two in `[2, 512]`; the numeric core uses caller-buffer-only radix-2 FFT on that path, with no Eigen FFT plan/cache/heap allocation. The retained direct-adjoint Operator remains unweighted and separate; a same-DCF direct NUDFT is used only as the numerical oracle in focused tests.
+- Runtime semantic evidence: raw ISMRMRD trajectory is read as `[kx, ky]`. At the HDF5 boundary, `kx` is normalized by encoded width and `ky` by encoded height, then materialized once as canonical Provider `[row=ky, column=kx]` in `radians_per_pixel`. Synthetic 2×4 rectangular tests cover this asymmetric-axis conversion, equivalent cycles/radians/encoded-index inputs, required radial XML, missing/invalid units, out-of-range/nonfinite values, malformed shapes, contract mismatch, and non-power-of-two route rejection before output.
+- Exact Windows Release focused validation (2026-08-23): repository-managed CMake built `ksj_nufft_tests`, `ksj_noncartesian_recon_provider_tests`, and `ksj_recon_runtime_tests`; generated `conanrun.bat`, build-bin, and Intel runtime `PATH` then ran `ctest --test-dir E:\KSpaceJet\out\build\windows-vs2022-release-unit-tests -C Release -R "^(numerics\.kspacejet-nufft\.ksj_nufft_tests|providers\.kspacejet-noncartesian-recon\.ksj_noncartesian_recon_provider_tests|recon\.kspacejet-recon-runtime\.ksj_recon_runtime_tests)$" --output-on-failure` exit 0 (3/3). These tests cover same-DCF direct-NUDFT comparison, deterministic output, caller-workspace/alias/shape/nonfinite negatives, Provider lifecycle/configuration/resource limits, independent Operator identity, and radial HDF5 route/CLI semantics.
+- Application/install/contract validation (Windows Release, 2026-08-23): `just build-release-applications` exit 0; `tests/apps/application_json_protocol_tests.py` with all four built apps exit 0; `just install-release-applications` and `just smoke-release-install` exit 0, including installed `radial-rss --help`; `py -3 tools/type_registry/generate.py --project-root . --check` exit 0; provider catalog validation reported 16 implemented contracts / 17 planned interfaces and bundle identity validation reported 6 Providers / 16 descriptor-order Operators. Managed `clang-format --dry-run --Werror` and `cmake-format --check` on P1-009 paths, `just workspace-check`, `just link-check` (74 Markdown files / 169 local links), and `git diff --check` all passed.
+- Sibling execution evidence (Windows Release, current binary, 2026-08-23): with the generated Conan runtime environment, ran `ksj-recon radial-rss --input E:\KSpaceJet-ismrmrd-data\datasets\zen-2d-radial-2025\radial2D_24spokes_golden_angle_with_traj.h5 --output E:\KSpaceJet\out\p1-009-zen-2d-radial-gridding-final-current.f32 --metadata E:\KSpaceJet\out\p1-009-zen-2d-radial-gridding-final-current.json --radial-provider E:\KSpaceJet\out\build\windows-vs2022-release\bin\ksj-noncartesian-recon.dll --radial-contract E:\KSpaceJet\providers\kspacejet-noncartesian-recon\contracts\radial_gridding_reconstruct.json --coil-combine-provider E:\KSpaceJet\out\build\windows-vs2022-release\bin\ksj-coil-combine.dll --coil-combine-contract E:\KSpaceJet\providers\kspacejet-coil-combine\contracts\coil_combine_rss.json --trajectory-units encoded-matrix-index --format json` exit 0. It read 24 acquisitions × 256 samples × 16 channels and wrote a 256×256 float32 image (262,144 bytes): all 65,536 values finite and nonzero, range `[0.0005110063, 0.009498747]`; SHA-256 image `2038548bd9d4c61c37c2c7cb2c4358077e58e21d256b93f5e7aef2fc1cb4c294`, metadata `f1da297ec7dc8963a30da032d1a5227aa32ff98270981c8ec2d8f1164b1001b3`. `out/` is ignored and no raw payload was copied to KSpaceJet.
+- Limitations: this is development-only execution/finiteness evidence, not an image-quality/golden, standardized artifact, RunRecord, arbitrary-channel-capacity, product-envelope, performance, release, or clinical claim. It intentionally excludes trajectory/phase correction, SENSE, coil compression, spiral, 3-D, cine, EPI, partial Fourier, and GRAPPA. Per user scope, no Linux or GitHub CI work was run. No READY work item remains; `P0-006` authority is the next unblock condition.
+
+- Historical I/O clarification (2026-08-23): the preceding sibling execution command, which wrote `.f32` plus `--metadata`, predates ADR-006/P1-002's replacement of that artifact interface. It remains only as historical development execution/finiteness evidence for P1-009; current `ksj-recon` no longer accepts `--metadata` or emits a raw `.f32` image artifact, and this record must not be reused as current-interface evidence.
+
+### 13.17 P1-002 ACCEPTED 证据
+
+- Work item: `P1-002`; acceptance ownership: `AC-DAT-001`, `AC-ART-007/008`, and the standard-image portions of `AC-REF-002/010/011`. `AC-ART-006` and `AC-REF-006` remain wholly owned by `P1-006`, because a complete input/Pipeline/config/result/timing identity chain requires the later RunRecord rather than an image-file sidecar. State history: `IN_PROGRESS` → `VERIFYING` → `ACCEPTED` on 2026-08-23. Base commit/tree: `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`; existing user and prior-worktree changes were preserved.
+- Changed pre-release surface: `IsmrmrdHdf5ReplaySource` and its move-only one-pass `IsmrmrdHdf5ReplaySession` are the runtime-owned standard ISMRMRD HDF5 input boundary. `IsmrmrdImageArtifactSink` is the sole terminal writer for `ksj.image-frame`: it writes one `.mrd` file with `dataset` / `image_0`, standard float magnitude `ImageHeader`/image data, `DataRole=Image`, `ImageNumber=1`, and image-bound `KSpaceJet.*` provenance. The Cartesian, non-Cartesian and radial development routes use this Source/Sink; Providers do not own an HDF5 path or handle.
+- Publication and ownership evidence: the Sink rejects a non-`.mrd` target, invalid geometry/provenance, a non-image-frame payload, non-finite/negative magnitude values, and a second publish. It writes a unique sibling temporary HDF5 file, reads it back through the official ISMRMRD C++ binding to verify XML, header mapping, metadata and pixels, then atomically replaces the target and only afterwards acknowledges the graph egress. Focused tests prove replacement of an existing target and prove a final-publication failure preserves the existing destination, removes the temporary sibling, and leaves egress unacknowledged. This is not a power-loss durability, retry, or exactly-once claim.
+- Input evidence: Source metadata is copied into host-owned storage; an `AcquisitionView` is exposed only for one callback and a session rejects a second traversal. The serial adapter and all three routes use the shared normalized ingress/materialization boundary rather than retaining HDF5 reader views.
+- Exact Windows Release validation (2026-08-23): `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build out\build\windows-vs2022-release-unit-tests --config Release --target ksj_recon_runtime_ismrmrd_io_tests ksj_recon_runtime_ismrmrd_route_tests --parallel 4` exit 0. With `out\build\windows-vs2022-release-unit-tests\conanrun.bat`, its `bin` directory, and the generated Intel IPP/MKL/compiler runtime directories on `PATH`, `ctest --test-dir E:\KSpaceJet\out\build\windows-vs2022-release-unit-tests -C Release -R "ksj_recon_runtime_ismrmrd_(io|route)_tests" --output-on-failure` exit 0 (2/2). The I/O target covers source one-pass/borrow rules, Sink normal/negative/publication-failure paths and existing-destination replacement; the route target executes one standard `.mrd` artifact path each for Cartesian RSS, non-Cartesian direct-adjoint RSS, and radial analytic-ramp gridding.
+- CLI/protocol validation (Windows Release, generated Conan and Intel runtime environment): all three pre-replacement development route `--format json --help` invocations exit 0, advertise `<image.mrd>`, and omit `--metadata`; `ksj-recon cartesian-rss --format json --metadata legacy.json` exits 2 with exactly one stdout `kspacejet.cartesian-rss-result` JSON error (`invalid_argument`) and only diagnostics on stderr. `E:\KSpaceJet\.venv\Scripts\python.exe tests\apps\application_json_protocol_tests.py` against all four current Release applications exits 0.
+- Additional checks: `py -3 tools/type_registry/generate.py --project-root . --check`, `py -3 tools/checks/check_execution_plan.py --project-root . --check`, `py -3 tools/checks/check_markdown_links.py --project-root .` (74 files / 169 local links), focused managed `clang-format --dry-run --Werror`, and `git diff --check` all exit 0. No raw MRI payload was copied, symlinked, vendored or tracked in this repository.
+- Limitations and successor: the current public route façades still construct fixed C++ graphs and remain only until the user-required PipelineDefinition migration deletes them. The future public root command is exactly `ksj-recon --input <scan.mrd> --pipeline <pipeline.json> --output <image.mrd>`—not a `reconstruct` subcommand. P2-001 now owns the authored Pipeline / scan-facts / effective-binding boundary; P1-006 later supplies full RunRecord identity and timing evidence. Linux and GitHub CI remain outside the current user scope.
+
+### 13.18 P2-001 ACCEPTED 证据
+
+- Work item: `P2-001`; acceptance ownership: `AC-ART-001` 至 `AC-ART-005` 与 `AC-PLN-001` 至 `AC-PLN-004` 的 artifact ownership / authored-versus-runtime input boundary。基线 commit/tree 为 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`；开始时已有用户与此前工作树改动，均未覆盖或回退。
+- Changed pre-release surface: 删除 portable `plan-build-request.schema.json` 和 caller-supplied `PlanArtifactDigests`。`PlanBuildRequest` 仅是由 runtime 组装的强类型 in-memory compiler input；它直接持有 `ResolvedPipeline`、`ScanFacts`、`EffectivePipelineBinding`、TargetEnvelope 和 MachinePolicy。ExecutionPlan 的输入 identity 改为 `resolved_pipeline`、`scan_facts`、`effective_pipeline_binding`、`target_envelope`、`machine_policy`，不再伪造 ScanDescriptor/机器策略的 caller digest。
+- Ownership/identity evidence: `ScanFacts` 从实际 raw ISMRMRD XML 派生唯一 domain-separated XML identity，并重解析 XML 验证传入 ScanDescriptor；其严格 parser 拒绝重复键、未知字段、非 canonical payload、替换的 XML/descriptor/detached digest，且 `$schema` decoration 不进入 identity。`EffectivePipelineBinding` 仅可在已有 ResolvedPipeline + ScanFacts 后由 host 派生；它必须包含全部 node、保留每个 authored static config、拒绝静态算法覆盖、路径/loader/contract 和 physical resource 字段，并将最终 canonical config 传给 Provider startup。Pipeline parser/schema 同步拒绝 authored scan shape、外部输入/库路径、loader material 和 physical schedule 字段。
+- Fixtures and semantic coverage: 新增 `scan-facts.schema.json`、`effective-pipeline-binding.schema.json` 及其 valid/invalid fixtures；focused tests 实际读取这些 fixture，并验证 static-config preservation、parent digest substitution、loader-field、raw XML、trajectory-range、canonicalization 和 source/descriptor mismatch。Draft schema 文件与相关 fixture 共 13 个由 PowerShell JSON parser syntax-check；其结构/语义双层持续 corpus gate 仍由后续 `P2-006` 扩展，不以 schema syntax 代替 semantic tests。
+- Exact Windows Release validation (2026-08-23): repository-managed CMake 分两次构建 `ksj_recon_model_tests ksj_recon_graph_tests ksj_recon_runtime_tests ksj_recon_runtime_ismrmrd_route_tests` 及 `ksj_recon_runtime_ismrmrd_io_tests ksj_provider_loader_tests`，均 exit 0。使用 generated `conanrun.bat`、build `bin` 与 Intel runtime `PATH` 执行 `ctest --test-dir E:\KSpaceJet\out\build\windows-vs2022-release-unit-tests -C Release -L recon --output-on-failure` exit 0（6/6：model、graph、runtime、ISMRMRD I/O、route、provider-loader）。`cmake --build --preset windows-vs2022-release --target ksj_recon --parallel 4` exit 0。
+- Additional checks: managed `clang-format --dry-run --Werror` 覆盖本项 C++/test paths；`python tools/type_registry/generate.py --project-root . --check`、`just workspace-check`、`just link-check`（74 files / 169 local links）、`just plan-check` 与 `git diff --check` 均 exit 0。未运行 Linux 或 GitHub CI。
+- CLI boundary observed on the current Release binary: `ksj-recon --help` 仅显示当前临时 `cartesian-rss`、`noncartesian-rss`、`radial-rss` façade，未注册 `reconstruct` 子命令。它们仍由 P2-007 原子替换；最终入口固定为 `ksj-recon --input <scan.mrd> --pipeline <pipeline.json> --output <image.mrd>`。
+- Limitations and successor: 本项没有实现 P2-002 的 parameter/selector grammar、正式 ISMRMRD input profile 或受控 installed Provider resolver，也没有实现 P2-007 的根 CLI，因此没有产品在线、隔离、性能、临床或 release claim。`P2-002` 成为下一 READY 项；Linux/GitHub CI 仍按用户范围跳过。
+
+### 13.19 P2-002 ACCEPTED 证据
+
+- Work item: `P2-002`; acceptance ownership: `AC-PLN-001` 至 `AC-PLN-007`，以及 `AC-CLI-009` 的 pipeline validate/schema/semantic/resolver 报告层。基线 commit/tree 为 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`；开始时已有用户与此前工作树改动，均未覆盖或回退。
+- Changed contract surface: `PipelineDefinition` 现在要求唯一 `ismrmrd-hdf5` input profile，并以闭合 typed parameter declaration/default/`$param` substitution 表达作者化配置；runtime-derived scan facts 只能通过已声明 selector materialize。`ControlledPipelineResolver` 仅接受 host-owned Provider/contract/type snapshot，不接受 caller DLL/SO、contract 路径或 catalog-directory discovery。`ResolvedPipeline` 冻结展开后的 config 和 OperatorContract identity，`ksj pipeline validate --format json` 报告 profile、parameter 和 graph 信息。
+- Negative/semantic evidence: focused model/graph tests覆盖 parameter declaration、unknown/missing/wrong-type binding、profile/path/module/scan-fact 字段拒绝、controlled provider/contract/type mismatch、contract digest 与 declared scan-fact materialization；schema-valid 不等于 resolver semantic pass。该项没有让 Pipeline 持有输入/输出路径、scan-derived geometry 或 physical scheduler 字段。
+- Exact Windows Release validation (2026-08-23): `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build out\build\windows-vs2022-release-unit-tests --config Release --target ksj_recon_model_tests ksj_recon_graph_tests ksj_recon_runtime_ismrmrd_route_tests --parallel 4` exit 0；在 generated `conanrun.bat`、Intel runtime directories 的 `PATH` 下，`ctest --test-dir E:\KSpaceJet\out\build\windows-vs2022-release-unit-tests -C Release -R "ksj_recon_(model|graph|runtime_ismrmrd_route)_tests" --output-on-failure` exit 0（3/3）。`cmake --build out\build\windows-vs2022-release --config Release --target ksj_cli ksj_recon --parallel 4` exit 0；`tests\apps\application_json_protocol_tests.py` 对当前四个 Release applications exit 0。
+- Additional checks: repository-managed Python type-registry `--check`、execution-plan `--check`、workspace layout check 与 `git diff --check` 均 exit 0；此前完成的 focused `clang-format --dry-run --Werror`、JSON fixture syntax、local link check 均通过。按用户指令未运行 Linux 或 GitHub CI。
+- Acceptance partition: 原台账把 `AC-CLI-009` 整体同时列入 P2-002 和 P2-005，导致 P2-002 被尚未解锁的 P2-003/P2-004/P2-005 阻塞。本次仅将完整 criterion 的 ownership 明确回 P2-005；P2-002 的 validate/schema/semantic/resolver 子层已经验证，项目仍必须在 P2-005 达到 explain/render/dry-run、compiler/verifier/admission 分层报告，未降低任何最终验收要求。
+- Limitations and successor: `ksj-recon` 仍保留三条开发专用 façade，P2-007 才能原子替换为 `ksj-recon --input <scan.mrd> --pipeline <pipeline.json> --output <image.mrd>`；P2-003 仍受 P0-006 阻塞。用户新授权的 P8-001 与此相互独立，只实现本地只读 Qt viewer foundation。
 
 ---
+
+### 13.20 P8-001 ACCEPTED 证据
+
+- Work item and baseline: `P8-001`，覆盖 `AC-VWR-001` 至 `AC-VWR-003`；基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`。
+- Delivered surface: `qt/6.8.3` 已作为 shared Conan dependency；`apps/kspacejet-viewer` 是第五个安装 application，使用 `ksj_add_application`、CLI11 help/version、Qt Core/Gui/Widgets、真实 `QApplication → ViewerWindow → event loop` 与 `--ui-smoke --format json`。它不打开 `.mrd`、不解析 Pipeline、不重建、不加载 Provider、也不连接 gateway；四个 inspector tab 明确标为后续 P8-002/P8-003 功能。
+- Windows deployment: `ksj_deploy_qt_widgets_runtime()` 复用受控 third-party runtime staging，并用 Qt 官方 `windeployqt` 把按 executable closure 所需的 platform plugin 部署到 `platforms/qwindows.dll`。wrapper 仅为 `windeployqt.exe` 激活 Conan run environment；build-tree 和 installed `ksj-viewer.exe` 的实际启动均不依赖 Conan PATH。
+- Exact Windows Release validation (2026-08-23): `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\tools\\devenv\\windows\\run.ps1 cmake --preset windows-vs2022-release`、`just build-release-applications`、`just install-release-applications` 与 `just smoke-release-install` 均 exit 0。smoke 同时检查 build/install tree 的 `platforms/qwindows.dll`、直接执行两处 `ksj-viewer.exe --ui-smoke --format json`、五个 installed application 的 help、`ksj`/viewer version，以及五应用 JSON protocol。另以 build tree 运行 `tests\\apps\\application_json_protocol_tests.py` exit 0；该 generic protocol 只验证 viewer help，真实 GUI smoke 保持 Windows-only，未形成 Linux GUI 支持声称。
+- Link/deployment boundary audit: `dumpbin /DEPENDENTS` 对 build/install `ksj-viewer.exe` 仅列 `Qt6Widgets.dll`、`Qt6Core.dll`，对两处 `platforms/qwindows.dll` 仅列 `Qt6Gui.dll`、`Qt6Core.dll`；检查明确拒绝 `Qt6Network.dll`、`Qt6OpenGL.dll`、`Qt6OpenGLWidgets.dll`、`Qt6Quick.dll`、`Qt6Qml.dll` 与 `Qt6WebEngineCore.dll`。
+- Additional checks: viewer C++ 的 `clang-format --dry-run --Werror`、viewer CMake 的 `cmake-format --check`、Qt helper 的 in-memory `cmake-format` comparison、`python -m py_compile tests/apps/application_json_protocol_tests.py`、type-registry check、workspace-layout check、75 Markdown files/169 links 的 link check 与 `git diff --check` 均 exit 0。完整 `KSpaceJetBuildSupport.cmake` 的 `cmake-format --check` 仍因该文件既有的 `install()` parser warning 失败，未将它伪记为全文件格式通过。
+- Limitations and successor: 当前 Windows 全局 install staging 可能附带其他应用未使用的 Qt package DLL；本工作项以 viewer 自身与 plugin 的 import closure 作为部署边界证据。viewer 仍只是可部署 UI shell；P8-002 现为活动项，负责 public bounded inspection read model 与 corpus，P8-003 才接入真实 metadata/k-space/image/pipeline/export UI。
+
+### 13.21 P8-002 ACCEPTED 证据
+
+- Work item and baseline: `P8-002`，覆盖 `AC-VWR-004`；基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`。既有用户和先前 worktree 改动保持原样，未写入任何 raw MRI payload。
+- Delivered public surface: 新增 move-only `KSpaceJet::ismrmrd::InspectionReader`、`InspectionReadLimits`、metadata/series/acquisition/image/header/MetaAttributes read model，以及仅 callback 有效的 acquisition/image payload views。reader 直接使用标准 ISMRMRD HDF5 数据集和官方 binding；私有 HDF5 preflight 仅验证标准 compound/VLEN layout、rank、type、算术与限额，按 named native fields 映射 header，不以文件的 field order、padding 或 byte order 作为 ABI。读者在 callback 内 move/assignment 后仍保持本次 operation 的 source lifetime，嵌套读则确定性拒绝。
+- Corpus and negative coverage: Windows focused test 创建临时 synthetic `.mrd`，验证 XML、acquisition、image header、MetaAttributes、轴映射、八种标准 image data type 的非零像素、callback payload、reader limits、错误 logical type、rank-2/fixed XML、错误 VLEN element type、不完整 compound header、reordered/padded image/acquisition header，以及 callback 内移动 reader。测试数据只在 `%TEMP%`，不保留在 repository。
+- Build/install contract: `KSpaceJet::ismrmrd` 私有链接 Conan 的 `hdf5::hdf5` target；本地 ISMRMRD Conan recipe 将 HDF5 header/library 传播给 CMake consumer；`inspection_reader.hpp` 作为 public include 被安装。Windows Release install tree 已实际发现 `include/kspacejet/ismrmrd/inspection_reader.hpp`（7151 bytes）和既有 `dataset_reader.hpp`。
+- Exact Windows Release validation (2026-08-23): `just prepare-release`、`just build-release-applications`、`just install-release-applications` 均 exit 0。repository-managed tool environment 下 `cmake --build out/build/windows-vs2022-release-unit-tests --config Release --target ksj_ismrmrd_tests --parallel 4` exit 0；以 generated `conanrun.bat` 执行 `ctest --test-dir E:\\KSpaceJet\\out\\build\\windows-vs2022-release-unit-tests -C Release -R ksj_ismrmrd_tests --output-on-failure` exit 0（1/1，0.20 s）。`clang-format --dry-run --Werror`（public header/source/test）和 `cmake-format --check`（两个相关 CMakeLists）均 exit 0；`just type-check`、`just workspace-check`、`just link-check`（76 Markdown files / 172 local links）均 exit 0。
+- Limitations and successor: 本项提供的是 native C++ inspection boundary，不是 Qt view、Pipeline presentation、reconstruction 或 export。P8-003 已在同一 Windows-only 用户范围内启动；它必须在 app-local 层消费 reader，且所有 PNG/SVG/CSV/JSON 均明确是显示派生产物而非 MRI artifact。
+
+### 13.22 P8-003 ACCEPTED 证据
+
+- Work item and scope: `P8-003`，覆盖 `FUN-040` / `AC-VWR-005`；基线为 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`。既有用户和先前 worktree 改动均保持原样；测试只在 `%TEMP%` 创建 synthetic `.mrd`，没有向 KSpaceJet 写入 raw MRI payload。
+- Delivered Qt surface: `ksj-viewer` 现在以 app-local `InspectionSession` 共享 P8-002 的只读 `InspectionReader`，在四个 Qt Widgets tab 中显示 bounded XML/series metadata、按需 acquisition magnitude projection、单个 `[z, channel]` image plane 和 `PipelineDefinition`。k-space UI、summary 和 export detail 均明确标为非 reconstructed image；image/k-space 的 `QImage`、CSV rows、XML preview 与 UI pixmap 都有显式上界，callback-scoped payload 不会被 UI 保存。
+- Pipeline and artifact boundary: pipeline 只以 public parser limit 读取文件并调用 `PipelineDefinition::parse_json()`；未复制 parser，也不 resolve、compile、load 或 execute Provider。PNG、SVG、CSV、JSON 均使用 `visualization-derivative` provenance，JSON detail 与各格式标识一致；`.mrd`、`.h5`、`.hdf5`、`.ismrmrd` 和格式不匹配的 destination 被拒绝，故 export 不能成为第二种 MRI artifact。`InspectionSession` 的 open 是事务性的，失败输入不会损坏既有 source provenance。
+- Focused evidence (Windows Release, 2026-08-23): repository-managed `cmake --build out/build/windows-vs2022-release-unit-tests --config Release --target ksj_viewer_presentation_tests --parallel 4` exit 0；以 generated `conanrun.bat` 运行 `ctest --test-dir E:\\KSpaceJet\\out\\build\\windows-vs2022-release-unit-tests -C Release -R ksj_viewer_presentation_tests --output-on-failure` exit 0（1/1，0.10 s）。测试创建临时标准 ISMRMRD MRD，覆盖 metadata/k-space/non-reconstruction wording、受限 image derivative、invalid open 保持 session、有效/超限 parse-only pipeline、PNG readback/provenance、SVG/CSV/JSON provenance，以及 MRI extension、错误 extension、null image export 拒绝。
+- Windows deployment evidence: `just build-release-applications`、`just install-release-applications` 和 `just smoke-release-install` 均 exit 0。最后一项实际检查 build/install `platforms/qwindows.dll`，执行两处 `--ui-smoke --format json` 和 `--export-smoke --format json`，并运行安装树五应用的 help/version 与 JSON protocol；export smoke 原子写入并读回 temporary PNG provenance。另以 build tree 执行 `tests/apps/application_json_protocol_tests.py` 和 `python -m py_compile tests/apps/application_json_protocol_tests.py` 均 exit 0。
+- Dependency and quality evidence: direct CMake link closure 仅为 `KSpaceJet::ismrmrd`、`KSpaceJet::recon_graph`、Qt Core/Gui/Widgets；build/install `ksj-viewer.exe` 的 `dumpbin /DEPENDENTS` 为预期的 `ksj_ismrmrd`、`ksj_recon_graph`、传递的 recon-model/core、Qt6Widgets/Gui/Core 与系统 runtime，两个 `qwindows.dll` 仅依赖 Qt6Gui/Core 与系统 DLL。显式检查未发现 recon runtime、Provider loader、gateway、research、mri_debug、Qt Network/OpenGL/Quick/QML/WebEngine import。viewer/test C++ 的 `clang-format --dry-run --Werror`、相关 CMake 的 `cmake-format --check`、`just type-check`、`just workspace-check`、`just link-check`（76 Markdown files / 172 local links）、`git diff --check` 和 plan checker 均 exit 0。
+- Limitations and successor: 此验收仅覆盖用户授权的 Windows Release local developer UI，未运行 Linux 或 GitHub CI；它不实现 reconstruction、Provider、gateway、online/service、clinical/diagnostic、performance 或 release qualification。第 12 节当前没有 READY 项，P0 policy、GitHub CI 与 Linux 仍按其 BLOCKED 记录等待用户输入或恢复授权。
+
+### 13.23 P8-004 IN_PROGRESS 证据
+
+- Work item and reference boundary: `P8-004` 以用户指定的本地 `E:\hdfview` 源码、`D:\HDFView` 安装程序和 HDF Group HDFView 的 File → tree → inspector → typed-view → info/status 模型为**功能与交互参考**。实现独立为 C++/Qt Widgets；未复制、链接、打包或执行 HDFView Java/SWT 代码，也未扩大为通用 HDF browser/editor。
+- Delivered shell and interaction: `ViewerWindow` 现在提供 File/Window/Tools/Help 菜单、Open/Close/Inspect/Open As/Help toolbar、只接受本地路径的当前文件栏、语义对象图标树、`Object Attribute Info`/`General Object Info` tabbed inspector、四个 typed data tabs 及跨宽度 Info/status panel。依据用户对 HDFView 截图的视觉反馈，先前 card/dashboard 风格和 General/Header/Attributes 三页已直接替换为 HDFView 式平面 split-pane：General 默认显示紧凑 Name/Path/Type/Access form、standard dataset semantics 和 standard ISMRMRD member table；Object Attribute Info 只显示显式 inspected image 的 standard MetaAttributes，XML header preview 位于 Metadata typed view。树 selection 只更新 inspector；只有 Inspect、Open As、double click 或 context menu 才激活 container 并读取 bounded typed data。file bar Enter、Ctrl+O/Ctrl+W/Ctrl+Q、image cine/window-level/zoom/pixel probe/histogram 和 header-only acquisition table 均保持在只读、bounded display 语义内。
+- Dashboard refinement validation (2026-08-24): 用户以真实 raw `cart_t1.mrd` 视觉复核时指出 file-level `Dataset overview` 与空 `Image series` 区域重复且占据主要空间。当前工作树已将其移除：打开 MRD 默认只保留 semantic tree 与 HDFView-style inspector，typed-data 区域保持隐藏；只有对 Header/XML 执行显式 `Inspect`/`Open As…` 才打开 XML typed view。`Images` 是独立语义对象，raw acquisition container 的零 image series 是标准且正常的状态，不再以空表作为 dashboard 内容。`ksj_viewer_presentation_tests` 现在以 nested `dataset_1`/`dataset_2` synthetic MRD 验证默认隐藏、选择 Header/XML 不展开 typed view、显式 Inspect 才显示 XML；选择另一个 semantic object 不会擅自切换已打开的 typed view。
+- Focused Windows Release evidence (2026-08-24): `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build out\build\windows-vs2022-release-unit-tests --config Release --target ksj_viewer_presentation_tests --parallel 4` exit 0；在 generated `conanrun.bat` 环境中串行运行 `ctest --test-dir E:\KSpaceJet\out\build\windows-vs2022-release-unit-tests -C Release -R ksj_viewer_presentation_tests --output-on-failure` 与 `... -R ksj_ismrmrd_tests --output-on-failure` 均 exit 0（各 1/1）。widget corpus 断言 1280×800 HDFView-style shell 的双 tab 名称/默认 General 页、compact form、semantics/member/MetaAttributes tables，并以 nested `dataset_1`/`dataset_2` temporary MRD 证明选择 `/dataset_2` Images 不切换 data view，显式 Inspect 才读取 image、切换 typed Image view 和只显示该 image 的 MetaAttributes。
+- Windows deployment evidence (2026-08-24): `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build out\build\windows-vs2022-release --config Release --target ksj_viewer --parallel 4` 与 build-tree `ksj-viewer.exe --ui-smoke --format json` exit 0；`just install-release-applications` 和 `just smoke-release-install` exit 0。install smoke 实际运行 build/install Viewer 的 UI/export smoke，并验证 installed Qt launch path。`windeployqt` 仍报告可选 translations catalog 不存在、runtime staging 报告系统组件候选 unresolved，但两处真实 Qt smoke 均成功；这些 warning 不被记作 failure 或 release qualification。
+- Dashboard refinement validation commands (2026-08-24): `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 cmake --build out\build\windows-vs2022-release-unit-tests --config Release --target ksj_viewer_presentation_tests --parallel 4` exit 0；在 generated `conanrun.bat` 环境中 `ctest --test-dir E:\KSpaceJet\out\build\windows-vs2022-release-unit-tests -C Release -R "ksj_(ismrmrd|viewer_presentation)_tests" --output-on-failure` exit 0（2/2）；`cmake --build --preset windows-vs2022-release --target ksj_viewer --parallel 4`、build-tree `ksj-viewer.exe --ui-smoke --format json`、`just install-release-applications` 与 `just smoke-release-install` 均 exit 0。后者在 install tree 实际通过 UI/export smoke；`windeployqt` translations catalog 与系统 runtime candidate warnings 未影响启动验证。
+- Windows unit-test runtime deployment remediation (2026-08-24): 根因是 `ksj_add_gtest()` 在 Windows 只注册 test executable，未调用既有 runtime-DLL scanner；直接 `ksj_viewer_presentation_tests.exe` 因缺少 Conan/Qt DLL 返回 `0xc0000135`，而手工 `call conanrun.bat` 只是临时补充 `PATH`。现在每个 Windows gtest target 都在 target post-build 与常规 ALL refresh 中复用 `ksj_stage_thirdparty_runtime_dlls()`，因此 target-only build 会把其 transitive Conan/Intel DLL 闭包部署到 build `bin`；Viewer focused test 同时用官方 `windeployqt` 部署 `platforms/qwindows.dll`。`powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 -Command @('cmake','-S','.','-B','out\\build\\windows-vs2022-release-unit-tests')`、分别构建 `ksj_viewer_presentation_tests` 与 `ksj_ismrmrd_tests` 均 exit 0（分别报告 staged 92 / 69 DLL）；未调用 `conanrun.bat` 的两个直接 executable 分别通过 7/7 和 21/21，裸 `ctest --test-dir out\\build\\windows-vs2022-release-unit-tests -C Release -R "ksj_(ismrmrd|viewer_presentation)_tests" --output-on-failure` exit 0（2/2）。共享 Qt deployment branch 亦以 `ksj_viewer` Release target build 与直接 `ksj-viewer.exe --ui-smoke` exit 0 复核。runtime scanner 仍会报告 Windows system component candidate unresolved、`windeployqt` 仍会报告缺少可选 translations catalog；实际直接启动成功，二者均非 failure。
+- Out-of-scope full-tree observation: 随后 Windows Release unit-tree default build 在未涉及本项的 `ksj_logging_tests` 编译阶段失败：`logging_tests.cpp:112` 将 `std::filesystem::path::value_type *` 传给只接受 `const char *` 的 `ksj::logging::Configure`。这不是 runtime loader failure，未在 P8-004 中修改 logging API/test；本项的两个 direct-launch 和裸 CTest evidence 保持有效。
+- Remaining acceptance evidence: 仅剩 Windows-only 用户视觉复核，使用真实 sibling-data `E:\KSpaceJet-ismrmrd-data\datasets\zen-2d-cartesian-2025\cart_t1.mrd` 检查默认 inspector、container tree 和显式 typed views。P8-004 因此保持 IN_PROGRESS；未运行 Linux 或 GitHub CI，且不对 service、clinical、performance 或 release qualification 作任何声明。
 
 ## 14. 需求追踪矩阵
 
 | 功能范围 | 功能 ID | 主工作项 | 关键验收 |
 | --- | --- | --- | --- |
 | 工具链、CI、文件完整性 | FUN-001, FUN-002 | P0-001 至 P0-010, P7-001 至 P7-004 | AC-BLD, AC-TYP, AC-REL-001 至 005 |
-| 数据、FrameSlot、artifact | FUN-003 至 FUN-006 | P1-001 至 P1-007, P2-001 | AC-ART, AC-DAT |
+| 数据、FrameSlot、artifact | FUN-003 至 FUN-006 | P1-001 至 P1-008, P2-001 | AC-ART, AC-DAT |
 | Pipeline/resolve/plan/verify | FUN-010 至 FUN-013 | P2-001 至 P2-006 | AC-SCH, AC-PLN |
 | bounded execution/lifecycle | FUN-014 至 FUN-017 | P3-001 至 P3-006, P6-001/002 | AC-SCH, AC-RT, AC-PERF-001 至 004 |
-| Provider SDK 和 reference algorithms | FUN-020 至 FUN-023 | P1-003/004, P4-001 至 P4-005 | AC-PRV, AC-REF |
+| Provider SDK 和 reference algorithms | FUN-020 至 FUN-023 | P1-003/004/009, P4-001 至 P4-005 | AC-PRV, AC-REF |
 | CLI、run artifact、developer experience | FUN-021, FUN-024, FUN-025 | P1-006, P2-005, P4-003/006, optional P5-007 | AC-CLI, AC-OBS-001 至 004 |
 | 可选进程内 ISMRMRD feed/宿主 API | FUN-030 至 FUN-032 | optional P5-001 至 P5-007 | AC-FED |
+| 外部集成网关与独立 Connector | FUN-036 至 FUN-038 | P5-008 至 P5-013 | AC-GWY |
+| 用户授权的 Qt 离线检查器 | FUN-040 | P8-001 至 P8-003 | AC-VWR |
 | observability, hardware, qualification | FUN-033 至 FUN-035 | P3-006, P6-003 至 P6-007, P7-001 至 P7-007 | AC-OBS, AC-PERF, AC-REL |
 
 每个 pull request、commit 或 autonomous handoff 应至少能指出一条本表中的功能/工作项/验收链。找不到链条的改动应被视为无范围变更，需要先澄清或拆分。
@@ -1133,11 +1392,12 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 5. P0-006：填充或显式阻塞 TargetEnvelope/MachinePolicy 参数。
 6. P0-008：已将第 12 节投影为可校验的 Master Plan 总览；此后每次状态变更均先改第 12 节、再执行 `--write` 和 `--check`。
 7. P0-009：已固定 KSpaceJet 与 `KSpaceJet-ismrmrd-data` 的同级数据边界；每次开发/提交均维持该 workspace check，不把 raw payload 放回本仓库。
-8. P1-001 至 P1-006：只有 P0 的强依赖解除后，先让离线 reference 路径具有 fixture、standard output、golden 和 RunRecord。
+8. P1-008 与 P1-009 已接受为用户授权的真实数据重建核心入口及首个 development-only 2-D radial gridding/analytic DCF Provider 路线；后续 Cartesian、accelerated、dynamic、EPI 与 3-D Provider 仍须在各自依赖变为 READY 后推进。P1-001 至 P1-007 的产品 fixture、artifact、golden、RunRecord 与 policy gate 仍不得绕过。
 9. P2、P3：把已有 graph/runtime 通过独立 verifier、resource/terminal/serial-oracle 证据提升为可信开发基线。
 10. P4：Provider 开发体验、identity 和隔离路线。
-11. P5：只有真实 embedding 需求获确认后才做可选 in-process ISMRMRD feed；绝不做 online service/gateway。
+11. P5：P5-008 先冻结唯一外部集成网关的候选稳定架构；P5-009 以后必须在 profile、安全、部署和数据治理输入到位后才实现。in-process feed 仍是独立路线，不能成为 gateway 的私有旁路。
 12. P6/P7：性能、硬件、qualification 作为测量和证据项目，不作为预设承诺。
+13. P8：用户已选择 Qt；先完成 Qt Core/Gui/Widgets 的可部署 desktop foundation，再以标准 inspection reader 驱动 metadata、k-space、image、pipeline 与派生 export。它不改变 P0-P7 的优先级或 v1 gate。
 
 ### 15.1 何时宣布项目完成
 
@@ -1147,13 +1407,13 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 
 ## 16. 给下一位 Codex 的第一条指令
 
-先阅读第 0.4 节，然后以第 12 节逐项状态为准；本节不是第二份状态来源。当前快照没有 IN_PROGRESS、VERIFYING 或 READY 项，不能编造下一项。
+先阅读第 0.4 节，然后以第 12 节逐项状态为准；本节不是第二份状态来源。`P8-001` 至 `P8-003` 已交付 Qt 6 Widgets `ksj-viewer`、真实 QApplication/platform-plugin deployment、标准 header/acquisition/image 的有界 public inspection reader，以及共享 reader/parser 的 metadata、k-space、image、pipeline 与显示派生 export；它不执行 reconstruction、不加载 Provider、不连接 gateway，也不创建第二种 MRI artifact。`P8-004` 正在 IN_PROGRESS：用户要求以 `ismrmrdviewer` 的 group-first inspection workflow 作为功能参考。必须由原生 `InspectionReader` 有界发现和验证可用的标准 group，并在 Qt workbench 中提供 group → metadata/acquisitions(k-space)/images navigation、header-only acquisition index、按需 coil/trajectory inspection 和 image cine/window-level；不能使用 Python、PySide2、h5py、Matplotlib 或任意 HDF5 浏览，不能把 raw payload 无界载入 UI。`P2-002` 已因固定 `dataset` profile 与标准-first container 原则冲突而 REOPENED；P8-004 接受后，P2-002 必须改为 auto-or-explicit raw-container selection。`P2-007` 仍将最终重建入口固定为 `ksj-recon --input <scan.mrd> --pipeline <pipeline.json> --output <image.mrd>`，没有 `reconstruct` 子命令或旧命令兼容层。`P0-007` 因用户明确要求暂缓所有 GitHub CI 内容而保持 BLOCKED，禁止查询、触发或修改远端资源；`P0-010` 因用户暂停 Linux 验证而保持 BLOCKED，不删除 `kspacejet-linux-test`；`P0-006` 仍阻塞产品 case、正式 artifact、性能、Gateway policy 和资格 claim。
 
 1. 每次有合法状态变更时，只修改第 12 节，然后执行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；若检查失败，先修复第 10/12 节 ID、依赖或入口漂移，不能手改总览。
-2. 保留第 13.2 节 P0-002 的 Windows BLOCKED 记录；只有实际 Windows x64 + VS 2022 v143 + SDK 主机/runner 的 build/install/help evidence 才能恢复它，不能用 Linux evidence 替代。
+2. 第 13.2 节保留 P0-002 的历史 BLOCKED 记录及其后的 Windows Release ACCEPTED evidence；该证据只覆盖 developer install smoke，不能推导 Debug、clean-machine redistribution、性能、容量或 release qualification。
 3. P0-003 已由本地 commit `e1150f4b24627f5f5b847f57ee4d633a8f8b33c1` 接受；P0-006 仍只能在收齐第 6.3.1/13.8 节的 owner/source/review inputs 后改为 READY。
 4. P0-009 已 ACCEPTED：KSpaceJet 与 `KSpaceJet-ismrmrd-data` 必须是同级真实 Git worktree；不得将 raw `.mrd`/`.h5`/`.hdf5`/`.ismrmrd` payload、旧 downloader 或 project-internal data directory 放回本仓库。先运行 workspace checker，再在 sibling data repo 运行其 own verifier。
-5. 以第 1.3、6.1/6.2、17.1 节与 ADR-002/004 为唯一 scope/mode/diagnostics 权威；P0-005 已 ACCEPTED，不回退其 profile、plain-text diagnostics 或 scope-closure 结论，也不得以 dashboard 扩张产品 capability。
+5. 以第 1.3、6.1/6.2、17.1 节与 ADR-002/004 为唯一 scope/mode/diagnostics 权威；P0-005 已 ACCEPTED，P5-008 是用户授权的范围替换，必须保留 plain-text diagnostics、ISMRMRD 语义、无私有 wire 和厂商采集隔离，且不得以 dashboard 扩张已实现 capability。
 
 ---
 
@@ -1163,19 +1423,20 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 
 ### 17.1 永久产品边界
 
-KSpaceJet 是 ISMRMRD 重建框架，不是采集或传输系统。
+KSpaceJet 是 ISMRMRD 重建框架，包含一个受严格限制的外部集成网关；它不是扫描仪或厂商采集系统。
 
-- 输入仅是标准 ISMRMRD 数据：当前为 HDF5，未来如有增量输入也必须由同进程宿主先完成 ISMRMRD 归一化。
-- 它不拥有扫描仪、采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备 ring、网络协议、MRD session、gateway、Connector、PACS/DICOM 路由或采集端流控。
+- 输入语义仅是标准 ISMRMRD：当前为 HDF5；reader/recon 必须发现并选择语义有效的标准 container，不能把 `/dataset` 或任何 `ksj_*` group 当作必需路径。未来外部增量输入只能经已选公开 Gateway Profile 规范化为相同语义，或由同进程宿主提交。
+- 它不拥有扫描仪、采集卡、FPGA、DMA、PCIe/QDMA、内核驱动、设备 ring、厂商网络协议、设备 MRD session、Connector vendor SDK、PACS/DICOM 路由或采集端流控。ksj-gateway 只处理 P5-009 冻结的公开 profile。
 - 它不设框架级通道数上限。`channel_count` 是 ISMRMRD 数据形状，不是准入阈值；256、512 或更大的 case 都必须走同一 generic path。真实字节、设备内存或计算预算不足时，只能返回可审计的本地资源失败。
 - Provider 负责算法，framework 负责 ISMRMRD 校验、数据所有权、frame/completion、plan、资源账本、执行、结果 artifact 与可追溯性。Provider 的算法限制必须写入自己的 contract，不能变成 framework 输入限制。
-- 输出可以是标准 image artifact、本地 writer 或同进程 callback；不负责外部影像系统或站点工作流。
+- 输出可以是标准 image artifact、本地 writer、同进程 callback，或已选 Gateway Profile 的受限外部交付；正式磁盘结果只使用标准 ISMRMRD `image_x` series，不定义私有 reconstruction/debug/meta group。作者化 PipelineDefinition 保持为独立 JSON；未来若确需文件内 pipeline material，只能另行定义可选 `/ksj_pipeline`，且不能破坏/替换标准 image artifact；不负责外部影像系统或站点工作流。
 
 ### 17.2 十年内稳定的语义与可替换的实现
 
 | 层 | 需要长期稳定的语义 | 必须保持可替换的实现 |
 | --- | --- | --- |
-| ISMRMRD 边界 | ISMRMRD 字段解释、结构/语义校验、ownership、completion、terminal mapping | HDF5 reader、未来 in-process feed adapter、缓存布局 |
+| ISMRMRD 边界 | ISMRMRD 字段解释、结构/语义校验、ownership、completion、terminal mapping | HDF5 reader、未来 in-process feed/Gateway Profile normalizer、缓存布局 |
+| Gateway 外部边界 | 单一公开 profile、身份/route、连接/scan/run 分层、header-first admission、资源与终态映射 | TLS/network stack、profile codec、Connector 实现、部署拓扑、egress adapter |
 | MRI semantic core | ScanDescriptor、classification、key、calibration、duplicate/missing/incomplete 和 image order 规则 | FrameSlot 内部字段、bitmap、index 和缓存算法 |
 | Pipeline 与类型 | PipelineDefinition 的逻辑语义、TypeRef identity、Provider contract、terminal/partial 明示规则 | compiler pass、fusion、batch、queue、scheduler 与 C++ 类布局 |
 | Runtime 安全 | host resource ledger、FiringLease、OutputGrant、取消、终态、原子提交 | allocator、thread pool、NUMA 策略、GPU stream/event 实现 |
@@ -1189,7 +1450,7 @@ KSpaceJet 是 ISMRMRD 重建框架，不是采集或传输系统。
 | Horizon | 时间 | 目标与产物 | 进入/退出门禁 | 明确不承诺 |
 | --- | --- | --- | --- | --- |
 | H0 Foundation | 0–18 个月 | P0–P4：可复现 HDF5 reference、generic bounded CPU runtime、artifact/verifier、Provider SDK、质量与供应链基线。 | Linux/Windows 可构建；Cartesian/non-Cartesian reference 的 golden、异常、取消、RunRecord 和资源证据；独立 Provider conformance。 | 采集集成、网络服务、固定通道上限、GPU 默认路径、临床宣称。 |
-| H1 Embedded runtime | 18–36 个月 | 仅在真实嵌入需求下激活 P5：同进程 ISMRMRD feed、local run API、HDF5/feed 等价性。 | H0 离线语义已 ACCEPTED；ownership/terminal/resource contract 完整；没有 socket 或 source-control 依赖。 | session、gateway、Connector、任何 upstream pause/credit/retry。 |
+| H1 Gateway and embedded runtime | 18–36 个月 | P5：一个公开 Gateway Profile 的安全有界集成，以及可选的同进程 ISMRMRD feed/local run/HDF5 equivalence。 | H0 离线语义已 ACCEPTED；Gateway Profile、security/deployment policy、ownership/terminal/resource contract 和 conformance 已冻结。 | 厂商采集控制、私有协议、未批准的 upstream pause/credit/retry、临床宣称。 |
 | H2 Platform candidate | 3–5 年 | 经过外部使用验证的 Provider SDK、worker isolation、DevicePlan/GPU experiment、任意 channel-count case 的质量与性能证据。 | 两个独立 Provider 或嵌入宿主；clean-machine 支持矩阵；CPU oracle、fault/soak、SBOM 与 ABI/conformance gate。 | 把任意测试 case 宣称为采集能力或医疗产品。 |
 | H3 LTS and ecosystem | 5–7 年 | LTS 分支、Provider capability/conformance registry、签名与供应链、后端可移植性、可复现 benchmark。 | 多个独立使用者与维护者；安全响应、回归、升级与外部复现实验持续通过。 | 插件市场、云控制面、分布式采集系统。 |
 | H4 Sustainable infrastructure | 7–10 年 | 可持续开源核心、长期 evidence archive、硬件换代路径、独立治理与受监管产品的明确分界。 | 非单一维护者可发布、验证、响应漏洞和维护 LTS。 | 框架自动成为扫描仪、采集系统或受监管诊断产品。 |
@@ -1243,7 +1504,7 @@ KSpaceJet 是 ISMRMRD 重建框架，不是采集或传输系统。
 
 | 风险 | 早期信号 | 强制止损 |
 | --- | --- | --- |
-| 范围膨胀为采集/服务项目 | 出现 socket、gateway、device driver、ACK/credit 或 scanner task | 停止工作项，标记 BLOCKED，并要求单独外部项目授权。 |
+| 范围膨胀为采集/不可审计服务 | gateway 之外出现厂商协议、device driver、私有 ACK/credit、未选 profile、raw spool 或 scanner task | 停止对应工作项；保留 P5 网关边界，要求新的 owner/policy/acceptance 后再继续。 |
 | 偷偷加入通道上限 | parser/CLI/plan 中出现 count threshold | 阻止合并；恢复 generic dimension 与 bytes/work resource accounting。 |
 | 过早冻结 ABI | 只有仓内 Provider 就要求长期兼容 | 保持 pre-release direct replacement，先完成独立使用 conformance。 |
 | GPU/AI 绑死核心 | vendor 类型进入公共语义或无 CPU oracle | 降级为 experiment；不通过证据不进入 default path。 |

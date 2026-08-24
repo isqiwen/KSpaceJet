@@ -8,6 +8,7 @@ project_kit_add_test(
   "$<TARGET_FILE:ksj_gateway>"
   "$<TARGET_FILE:ksj_recon>"
   "$<TARGET_FILE:ksj_research>"
+  "$<TARGET_FILE:ksj_viewer>"
   LABELS
   app
   cli

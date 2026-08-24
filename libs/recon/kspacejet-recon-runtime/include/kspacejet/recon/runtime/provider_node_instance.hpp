@@ -24,9 +24,10 @@ struct ProviderNodeKeyStateIdentity {
   std::uint64_t home_shard{0U};
 };
 
-// The facts passed to operator_on_start.  They are explicit rather than
-// reconstructed by the runtime so a scan driver cannot accidentally start a
-// node with identities from a different admitted scan.
+// The facts passed to operator_on_start.  They carry the frozen ExecutionPlan
+// and normalized ScanFacts identities explicitly rather than reconstructing
+// either in the runtime, so a scan driver cannot accidentally start a node
+// with identities from a different admitted scan.
 struct ProviderNodeStartFacts {
   ArtifactDigest normalized_scan_facts_digest;
   ArtifactDigest execution_plan_digest;

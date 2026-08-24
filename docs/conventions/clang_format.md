@@ -11,8 +11,8 @@ clang-format --dry-run --Werror <files>
 格式检查脚本入口：
 
 ```text
-tools/devenv/linux/run.sh just format-staged
-tools/devenv/linux/run.sh just pre-commit
+just format-staged
+just pre-commit
 ```
 
 ## 适用范围
@@ -461,13 +461,13 @@ void run() {
 检查暂存文件：
 
 ```bash
-tools/devenv/linux/run.sh just format-staged
+just format-staged
 ```
 
 检查全仓非 legacy 范围：
 
 ```bash
-tools/devenv/linux/run.sh just format-all
+just format-all
 ```
 
 只格式化一个文件：

@@ -145,6 +145,7 @@ struct FrameSemanticKey {
   std::uint16_t set{0};
   std::uint16_t phase{0};
   std::uint16_t average{0};
+  std::uint16_t segment{0};
 
   [[nodiscard]] friend constexpr bool operator==(const FrameSemanticKey&, const FrameSemanticKey&) noexcept = default;
 };

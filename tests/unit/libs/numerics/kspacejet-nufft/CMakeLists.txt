@@ -4,6 +4,7 @@ ksj_add_gtest(
   numerics.kspacejet-nufft
   SOURCES
   nufft_tests.cpp
+  radial_gridding_tests.cpp
   LINK_LIBS
   KSpaceJet::nufft
   LABELS

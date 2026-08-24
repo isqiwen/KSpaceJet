@@ -7,6 +7,9 @@ KSpaceJet 是预发布的开源 C++20 MRI 重建框架。它以
 
 当前工作项、阶段进度、验收证据和外部阻塞项均在唯一的
 [KSpaceJet 主实施计划](docs/architecture/KSpaceJet_project_plan_and_acceptance.md) 中追踪。
+用户已确定 ksj-gateway 将成为唯一的外部集成边界；其候选稳定设计见
+[网关架构](docs/architecture/KSpaceJet_gateway_architecture.md)。当前可执行文件仍是 scaffold，
+尚未提供 listener、TLS、认证、公开 profile 或在线服务能力。
 
 ## 必需的双仓库数据工作区
 
@@ -26,7 +29,7 @@ KSpaceJet 内的 symlink。数据相关命令应显式传入 sibling 数据仓�
 后，可运行以下离线检查；Linux/Windows pre-commit 也会自动执行它：
 
 ```bash
-tools/devenv/linux/run.sh just workspace-check
+just workspace-check
 ```
 
 该检查只验证同级布局、数据仓库 identity/结构和 KSpaceJet 中不存在 raw payload；它不下载
@@ -49,10 +52,10 @@ tools/devenv/linux/run.sh just workspace-check
 - `libs/numerics`：数组、FFT、线性代数、图像、稀疏和优化原语。
 - `libs/core`：内存、线程、日志、平台和进程基础设施。
 - `libs/mri/kspacejet-mri-debug`：与具体重建 provider 无关的 MRI 数据诊断工具。
-- `apps`：统一命名的四个应用工程：`ksj`、`ksj-gateway`、`ksj-recon` 和
-  `ksj-research`；四者均默认构建并安装。当前 `ksj` 提供 pipeline validation 和
+- `apps`：统一命名的五个应用工程：`ksj`、`ksj-gateway`、`ksj-recon`、
+  `ksj-research` 和 `ksj-viewer`；五者均默认构建并安装。当前 `ksj` 提供 pipeline validation 和
   Provider scaffold 工具，`ksj-recon` 提供离线 HDF5 reference route；`ksj-gateway`
-  与 `ksj-research` 是已安装但操作尚未实现的 scaffold。具体边界见
+  是计划中的唯一外部集成入口、当前仍为未实现 scaffold，`ksj-research` 也仍为 scaffold。具体边界见
   [apps/README.md](apps/README.md)。
 
 ## 构建
@@ -60,16 +63,15 @@ tools/devenv/linux/run.sh just workspace-check
 ### 首次准备开发工具
 
 先准备项目级开发工具环境，再使用 VS Code 或命令行构建。Linux x86_64 的宿主机需要
-Git、Git LFS，以及默认的 GCC/G++ 14；Windows x86_64 的宿主机需要 Git、Git LFS、
-Visual Studio 2022 的 v143 C++ 工具和 Windows SDK。这些与操作系统/SDK 集成的工具保留在
+Git、Git LFS，以及默认的 GCC/G++ 14；Linux bootstrap 会通过 `apt` 确保安装 `just`。Windows x86_64
+的宿主机需要 Git、Git LFS、Visual Studio 2022 的 v143 C++ 工具和 Windows SDK；若未安装 `just`，Windows
+bootstrap 会通过 `winget` 安装它。这些与操作系统/SDK 集成的工具保留在
 宿主机上；Conan、CMake、Ninja、`clang-format` 和 `cmake-format` 由固定版本的 `uv` 环境
-安装到本仓库，`just` 则作为独立、校验过的 native artifact 安装在 `.kspacejet/`。两者都
-不会修改全局 Python、shell `PATH` 或系统级 `just`。
+安装到本仓库，不会修改全局 Python 或 shell `PATH`。
 
 Linux 首次 bootstrap 还需要普通的宿主下载/解包工具：`curl` 或 `wget`、`tar`、`sha256sum` 或
 `shasum`。Linux 的 VS Code 调试另需宿主 `gdb`；仅 `linux-release-static-analysis` 需要宿主
-`clang++`。这些都不影响普通构建。首次 bootstrap 是唯一直接调用平台脚本的步骤，因为它负责
-安装项目锁定的 `just`。
+`clang++`。这些都不影响普通构建。
 
 Linux：
 
@@ -83,29 +85,29 @@ Windows PowerShell：
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 ```
 
-完成 bootstrap 后，日常命令全部经过根 `justfile`，Linux 与 Windows 使用相同的 recipe 名称：
+完成 bootstrap 后，日常命令直接经过根 `justfile`，Linux 与 Windows 使用相同的 recipe 名称：
 
 ```bash
-tools/devenv/linux/run.sh just prepare-release
-tools/devenv/linux/run.sh just build-release-applications
-tools/devenv/linux/run.sh just install-release-applications
-tools/devenv/linux/run.sh just check
-tools/devenv/linux/run.sh just workspace-check
+just prepare-release
+just build-release-applications
+just install-release-applications
+just check
+just workspace-check
 ```
 
 ```powershell
-.\tools\devenv\windows\run.ps1 just prepare-release
-.\tools\devenv\windows\run.ps1 just build-release-applications
-.\tools\devenv\windows\run.ps1 just install-release-applications
-.\tools\devenv\windows\run.ps1 just check
-.\tools\devenv\windows\run.ps1 just workspace-check
+just prepare-release
+just build-release-applications
+just install-release-applications
+just check
+just workspace-check
 ```
 
 `prepare-debug` / `prepare-release` 自动选择对应的 Conan profile、Intel payload 验证与 CMake preset；
 `build-*-applications` 和 `install-*-applications` 保持纯增量，不会隐式重新 prepare。使用
-`tools/devenv/linux/run.sh just --list` 或 Windows 等价命令查看所有 recipes。对尚未提供 recipe
-的低层诊断，仍可通过 platform runner 直接调用项目锁定的工具；不要依赖系统 PATH 中的 `just`、
-`conan`、`cmake` 或格式化工具。完整的工具归属、离线验证和维护规则见
+`just --list` 查看所有 recipes。对尚未提供 recipe 的低层诊断，仍可通过 platform runner
+直接调用项目锁定的工具；`just` 是宿主机工具，`conan`、`cmake` 或格式化工具仍不得依赖系统 PATH。
+完整的工具归属、离线验证和维护规则见
 [开发环境说明](tools/devenv/README.md)。
 
 Intel payload 位于 `third_party/intel/payload/`，由 Git LFS 管理。发布前执行
@@ -132,11 +134,12 @@ PIC。不要在 KSpaceJet 构建中以 `*:shared=False` 覆盖此策略。
 才需要重新运行准备任务。
 
 日常修改 C++ 源码后，运行对应的 `KSJ: build … applications` 任务即可。它只执行 CMake
-增量构建，并构建四个可执行程序：`ksj`、`ksj-gateway`、`ksj-recon` 和 `ksj-research`；不会
+增量构建，并构建五个可执行程序：`ksj`、`ksj-gateway`、`ksj-recon`、`ksj-research` 和
+`ksj-viewer`；不会
 重新 export、下载/解析 Conan 依赖或 configure。F5 的调试前构建也遵循同一规则，不会自动准备
 环境。若尚未准备该配置，先运行匹配的 `KSJ: prepare … environment`。
 
-要安装四个已构建的程序，运行对应的可见安装任务。每个安装任务只依赖同一平台和配置的
+要安装五个已构建的程序，运行对应的可见安装任务。每个安装任务只依赖同一平台和配置的
 `KSJ: build … applications` 增量构建任务，不会运行 prepare、Conan export/install 或 CMake
 configure：
 

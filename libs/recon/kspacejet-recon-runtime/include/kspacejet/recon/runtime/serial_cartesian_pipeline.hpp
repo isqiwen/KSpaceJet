@@ -5,6 +5,7 @@
 #include "kspacejet/recon/planning_inputs.hpp"
 #include "kspacejet/recon/runtime/acquisition_classification.hpp"
 #include "kspacejet/recon/runtime/cartesian_frame_slot.hpp"
+#include "kspacejet/recon/runtime/ismrmrd_semantic_ingress.hpp"
 #include "kspacejet/recon/runtime/scan_lifecycle.hpp"
 
 #include <array>
@@ -19,17 +20,6 @@ namespace ksj::recon::runtime {
 
 inline constexpr std::size_t kSerialCartesianAcquisitionLaneCount =
   static_cast<std::size_t>(AcquisitionLane::ignored_explicitly) + 1U;
-
-// Facts observed at host-owned ISMRMRD input materialization. These values are
-// vendor-free so every supported input path can present the same runtime
-// boundary. `complete` distinguishes a real zero-valued field from an input
-// path that did not obtain acquisition header facts at all.
-struct NormalizedAcquisitionIngressFacts {
-  std::uint64_t samples_per_acquisition{0};
-  std::uint64_t active_channels{0};
-  std::uint64_t trajectory_dimensions{0};
-  bool complete{false};
-};
 
 // A normalized Cartesian acquisition is an in-process runtime value, not a
 // wire message. An HDF5 reader or future in-process host adapter decodes its
@@ -182,6 +172,7 @@ public:
   [[nodiscard]] ksj::base::Status fail(ksj::base::Status cause);
 
   [[nodiscard]] SerialCartesianPipelineSnapshot snapshot() const;
+  [[nodiscard]] const AcquisitionClassifier& acquisition_classifier() const noexcept;
   [[nodiscard]] const std::vector<ExplicitlyIgnoredAcquisitionRecord>& explicitly_ignored_records() const noexcept;
   [[nodiscard]] const std::vector<SerialFrameTerminalRecord>& terminal_frame_records() const noexcept;
 

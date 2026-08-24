@@ -62,16 +62,17 @@ DISPLAY_STATUS_ORDER = (
     "NOT_APPLICABLE",
     "SUPERSEDED",
 )
-PHASES = tuple(f"P{number}" for number in range(8))
+PHASES = tuple(f"P{number}" for number in range(9))
 PHASE_NAMES = {
     "P0": "规范、基线和工程治理",
     "P1": "可信离线 reference 基线",
     "P2": "图、artifact、compiler、verifier 和 CLI 计划工具",
     "P3": "有界 generic CPU runtime",
     "P4": "Provider 产品化",
-    "P5": "可选进程内 ISMRMRD feed 与宿主 API",
+    "P5": "外部集成网关与可选嵌入 ISMRMRD ingress",
     "P6": "并行、NUMA、GPU 与性能",
     "P7": "Qualification、CI、安装、供应链和发布",
+    "P8": "离线可视化与检查工具",
 }
 
 SECTION_HEADING_PATTERN = re.compile(r"^##[ \t]+12\.(?:[ \t]+.*)?$")
@@ -81,14 +82,14 @@ TASK_ROW_PATTERN = re.compile(
     r"^[ \t]*\|[ \t]*(?P<identifier>P(?P<phase>[0-9]+)-(?P<number>[0-9]{3}))"
     r"[ \t]*\|[ \t]*(?P<status>[^|]*)[ \t]*\|"
 )
-DEPENDENCY_ID_PATTERN = re.compile(r"P[0-7]-[0-9]{3}")
+DEPENDENCY_ID_PATTERN = re.compile(r"P[0-8]-[0-9]{3}")
 DEPENDENCY_RANGE_PATTERN = re.compile(
-    r"P(?P<phase>[0-7])-(?P<first>[0-9]{3})[ \t]*至[ \t]*"
+    r"P(?P<phase>[0-8])-(?P<first>[0-9]{3})[ \t]*至[ \t]*"
     r"P(?P=phase)-(?P<last>[0-9]{3})"
 )
 EVIDENCE_HEADING_PATTERN = re.compile(
     r"^###[ \t]+(?P<section>13[.][0-9]+)[ \t]+"
-    r"(?P<identifier>P[0-7]-[0-9]{3})[ \t]+"
+    r"(?P<identifier>P[0-8]-[0-9]{3})[ \t]+"
     r"(?P<status>ACCEPTED|BLOCKED|REOPENED)[ \t]+证据[ \t]*$"
 )
 LEDGER_DATE_PATTERN = re.compile(
@@ -375,7 +376,7 @@ def parse_ledger(path: Path) -> tuple[ParsedLedger | None, tuple[Diagnostic, ...
             diagnostics.append(
                 Diagnostic(
                     path,
-                    f"{identifier} is outside supported phases P0 through P7",
+                    f"{identifier} is outside supported phases P0 through P8",
                     task.line,
                 )
             )

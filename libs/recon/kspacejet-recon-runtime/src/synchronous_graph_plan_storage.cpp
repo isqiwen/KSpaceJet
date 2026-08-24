@@ -226,6 +226,7 @@ DataItemIdentity make_data_item_identity(const FrameSlotContext& context, const 
   mix_u16(context.semantic_key.set);
   mix_u16(context.semantic_key.phase);
   mix_u16(context.semantic_key.average);
+  mix_u16(context.semantic_key.segment);
   return {.semantic_key_hash = hash, .order_key = context.order_key, .item_ordinal = item_ordinal};
 }
 

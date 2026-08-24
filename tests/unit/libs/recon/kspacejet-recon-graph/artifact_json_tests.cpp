@@ -49,9 +49,10 @@ constexpr ksj::recon::Quantity kDataEdgeControlBytes = 128U;
 
   ExecutionPlanSpec specification{
     .inputs = {.resolved_pipeline = "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-               .scan_descriptor = "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-               .target_envelope = "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-               .machine_policy = "sha256:4444444444444444444444444444444444444444444444444444444444444444"},
+               .scan_facts = "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+               .effective_pipeline_binding = "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+               .target_envelope = "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+               .machine_policy = "sha256:5555555555555555555555555555555555555555555555555555555555555555"},
     .operator_plan_bindings = {{
       .node_id = "process",
       .canonical_config_digest = "sha256:6666666666666666666666666666666666666666666666666666666666666666",
@@ -213,7 +214,7 @@ TEST(KSpaceJetReconGraphArtifactJson, SerializesGenericSynchronousPlanAsStableDe
   EXPECT_EQ(std::string::npos, first.value().find("operator_contract_digest"));
   EXPECT_EQ(std::string::npos, first.value().find("operator_contract_digests"));
 
-  const auto preimage_digest = ksj::recon::graph::domain_separated_sha256_digest(
+  const auto preimage_digest = ksj::recon::derive_domain_separated_sha256_digest(
     "kspacejet:artifact:execution-plan", first.value(), "test ExecutionPlan preimage");
   ASSERT_TRUE(preimage_digest.ok()) << preimage_digest.status();
   const auto same_payload_new_identity =
@@ -238,7 +239,7 @@ TEST(KSpaceJetReconGraphArtifactJson, SerializesVerificationRecordAsStableDetach
   EXPECT_EQ(first.value(), second.value());
   EXPECT_EQ(std::string::npos, first.value().find(record.value().digest().value()));
 
-  const auto preimage_digest = ksj::recon::graph::domain_separated_sha256_digest(
+  const auto preimage_digest = ksj::recon::derive_domain_separated_sha256_digest(
     "kspacejet:artifact:verification-record", first.value(), "test VerificationRecord preimage");
   ASSERT_TRUE(preimage_digest.ok()) << preimage_digest.status();
   const auto same_payload_new_identity =

@@ -1,16 +1,18 @@
 ksj_include_project_bootstrap()
 
 find_package(ISMRMRD CONFIG REQUIRED)
+find_package(HDF5 CONFIG REQUIRED)
 
 set(PROJ_NAME ksj_ismrmrd)
 
-add_library(${PROJ_NAME} SHARED "${CMAKE_CURRENT_LIST_DIR}/src/dataset_reader.cpp")
+add_library(${PROJ_NAME} SHARED "${CMAKE_CURRENT_LIST_DIR}/src/dataset_reader.cpp"
+                                "${CMAKE_CURRENT_LIST_DIR}/src/inspection_reader.cpp")
 add_library(KSpaceJet::ismrmrd ALIAS ${PROJ_NAME})
 
 target_compile_features(${PROJ_NAME} PUBLIC cxx_std_20)
 target_include_directories(${PROJ_NAME} PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
 target_link_libraries(${PROJ_NAME} PRIVATE KSpaceJet::compile_options KSpaceJet::shared_library_link_options
-                                           ISMRMRD::ISMRMRD)
+                                           ISMRMRD::ISMRMRD hdf5::hdf5)
 
 set_target_properties(
   ${PROJ_NAME}
@@ -25,3 +27,7 @@ endif()
 
 ksj_set_library_runtime_path(${PROJ_NAME})
 ksj_install_target(${PROJ_NAME})
+
+if(KSJ_ENABLE_INSTALL_RULES)
+  install(DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+endif()

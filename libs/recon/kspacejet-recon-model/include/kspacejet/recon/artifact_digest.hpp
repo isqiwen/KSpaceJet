@@ -13,6 +13,11 @@ namespace ksj::recon {
 // from every enclosing PipelineDefinition and ExecutionPlan artifact.
 inline constexpr std::string_view kOperatorConfigDigestDomain = "kspacejet:artifact:operator-config";
 
+// A Provider contract is a separately owned immutable interface artifact. Its
+// identity is distinct from a node configuration and from a ResolvedPipeline:
+// the latter attests the exact contract selected for each authored node.
+inline constexpr std::string_view kOperatorContractDigestDomain = "kspacejet:artifact:operator-contract";
+
 // A detached, lower-case sha256 identity used by immutable control-plane
 // artifacts and ABI descriptors. It deliberately lives in its own header:
 // a TypeDescriptor is frozen into an execution plan, while a descriptor also
@@ -30,6 +35,13 @@ private:
 
   std::string value_;
 };
+
+// Derive a detached SHA-256 identity from bytes that have already been
+// canonicalized by the owning artifact model.  The NUL-delimited domain keeps
+// independently-owned artifact kinds from sharing a digest namespace.
+[[nodiscard]] Result<ArtifactDigest>
+derive_domain_separated_sha256_digest(std::string_view domain, std::string_view canonical_document,
+                                      std::string_view field_name = "artifact digest");
 
 // Derive the immutable identity of already-canonical JSON configuration bytes.
 // Callers that accept authored JSON must canonicalize it before invoking this

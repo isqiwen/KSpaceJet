@@ -7,6 +7,7 @@
   "required": [
     "kind",
     "pipeline",
+    "input_profile",
     "allowed_profiles",
     "parameters",
     "provider_requirements",
@@ -25,6 +26,9 @@
     "pipeline": {
       "$ref": "#/$defs/pipelineIdentity"
     },
+    "input_profile": {
+      "$ref": "#/$defs/inputProfile"
+    },
     "allowed_profiles": {
       "type": "array",
       "minItems": 1,
@@ -34,7 +38,7 @@
       }
     },
     "parameters": {
-      "$ref": "#/$defs/authoredObject"
+      "$ref": "#/$defs/parameterDefinitions"
     },
     "provider_requirements": {
       "type": "array",
@@ -119,6 +123,127 @@
       },
       "additionalProperties": false
     },
+    "inputProfile": {
+      "type": "object",
+      "required": [
+        "kind",
+        "dataset_group"
+      ],
+      "properties": {
+        "kind": {
+          "const": "ismrmrd-hdf5"
+        },
+        "dataset_group": {
+          "const": "dataset"
+        }
+      },
+      "additionalProperties": false
+    },
+    "parameterDefinitions": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/parameterDefinition"
+      }
+    },
+    "parameterDefinition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "default"
+          ],
+          "properties": {
+            "type": {
+              "const": "boolean"
+            },
+            "default": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "minimum",
+            "maximum",
+            "default"
+          ],
+          "properties": {
+            "type": {
+              "const": "integer"
+            },
+            "minimum": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "maximum": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "default": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "default"
+          ],
+          "properties": {
+            "type": {
+              "const": "string"
+            },
+            "default": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "values",
+            "default"
+          ],
+          "properties": {
+            "type": {
+              "const": "enum"
+            },
+            "values": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "default": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "providerRequirement": {
       "type": "object",
       "required": [
@@ -166,10 +291,133 @@
           "$ref": "#/$defs/operatorReference"
         },
         "config": {
-          "$ref": "#/$defs/authoredObject"
+          "$ref": "#/$defs/nodeConfigObject"
+        },
+        "scan_fact_bindings": {
+          "$ref": "#/$defs/scanFactBindings"
         }
       },
       "additionalProperties": false
+    },
+    "parameterReference": {
+      "type": "object",
+      "required": [
+        "$param"
+      ],
+      "properties": {
+        "$param": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "nodeConfigValue": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeConfigValue"
+          }
+        },
+        {
+          "$ref": "#/$defs/nodeConfigObject"
+        },
+        {
+          "$ref": "#/$defs/parameterReference"
+        }
+      ]
+    },
+    "nodeConfigObject": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/authoredObject"
+        }
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "$param"
+            ]
+          },
+          {
+            "required": [
+              "$scan_fact"
+            ]
+          }
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/nodeConfigValue"
+      }
+    },
+    "scanFactBindings": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/scanFactBinding"
+      }
+    },
+    "scanFactBinding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "$scan_fact"
+          ],
+          "properties": {
+            "$scan_fact": {
+              "enum": [
+                "acquisition_count",
+                "physical_channel_count",
+                "maximum_samples_per_acquisition",
+                "trajectory_dimensions"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "$scan_fact",
+            "encoding"
+          ],
+          "properties": {
+            "$scan_fact": {
+              "enum": [
+                "encoded_matrix_x",
+                "encoded_matrix_y",
+                "encoded_matrix_z",
+                "recon_matrix_x",
+                "recon_matrix_y",
+                "recon_matrix_z"
+              ]
+            },
+            "encoding": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "nodePortReference": {
       "type": "object",
@@ -340,6 +588,38 @@
     },
     "authoredObject": {
       "type": "object",
+      "propertyNames": {
+        "not": {
+          "anyOf": [
+            {
+              "enum": [
+                "path",
+                "file",
+                "directory",
+                "uri",
+                "url",
+                "bundle",
+                "bundle_digest",
+                "catalog",
+                "command",
+                "contract",
+                "dll",
+                "environment",
+                "executable",
+                "library",
+                "manifest",
+                "module",
+                "script",
+                "shared_library",
+                "shell"
+              ]
+            },
+            {
+              "pattern": ".+_(path|file|directory|uri|url)$"
+            }
+          ]
+        }
+      },
       "not": {
         "anyOf": [
           {
@@ -450,6 +730,201 @@
           {
             "required": [
               "memory_reservation"
+            ]
+          },
+          {
+            "required": [
+              "allocator"
+            ]
+          },
+          {
+            "required": [
+              "cpu_permits"
+            ]
+          },
+          {
+            "required": [
+              "device_bytes"
+            ]
+          },
+          {
+            "required": [
+              "memory_bytes"
+            ]
+          },
+          {
+            "required": [
+              "memory_limit"
+            ]
+          },
+          {
+            "required": [
+              "queue_items"
+            ]
+          },
+          {
+            "required": [
+              "scheduler"
+            ]
+          },
+          {
+            "required": [
+              "thread_affinity"
+            ]
+          },
+          {
+            "required": [
+              "thread_count"
+            ]
+          },
+          {
+            "required": [
+              "acquisition_count"
+            ]
+          },
+          {
+            "required": [
+              "channel_count"
+            ]
+          },
+          {
+            "required": [
+              "channels"
+            ]
+          },
+          {
+            "required": [
+              "coil_count"
+            ]
+          },
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "encoded_columns"
+            ]
+          },
+          {
+            "required": [
+              "encoded_matrix"
+            ]
+          },
+          {
+            "required": [
+              "encoded_rows"
+            ]
+          },
+          {
+            "required": [
+              "encoding_count"
+            ]
+          },
+          {
+            "required": [
+              "field_of_view"
+            ]
+          },
+          {
+            "required": [
+              "fov"
+            ]
+          },
+          {
+            "required": [
+              "image_columns"
+            ]
+          },
+          {
+            "required": [
+              "image_rows"
+            ]
+          },
+          {
+            "required": [
+              "matrix"
+            ]
+          },
+          {
+            "required": [
+              "matrix_columns"
+            ]
+          },
+          {
+            "required": [
+              "matrix_rows"
+            ]
+          },
+          {
+            "required": [
+              "matrix_size"
+            ]
+          },
+          {
+            "required": [
+              "maximum_samples_per_acquisition"
+            ]
+          },
+          {
+            "required": [
+              "physical_channel_count"
+            ]
+          },
+          {
+            "required": [
+              "readout_samples"
+            ]
+          },
+          {
+            "required": [
+              "recon_columns"
+            ]
+          },
+          {
+            "required": [
+              "recon_rows"
+            ]
+          },
+          {
+            "required": [
+              "reconstruction_columns"
+            ]
+          },
+          {
+            "required": [
+              "reconstruction_rows"
+            ]
+          },
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "sample_count"
+            ]
+          },
+          {
+            "required": [
+              "samples_per_acquisition"
+            ]
+          },
+          {
+            "required": [
+              "scan_descriptor"
+            ]
+          },
+          {
+            "required": [
+              "trajectory_dimension"
+            ]
+          },
+          {
+            "required": [
+              "trajectory_dimensions"
             ]
           }
         ]

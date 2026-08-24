@@ -122,6 +122,15 @@ inline constexpr JsonParseLimits kRecordJsonParseLimits{
   return value;
 }
 
+[[nodiscard]] Result<ArtifactDigest> require_artifact_digest(const Json& object, const std::string_view name,
+                                                             const std::string_view path) {
+  auto value = require_string(object, name, path);
+  if (!value.ok()) {
+    return value.status();
+  }
+  return ArtifactDigest::parse(value.value(), child_path(path, name));
+}
+
 [[nodiscard]] Result<std::optional<std::string>> optional_string(const Json& object, const std::string_view name,
                                                                  const std::string_view path) {
   if (!object.contains(std::string(name))) {
@@ -717,6 +726,102 @@ private:
 }
 
 } // namespace
+
+Result<std::string> serialize_scan_facts_canonical_json(const ScanFacts& facts) {
+  return facts.canonical_json();
+}
+
+Result<ScanFacts> parse_scan_facts_json(const std::string_view document, ScanDescriptor descriptor,
+                                        const std::string_view source_xml, const ArtifactDigest& expected_digest) {
+  auto root = parse_bounded_json(document);
+  if (!root.ok()) {
+    return root.status();
+  }
+  const auto root_status =
+    validate_object_members(root.value(), "$",
+                            {"kind", "scan_descriptor_digest", "source_xml_digest", "acquisition_count",
+                             "physical_channel_count", "maximum_samples_per_acquisition", "trajectory_dimensions"},
+                            {"$schema", "kind", "scan_descriptor_digest", "source_xml_digest", "acquisition_count",
+                             "physical_channel_count", "maximum_samples_per_acquisition", "trajectory_dimensions"});
+  if (!root_status.ok()) {
+    return root_status;
+  }
+
+  const bool has_schema_declaration = root.value().contains("$schema");
+  if (has_schema_declaration) {
+    auto schema = require_string(root.value(), "$schema", "$");
+    if (!schema.ok()) {
+      return schema.status();
+    }
+    if (schema.value() != kJsonSchemaDraft202012) {
+      return validation_error("$.$schema", "must equal the JSON Schema 2020-12 URI when present");
+    }
+    root.value().erase("$schema");
+  }
+
+  auto kind = require_string(root.value(), "kind", "$");
+  auto descriptor_digest = require_artifact_digest(root.value(), "scan_descriptor_digest", "$");
+  auto source_digest = require_artifact_digest(root.value(), "source_xml_digest", "$");
+  auto acquisition_count = require_quantity(root.value(), "acquisition_count", "$");
+  auto physical_channel_count = require_quantity(root.value(), "physical_channel_count", "$");
+  auto maximum_samples = require_quantity(root.value(), "maximum_samples_per_acquisition", "$");
+  auto trajectory_dimensions = require_quantity(root.value(), "trajectory_dimensions", "$");
+  if (!kind.ok()) {
+    return kind.status();
+  }
+  if (!descriptor_digest.ok()) {
+    return descriptor_digest.status();
+  }
+  if (!source_digest.ok()) {
+    return source_digest.status();
+  }
+  if (!acquisition_count.ok()) {
+    return acquisition_count.status();
+  }
+  if (!physical_channel_count.ok()) {
+    return physical_channel_count.status();
+  }
+  if (!maximum_samples.ok()) {
+    return maximum_samples.status();
+  }
+  if (!trajectory_dimensions.ok()) {
+    return trajectory_dimensions.status();
+  }
+  if (kind.value() != "ScanFacts") {
+    return validation_error("$.kind", "must equal 'ScanFacts'");
+  }
+
+  auto canonical_document = serialize_canonical_json(root.value());
+  if (!canonical_document.ok()) {
+    return canonical_document.status();
+  }
+  if (!has_schema_declaration && canonical_document.value() != document) {
+    return validation_error("$", "must use the exact current canonical JSON encoding");
+  }
+
+  auto facts = ScanFacts::create({.descriptor = std::move(descriptor),
+                                  .source_xml = std::string(source_xml),
+                                  .acquisition_count = acquisition_count.value(),
+                                  .physical_channel_count = physical_channel_count.value(),
+                                  .maximum_samples_per_acquisition = maximum_samples.value(),
+                                  .trajectory_dimensions = trajectory_dimensions.value()});
+  if (!facts.ok()) {
+    return facts.status();
+  }
+  if (facts.value().scan_descriptor_digest() != descriptor_digest.value()) {
+    return validation_error("$.scan_descriptor_digest", "does not match the runtime-owned ScanDescriptor");
+  }
+  if (facts.value().source_xml_digest() != source_digest.value()) {
+    return validation_error("$.source_xml_digest", "does not match the runtime-owned ISMRMRD source XML");
+  }
+  if (facts.value().canonical_json() != canonical_document.value()) {
+    return validation_error("$", "does not match the supplied runtime-owned ScanFacts inputs");
+  }
+  if (facts.value().digest() != expected_digest) {
+    return validation_error("$", "does not match the expected detached ScanFacts digest");
+  }
+  return std::move(facts).value();
+}
 
 Result<std::string> serialize_admission_record_canonical_json(const AdmissionRecord& record) {
   Json value{{"kind", "AdmissionRecord"},

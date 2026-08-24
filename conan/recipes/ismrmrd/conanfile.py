@@ -18,7 +18,7 @@ class IsmrmrdConan(ConanFile):
 
     def requirements(self):
         # Match matio's HDF5 version so the KSpaceJet graph has a single HDF5 ABI.
-        self.requires("hdf5/1.14.6", transitive_headers=True)
+        self.requires("hdf5/1.14.6", transitive_headers=True, transitive_libs=True)
         self.requires("pugixml/1.16")
 
     def layout(self):

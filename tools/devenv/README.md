@@ -1,8 +1,8 @@
 # KSpaceJet developer environment
 
 This directory provisions the repository's development tools reproducibly on Linux x86_64 and
-Windows x86_64. It does not install anything with `sudo`, `apt`, `dnf`, `yum`, `winget`, or a
-machine-wide Python package manager.
+Windows x86_64. Linux bootstrap uses `sudo apt-get` to ensure `just` is installed, while Windows
+bootstrap may use `winget` when it is absent. It does not use a machine-wide Python package manager.
 
 ## Required paired data workspace
 
@@ -20,7 +20,7 @@ The sibling data repository owns raw `.mrd`, `.h5`, `.hdf5`, and `.ismrmrd` payl
 provenance, licenses, checksums, and Git-LFS policy. After bootstrap, check the layout with:
 
 ```bash
-tools/devenv/linux/run.sh just workspace-check
+just workspace-check
 ```
 
 The Linux and Windows pre-commit hooks run the same offline check. It validates only the
@@ -42,29 +42,34 @@ Windows PowerShell:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 ```
 
-The direct bootstrap commands above are the required first-run exception: they install the
-project-local `just` binary. Afterward, invoke shared recipes through the platform runner. The
-recipe name is identical on Linux and Windows; `justfile` owns the platform-specific bootstrap,
+Linux bootstrap uses apt to ensure `just` is installed; Windows bootstrap uses winget when it is
+absent. Afterward, invoke shared recipes directly. The recipe
+name is identical on Linux and Windows; `justfile` owns the platform-specific bootstrap,
 Conan-profile and CMake-preset mapping:
 
+After Winget installs or discovers `just`, bootstrap writes its package directory to the user PATH
+and broadcasts the Windows environment change. Open a new terminal before invoking `just`
+directly so it receives the updated PATH. The Windows runner is only for focused diagnostics with
+managed project tools; it does not provision `just` or modify the user's PATH.
+
 ```bash
-tools/devenv/linux/run.sh just prepare-release
-tools/devenv/linux/run.sh just build-release-applications
-tools/devenv/linux/run.sh just install-release-applications
-tools/devenv/linux/run.sh just check
+just prepare-release
+just build-release-applications
+just install-release-applications
+just check
 ```
 
 ```powershell
-.\tools\devenv\windows\run.ps1 just prepare-release
-.\tools\devenv\windows\run.ps1 just build-release-applications
-.\tools\devenv\windows\run.ps1 just install-release-applications
-.\tools\devenv\windows\run.ps1 just check
+just prepare-release
+just build-release-applications
+just install-release-applications
+just check
 ```
 
 If the Intel Git-LFS payload is absent, the prepare recipe obtains it before the Conan install.
 `prepare-debug`, `format-staged`, `format-all`, `link-check`, `plan-check`, `workspace-check`,
 `pre-commit` and `pre-push` are also shared names. Run
-`tools/devenv/linux/run.sh just --list` or the Windows equivalent for the supported command list.
+`just --list` for the supported command list.
 `prepare-app-tests` and `app-tests` are Linux-only because there is no corresponding Windows
 application-test preset yet.
 
@@ -77,8 +82,8 @@ Not every executable belongs in a Python virtual environment.
 
 | Layer | Location | Contents |
 | --- | --- | --- |
-| Host prerequisite | OS / SDK installation | Git, Git LFS, Linux default GCC/G++ 14, or Visual Studio 2022 14.4x/v143 C++ Build Tools and a Windows SDK |
-| Bootstrap runtime | `.kspacejet/bootstrap/uv/`, `.kspacejet/bootstrap/just/` | Checksum-verified, pinned `uv` and `just` executables; neither alters the user's PATH or shell profile |
+| Host prerequisite | OS / SDK installation | Git, Git LFS and Linux default GCC/G++ 14; or Git, Git LFS, Visual Studio 2022 14.4x/v143 C++ Build Tools, Windows SDK and winget on Windows. Linux bootstrap uses apt to ensure `just` is installed; Windows uses winget only when absent. |
+| Bootstrap runtime | `.kspacejet/bootstrap/uv/` | Checksum-verified, pinned `uv`; it does not alter the user's PATH or shell profile |
 | Managed Python and cache | `.kspacejet/python/`, `.kspacejet/uv-cache/` | CPython acquired by uv and its disposable package cache |
 | Project tool environment | `.venv/` | Conan, cmake-format, and the locked CMake, Ninja, and clang-format binary wheels |
 
@@ -90,20 +95,21 @@ project-local artifact; it must not be silently taken from the system PATH.
 
 The compiler toolchain, Git, and Git LFS remain host prerequisites because they integrate with the
 operating system and SDK. The scripts validate them rather than attempting privileged or
-distribution-specific installation. On Linux the default `gcc` and `g++` must both be major version
+distribution-specific installation. `just` is the deliberate exception: Linux bootstrap delegates
+idempotent installation to apt, while Windows uses winget only when missing. On Linux the default `gcc` and `g++` must both be major version
 14, matching the Conan profiles. On Windows the scripts require Visual Studio 2022 with the v143 C++
 tools (MSVC 19.4x / toolset 14.4x); install a Windows SDK with that workload.
 
 On a minimal Linux host, the first bootstrap additionally needs ordinary host download and archive
-utilities: `curl` or `wget`, `tar`, and `sha256sum` or `shasum`. They are checked with clear errors;
-the bootstrap intentionally does not invoke a distribution package manager. Linux VS Code debugging
+utilities: `curl` or `wget`, `tar`, and `sha256sum` or `shasum`. It also needs `apt-get` and `sudo`.
+Linux VS Code debugging
 also needs host `gdb`, and the optional `linux-release-static-analysis` preset additionally needs host
 `clang++`. Neither is needed for ordinary builds.
 
 ## Reproducibility and maintenance
 
-`tool-versions.env` pins the bootstrap `uv` and `just` versions plus Linux/Windows archive and
-installed-binary checksums. The bootstrap verifies each cached executable before it is used.
+`tool-versions.env` pins the bootstrap `uv` version plus Linux/Windows archive and installed-binary
+checksums. The bootstrap verifies its cached executable before it is used.
 `pyproject.toml`, `.python-version`, and `uv.lock` pin the project tool environment. The scripts run
 `uv sync --locked`, so a stale or manually edited lock file is rejected instead of being resolved on
 each developer machine.
@@ -122,8 +128,8 @@ bash tools/devenv/linux/bootstrap.sh --verify
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1 -Verify
 ```
 
-`--offline` prevents network access and succeeds only when the pinned `uv` and `just`, managed
-Python, and locked packages are already cached locally. With `--prepare` / `-Prepare`, it additionally
+`--offline` prevents network access and succeeds only when the pinned `uv`, managed Python, and
+locked packages are already cached locally. With `--prepare` / `-Prepare`, it additionally
 requires a fully hydrated and verified Intel payload plus every required Conan package in the local
 cache. In that mode the bootstrap passes Conan `--no-remote`; `--offline` cannot be combined with an
 explicit Git-LFS pull.
@@ -142,19 +148,19 @@ tools/devenv/linux/run.sh python tools/devenv/verify_intel_payload.py --platform
 
 ## Running shared development commands
 
-The platform runners select the project-local `just` before any system `just`, then `justfile`
-selects the correct platform command. Use these forms for every standard development operation:
+`justfile` selects the correct platform command. Use the host `just` directly for every standard
+development operation:
 
 ```bash
-tools/devenv/linux/run.sh just prepare-release
-tools/devenv/linux/run.sh just workspace-check
-tools/devenv/linux/run.sh just plan-check
+just prepare-release
+just workspace-check
+just plan-check
 ```
 
 ```powershell
-.\tools\devenv\windows\run.ps1 just prepare-release
-.\tools\devenv\windows\run.ps1 just workspace-check
-.\tools\devenv\windows\run.ps1 just plan-check
+just prepare-release
+just workspace-check
+just plan-check
 ```
 
 For a focused diagnostic that has no recipe, the same platform wrappers can execute a locked
@@ -170,5 +176,5 @@ tools/devenv/linux/run.sh clang-format --version
 .\tools\devenv\windows\run.ps1 clang-format --version
 ```
 
-Do not activate `.venv`, install `just` system-wide, or install tools into the environment
-manually. Change the checked-in dependency declarations/checksums, then rerun the bootstrap script.
+Do not activate `.venv` or install managed project tools into the environment manually. Install
+`just` through the bootstrap: Linux uses apt, while Windows uses winget only when it is absent.

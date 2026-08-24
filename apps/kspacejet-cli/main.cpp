@@ -197,9 +197,12 @@ void print_validation_success(const OutputFormat format, const std::string_view 
     write_json_string(std::cout, definition.id());
     std::cout << ",\"display_name\":";
     write_json_string(std::cout, definition.display_name());
+    std::cout << "},\"input_profile\":{\"kind\":\"ismrmrd-hdf5\",\"dataset_group\":";
+    write_json_string(std::cout, definition.input_profile().dataset_group);
     std::cout << "},\"canonical_digest\":";
-    write_json_string(std::cout, definition.digest().value());
-    std::cout << ",\"counts\":{\"providers\":" << definition.providers().size()
+    write_json_string(std::cout, definition.artifact_digest().value());
+    std::cout << ",\"counts\":{\"parameters\":" << definition.parameters().size()
+              << ",\"providers\":" << definition.provider_requirements().size()
               << ",\"nodes\":" << definition.nodes().size() << ",\"edges\":" << definition.edges().size()
               << ",\"ingress_ports\":" << definition.ingress_ports().size()
               << ",\"egress_ports\":" << definition.egress_ports().size()
@@ -211,8 +214,10 @@ void print_validation_success(const OutputFormat format, const std::string_view 
             << "  input: " << input_path << '\n'
             << "  id: " << definition.id() << '\n'
             << "  display name: " << definition.display_name() << '\n'
-            << "  canonical digest: " << definition.digest().value() << '\n'
-            << "  providers: " << definition.providers().size() << '\n'
+            << "  input profile: ismrmrd-hdf5/" << definition.input_profile().dataset_group << '\n'
+            << "  canonical digest: " << definition.artifact_digest().value() << '\n'
+            << "  parameters: " << definition.parameters().size() << '\n'
+            << "  providers: " << definition.provider_requirements().size() << '\n'
             << "  nodes: " << definition.nodes().size() << '\n'
             << "  edges: " << definition.edges().size() << '\n';
 }

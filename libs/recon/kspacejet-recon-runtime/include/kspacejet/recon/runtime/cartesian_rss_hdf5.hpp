@@ -45,7 +45,6 @@ struct CartesianRssHdf5ReadoutOversamplingRemoval {
 struct CartesianRssHdf5ReconstructionConfig {
   std::filesystem::path input_file;
   std::filesystem::path output_image_file;
-  std::filesystem::path output_metadata_file;
   std::filesystem::path cartesian_provider_module;
   std::filesystem::path coil_combine_provider_module;
   std::filesystem::path cartesian_operator_contract;
@@ -82,7 +81,9 @@ struct CartesianRssHdf5ReconstructionReport {
 //                  -> [readout crop] -> cartesian_ifft2_coil_images
 //                  -> coil_combine_rss -> image egress
 //
-// The result is a native-endian, row-major float32 RSS image.
+// The result is one standard ISMRMRD HDF5 magnitude image artifact. Its
+// ImageHeader, image data and MetaAttributes carry the image and provenance;
+// no raw float32 file or JSON sidecar is produced.
 [[nodiscard]] ksj::base::Result<CartesianRssHdf5ReconstructionReport>
 reconstruct_cartesian_rss_hdf5(const CartesianRssHdf5ReconstructionConfig& config);
 

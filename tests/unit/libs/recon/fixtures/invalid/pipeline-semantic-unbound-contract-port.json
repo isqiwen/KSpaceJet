@@ -1,6 +1,7 @@
 {
   "kind": "PipelineDefinition",
   "pipeline": {"id": "org.example.noncartesian-unbound-port", "display_name": "Unbound contract port"},
+  "input_profile": {"kind": "ismrmrd-hdf5", "dataset_group": "dataset"},
   "allowed_profiles": ["bounded-reconstruction-graph"],
   "parameters": {},
   "provider_requirements": [{"alias": "recon", "provider_id": "org.example.recon"}],

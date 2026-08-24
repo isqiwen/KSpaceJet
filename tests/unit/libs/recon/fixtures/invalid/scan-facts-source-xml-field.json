@@ -1,0 +1,10 @@
+{
+  "kind": "ScanFacts",
+  "scan_descriptor_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_xml_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "source_xml": "<ismrmrdHeader/>",
+  "acquisition_count": 64,
+  "physical_channel_count": 8,
+  "maximum_samples_per_acquisition": 64,
+  "trajectory_dimensions": 0
+}

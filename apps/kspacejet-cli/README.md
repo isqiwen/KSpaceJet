@@ -15,7 +15,9 @@ ksj pipeline validate path/to/pipeline.json --format json
 The command is a thin product entry point over the shared `PipelineDefinition`
 parser. It neither loads Providers nor schedules reconstruction work. Text is
 for people; JSON is a machine-readable command-result protocol for automation.
-Neither form is a diagnostic log format.
+The successful report identifies the one ISMRMRD HDF5 input profile, canonical
+PipelineDefinition digest, and declared parameter/graph counts. Neither form is
+a diagnostic log format.
 
 ## Create a Provider scaffold
 

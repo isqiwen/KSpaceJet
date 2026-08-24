@@ -33,7 +33,7 @@
       "items": {
         "$ref": "#/$defs/operatorPlanBinding"
       },
-      "description": "One canonical configuration identity for every authored pipeline node."
+      "description": "One effective canonical configuration identity for every resolved pipeline node."
     },
     "execution_profile": {
       "$ref": "#/$defs/executionProfile"
@@ -127,7 +127,8 @@
       "type": "object",
       "required": [
         "resolved_pipeline",
-        "scan_descriptor",
+        "scan_facts",
+        "effective_pipeline_binding",
         "target_envelope",
         "machine_policy"
       ],
@@ -135,7 +136,10 @@
         "resolved_pipeline": {
           "$ref": "#/$defs/digest"
         },
-        "scan_descriptor": {
+        "scan_facts": {
+          "$ref": "#/$defs/digest"
+        },
+        "effective_pipeline_binding": {
           "$ref": "#/$defs/digest"
         },
         "target_envelope": {

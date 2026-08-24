@@ -1,0 +1,59 @@
+{
+  "kind": "PipelineDefinition",
+  "pipeline": {
+    "id": "org.example.cartesian-image",
+    "display_name": "Cartesian image reconstruction"
+  },
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "dataset_group": "dataset"
+  },
+  "allowed_profiles": [
+    "offline-reference"
+  ],
+  "parameters": {},
+  "provider_requirements": [
+    {
+      "alias": "cartesian",
+      "provider_id": "org.kspacejet.cartesian-recon"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "reconstruct",
+      "operator": {
+        "provider": "cartesian",
+        "id": "cartesian_ifft2_coil_images"
+      },
+      "config": {
+        "module": "untrusted-provider.dll"
+      }
+    }
+  ],
+  "edges": [],
+  "bindings": {
+    "ingress": [
+      {
+        "id": "kspace",
+        "type": "ksj.kspace-frame",
+        "to": {
+          "node": "reconstruct",
+          "port": "kspace"
+        }
+      }
+    ],
+    "egress": [
+      {
+        "id": "images",
+        "type": "ksj.image-frame",
+        "from": {
+          "node": "reconstruct",
+          "port": "coil_images"
+        }
+      }
+    ],
+    "calibration": [],
+    "merge": []
+  },
+  "annotations": {}
+}

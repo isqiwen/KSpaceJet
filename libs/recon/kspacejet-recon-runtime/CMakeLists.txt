@@ -15,9 +15,12 @@ add_library(
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/fixed_buffer_edge.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/host_frame_assembler.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/ismrmrd_hdf5_replay.hpp"
+  "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/ismrmrd_image_artifact_sink.hpp"
+  "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/ismrmrd_semantic_ingress.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/key_shard.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/noncartesian_rss_hdf5.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/provider_node_instance.hpp"
+  "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/radial_rss_hdf5.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/resource_ledger.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/resource_vector_ledger.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/runtime/scan_lifecycle.hpp"
@@ -34,6 +37,8 @@ add_library(
   "${CMAKE_CURRENT_LIST_DIR}/src/fixed_buffer_edge.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/host_frame_assembler.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/ismrmrd_hdf5_replay.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/ismrmrd_image_artifact.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/ismrmrd_semantic_ingress.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/key_shard.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/noncartesian_rss_hdf5.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/provider_node_instance.cpp"
@@ -51,8 +56,8 @@ target_compile_features(${PROJ_NAME} PUBLIC cxx_std_20)
 target_include_directories(${PROJ_NAME} PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
 target_link_libraries(
   ${PROJ_NAME}
-  PRIVATE KSpaceJet::compile_options KSpaceJet::shared_library_link_options KSpaceJet::ismrmrd ISMRMRD::ISMRMRD
-  PUBLIC KSpaceJet::core KSpaceJet::provider_loader KSpaceJet::recon_model
+  PRIVATE KSpaceJet::compile_options KSpaceJet::shared_library_link_options ISMRMRD::ISMRMRD
+  PUBLIC KSpaceJet::core KSpaceJet::ismrmrd KSpaceJet::provider_loader KSpaceJet::recon_model
   PRIVATE KSpaceJet::recon_graph)
 
 set_target_properties(

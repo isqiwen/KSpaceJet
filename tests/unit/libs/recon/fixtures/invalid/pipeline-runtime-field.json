@@ -4,6 +4,10 @@
     "id": "org.example.reference-cartesian",
     "display_name": "Reference Cartesian reconstruction"
   },
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "dataset_group": "dataset"
+  },
   "allowed_profiles": [
     "bounded-reconstruction-graph"
   ],

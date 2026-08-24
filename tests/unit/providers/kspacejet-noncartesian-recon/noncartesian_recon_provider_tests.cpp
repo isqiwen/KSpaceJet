@@ -1,5 +1,6 @@
 #include "kspacejet/array/views.hpp"
 #include "kspacejet/nufft/direct_nudft.hpp"
+#include "kspacejet/nufft/radial_gridding.hpp"
 #include "kspacejet/provider/loader/provider_loader.hpp"
 #include "kspacejet/provider/type_registry.h"
 
@@ -21,10 +22,15 @@ using ksj::provider::loader::ProviderLease;
 using ksj::provider::loader::ProviderModule;
 
 constexpr char kProviderId[] = "org.kspacejet.noncartesian-recon";
-constexpr char kProviderBundleDigestHex[] = "6ca4098a56512026f49ee9c023d92e20b063369dcfccb610e12f5a1132db94a0";
-constexpr char kOperatorId[] = "noncartesian_adjoint_reconstruct";
+constexpr char kProviderBundleDigestHex[] = "4297da20fe070aae1988f456967aeed82d5bae62f8aad41585e25fe767000ef6";
+constexpr char kDirectAdjointOperatorId[] = "noncartesian_adjoint_reconstruct";
+constexpr char kRadialGriddingOperatorId[] = "radial_gridding_reconstruct";
 constexpr char kTwoChannelConfig[] = "{\"channels\":2,\"image_cols\":2,\"image_rows\":2,\"sample_count\":2}";
 constexpr char kOneChannelConfig[] = "{\"channels\":1,\"image_cols\":2,\"image_rows\":2,\"sample_count\":2}";
+constexpr char kOneChannelRadialConfig[] =
+  "{\"channels\":1,\"density_compensation\":\"radial_analytic_ramp\",\"image_cols\":2,\"image_rows\":2,"
+  "\"sample_count\":2,\"trajectory_units\":\"radians_per_pixel\"}";
+constexpr std::uint64_t kTinyRadialScratchBytes = 104U;
 
 [[nodiscard]] ksj_provider_abi_header make_header(const std::uint32_t struct_size,
                                                   const std::uint64_t capability_bits = 0U) noexcept {
@@ -65,12 +71,13 @@ template <std::size_t N> [[nodiscard]] ksj_digest256 digest_from_hex(const char 
 struct HostState {
   using Complex = std::complex<float>;
 
-  HostState(const std::uint32_t channels = 2U, const std::uint32_t samples = 2U)
+  HostState(const std::uint32_t channels = 2U, const std::uint32_t samples = 2U,
+            const std::uint64_t configured_scratch_byte_count = 4U * sizeof(Complex))
       : channels(channels), samples(samples),
         kspace_byte_count(static_cast<std::uint64_t>(channels) * samples * sizeof(Complex)),
         trajectory_byte_count(static_cast<std::uint64_t>(samples) * 2U * sizeof(float)),
         coil_image_byte_count(static_cast<std::uint64_t>(channels) * 4U * sizeof(Complex)),
-        scratch_byte_count(4U * sizeof(Complex)) {
+        scratch_byte_count(configured_scratch_byte_count) {
     kspace = {{{1.0F, 2.0F}, {3.0F, -1.0F}, {10.0F, -4.0F}, {-2.0F, 7.0F}}};
     trajectory = {{0.0F, 0.0F, std::numbers::pi_v<float>, -0.5F * std::numbers::pi_v<float>}};
     kspace_item.abi = make_header(sizeof(kspace_item));
@@ -130,7 +137,7 @@ struct HostState {
   alignas(64) std::array<Complex, 4U> kspace{};
   alignas(64) std::array<float, 4U> trajectory{};
   alignas(64) std::array<Complex, 8U> output{};
-  alignas(64) std::array<std::byte, 4U * sizeof(Complex)> scratch{};
+  alignas(64) std::array<std::byte, 128U> scratch{};
   std::array<std::byte, 3U> kspace_metadata{{std::byte{0x31}, std::byte{0x32}, std::byte{0x33}}};
   alignas(std::max_align_t) std::byte output_grant_storage{};
   ksj_input_item_view kspace_item{};
@@ -323,7 +330,8 @@ struct ProviderInstance {
   }
 };
 
-[[nodiscard]] ProviderInstance make_instance(const char* config, const std::uint64_t config_size) {
+[[nodiscard]] ProviderInstance make_instance(const char* const operator_id, const std::uint64_t operator_id_size,
+                                             const char* const config, const std::uint64_t config_size) {
   ProviderInstance instance;
   auto module = ProviderModule::load(provider_path());
   EXPECT_TRUE(module.ok()) << module.status();
@@ -339,7 +347,7 @@ struct ProviderInstance {
   const auto* api = instance.lease.api();
   ksj_operator_create_request create{};
   create.abi = make_header(sizeof(create));
-  create.operator_id = text(kOperatorId, sizeof(kOperatorId) - 1U);
+  create.operator_id = text(operator_id, operator_id_size);
   set_config(create, config, config_size);
   auto error = empty_error();
   EXPECT_EQ(api->operator_create(&create, &instance.operator_handle, &error), KSJ_STATUS_OK);
@@ -374,11 +382,18 @@ struct ProviderInstance {
 }
 
 [[nodiscard]] ProviderInstance make_one_channel_instance() {
-  return make_instance(kOneChannelConfig, sizeof(kOneChannelConfig) - 1U);
+  return make_instance(kDirectAdjointOperatorId, sizeof(kDirectAdjointOperatorId) - 1U, kOneChannelConfig,
+                       sizeof(kOneChannelConfig) - 1U);
 }
 
 [[nodiscard]] ProviderInstance make_two_channel_instance() {
-  return make_instance(kTwoChannelConfig, sizeof(kTwoChannelConfig) - 1U);
+  return make_instance(kDirectAdjointOperatorId, sizeof(kDirectAdjointOperatorId) - 1U, kTwoChannelConfig,
+                       sizeof(kTwoChannelConfig) - 1U);
+}
+
+[[nodiscard]] ProviderInstance make_one_channel_radial_instance() {
+  return make_instance(kRadialGriddingOperatorId, sizeof(kRadialGriddingOperatorId) - 1U, kOneChannelRadialConfig,
+                       sizeof(kOneChannelRadialConfig) - 1U);
 }
 
 [[nodiscard]] ksj_status process(ProviderInstance& instance, HostState& host, ksj_process_result& result,
@@ -397,17 +412,21 @@ struct ProviderInstance {
   };
 }
 
-TEST(NonCartesianReconProvider, PublishesTheTwoInputAdjointOperatorIdentityAndBounds) {
+TEST(NonCartesianReconProvider, PublishesDirectAdjointAndRadialGriddingOperatorIdentitiesAndBounds) {
   auto module = ProviderModule::load(provider_path());
   ASSERT_TRUE(module.ok()) << module.status();
   const auto* descriptor = module.value().descriptor();
   ASSERT_NE(descriptor, nullptr);
   EXPECT_EQ(descriptor->provider_id, kProviderId);
-  ASSERT_EQ(descriptor->operators.size(), 1U);
-  EXPECT_EQ(descriptor->operators.front().operator_id, kOperatorId);
-  EXPECT_EQ(descriptor->operators.front().max_input_items_per_firing, 2U);
-  EXPECT_EQ(descriptor->operators.front().max_output_bytes_per_firing, 128U * 1024U * 1024U);
-  EXPECT_EQ(descriptor->operators.front().max_scratch_bytes_per_firing, 2U * 1024U * 1024U);
+  ASSERT_EQ(descriptor->operators.size(), 2U);
+  EXPECT_EQ(descriptor->operators[0U].operator_id, kDirectAdjointOperatorId);
+  EXPECT_EQ(descriptor->operators[0U].max_input_items_per_firing, 2U);
+  EXPECT_EQ(descriptor->operators[0U].max_output_bytes_per_firing, 128U * 1024U * 1024U);
+  EXPECT_EQ(descriptor->operators[0U].max_scratch_bytes_per_firing, 2U * 1024U * 1024U);
+  EXPECT_EQ(descriptor->operators[1U].operator_id, kRadialGriddingOperatorId);
+  EXPECT_EQ(descriptor->operators[1U].max_input_items_per_firing, 2U);
+  EXPECT_EQ(descriptor->operators[1U].max_output_bytes_per_firing, 128U * 1024U * 1024U);
+  EXPECT_EQ(descriptor->operators[1U].max_scratch_bytes_per_firing, 4464640U);
   const auto expected = digest_from_hex(kProviderBundleDigestHex);
   EXPECT_EQ(std::memcmp(descriptor->bundle_digest.data(), expected.bytes, KSJ_PROVIDER_DIGEST256_SIZE), 0);
 }
@@ -436,6 +455,46 @@ TEST(NonCartesianReconProvider, ReconstructsOneTinyChannelThroughThePublicDirect
   EXPECT_EQ(host.sealed_descriptor.order_key, 73U);
   EXPECT_EQ(host.sealed_descriptor.metadata.data, host.kspace_metadata.data());
   EXPECT_EQ(host.sealed_descriptor.metadata.size, host.kspace_metadata.size());
+  for (std::size_t pixel = 0U; pixel < expected.size(); ++pixel) {
+    EXPECT_NEAR(host.output[pixel].real(), expected[pixel].real(), 1.0e-5F);
+    EXPECT_NEAR(host.output[pixel].imag(), expected[pixel].imag(), 1.0e-5F);
+  }
+}
+
+TEST(NonCartesianReconProvider, ReconstructsOneTinyRadialChannelThroughThePublicGriddingOperator) {
+  auto instance = make_one_channel_radial_instance();
+  ASSERT_TRUE(instance.lease.valid());
+  ASSERT_NE(instance.operator_handle, nullptr);
+  HostState host{1U, 2U, kTinyRadialScratchBytes};
+
+  std::array<HostState::Complex, 4U> expected{};
+  std::array<HostState::Complex, 4U> fft_intermediate{};
+  std::array<HostState::Complex, 2U> fft_source{};
+  std::array<HostState::Complex, 2U> fft_destination{};
+  std::array<float, 2U> density_compensation{};
+  const auto samples = ksj::array::VectorView<const HostState::Complex>{host.kspace.data(), 2U};
+  const auto trajectory = ksj::array::MatrixView<const float>{host.trajectory.data(), 2U, 2U};
+  const auto image = ksj::array::MatrixView<HostState::Complex>{expected.data(), 2U, 2U};
+  const auto workspace = ksj::nufft::RadialGridding2Workspace<float>{
+    .fft_intermediate = ksj::array::MatrixView<HostState::Complex>{fft_intermediate.data(), 2U, 2U},
+    .fft_source = ksj::array::VectorView<HostState::Complex>{fft_source.data(), 2U},
+    .fft_destination = ksj::array::VectorView<HostState::Complex>{fft_destination.data(), 2U},
+  };
+  const auto dcf = ksj::array::VectorView<float>{density_compensation.data(), density_compensation.size()};
+  ksj::nufft::radial_analytic_ramp_dcf2(trajectory, dcf);
+  ksj::nufft::radial_linear_gridding2_adjoint(grid(), samples, trajectory, ksj::array::as_const_view(dcf), image,
+                                              workspace);
+
+  ksj_process_result result{};
+  result.abi = make_header(sizeof(result));
+  auto error = empty_error();
+  ASSERT_EQ(process(instance, host, result, error), KSJ_STATUS_OK);
+  EXPECT_EQ(result.outcome, KSJ_PROVIDER_PROCESS_DONE);
+  EXPECT_EQ(result.consumed_input_item_count, 2U);
+  EXPECT_EQ(result.sealed_output_count, 1U);
+  EXPECT_EQ(host.seal_calls, 1U);
+  EXPECT_EQ(host.sealed_descriptor.semantic_key_hash, host.kspace_item.semantic_key_hash);
+  EXPECT_EQ(host.sealed_descriptor.order_key, host.kspace_item.order_key);
   for (std::size_t pixel = 0U; pixel < expected.size(); ++pixel) {
     EXPECT_NEAR(host.output[pixel].real(), expected[pixel].real(), 1.0e-5F);
     EXPECT_NEAR(host.output[pixel].imag(), expected[pixel].imag(), 1.0e-5F);
@@ -566,12 +625,64 @@ TEST(NonCartesianReconProvider, RejectsNonCanonicalAndOverBudgetConfiguration) {
   for (const auto config : {std::string_view{kWrongOrder}, std::string_view{kOverBudget}}) {
     ksj_operator_create_request create{};
     create.abi = make_header(sizeof(create));
-    create.operator_id = text(kOperatorId, sizeof(kOperatorId) - 1U);
+    create.operator_id = text(kDirectAdjointOperatorId, sizeof(kDirectAdjointOperatorId) - 1U);
     set_config(create, config.data(), config.size());
     ksj_provider_operator* operator_handle = nullptr;
     auto error = empty_error();
     EXPECT_EQ(api->operator_create(&create, &operator_handle, &error), KSJ_STATUS_INVALID_ARGUMENT);
     EXPECT_EQ(operator_handle, nullptr);
+  }
+}
+
+TEST(NonCartesianReconProvider, RejectsNoncanonicalRadialConfigurationBeforeCreatingAnOperator) {
+  auto module = ProviderModule::load(provider_path());
+  ASSERT_TRUE(module.ok()) << module.status();
+  auto lease = module.value().acquire();
+  ASSERT_TRUE(lease.valid());
+  const auto* api = lease.api();
+
+  constexpr char kMissingDensityCompensation[] = "{\"channels\":1,\"image_cols\":2,\"image_rows\":2,\"sample_count\":2,"
+                                                 "\"trajectory_units\":\"radians_per_pixel\"}";
+  constexpr char kWrongTrajectoryUnits[] =
+    "{\"channels\":1,\"density_compensation\":\"radial_analytic_ramp\",\"image_cols\":2,\"image_rows\":2,"
+    "\"sample_count\":2,\"trajectory_units\":\"cycles_per_pixel\"}";
+  constexpr char kNonPowerOfTwoImageAxis[] =
+    "{\"channels\":1,\"density_compensation\":\"radial_analytic_ramp\",\"image_cols\":3,\"image_rows\":2,"
+    "\"sample_count\":2,\"trajectory_units\":\"radians_per_pixel\"}";
+  for (const auto config : {std::string_view{kMissingDensityCompensation}, std::string_view{kWrongTrajectoryUnits},
+                            std::string_view{kNonPowerOfTwoImageAxis}}) {
+    ksj_operator_create_request create{};
+    create.abi = make_header(sizeof(create));
+    create.operator_id = text(kRadialGriddingOperatorId, sizeof(kRadialGriddingOperatorId) - 1U);
+    set_config(create, config.data(), config.size());
+    ksj_provider_operator* operator_handle = nullptr;
+    auto error = empty_error();
+    EXPECT_EQ(api->operator_create(&create, &operator_handle, &error), KSJ_STATUS_INVALID_ARGUMENT);
+    EXPECT_EQ(operator_handle, nullptr);
+  }
+}
+
+TEST(NonCartesianReconProvider, RadialGriddingRejectsOutOfRangeTrajectoryAndInsufficientWorkspaceBeforeOutput) {
+  auto instance = make_one_channel_radial_instance();
+  ASSERT_TRUE(instance.lease.valid());
+  {
+    HostState host{1U, 2U, kTinyRadialScratchBytes};
+    host.trajectory[0U] = std::numbers::pi_v<float> + 0.01F;
+    ksj_process_result result{};
+    result.abi = make_header(sizeof(result));
+    auto error = empty_error();
+    EXPECT_EQ(process(instance, host, result, error), KSJ_STATUS_CONTRACT_VIOLATION);
+    EXPECT_EQ(host.acquire_calls, 0U);
+    EXPECT_EQ(host.seal_calls, 0U);
+  }
+  {
+    HostState host{1U, 2U, kTinyRadialScratchBytes - 1U};
+    ksj_process_result result{};
+    result.abi = make_header(sizeof(result));
+    auto error = empty_error();
+    EXPECT_EQ(process(instance, host, result, error), KSJ_STATUS_CONTRACT_VIOLATION);
+    EXPECT_EQ(host.acquire_calls, 0U);
+    EXPECT_EQ(host.seal_calls, 0U);
   }
 }
 

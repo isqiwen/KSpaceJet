@@ -1,6 +1,7 @@
 #include "kspacejet/recon/runtime/cartesian_rss_hdf5.hpp"
 
 #include <ismrmrd/dataset.h>
+#include <ismrmrd/meta.h>
 
 #include <gtest/gtest.h>
 
@@ -10,8 +11,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -77,22 +76,43 @@ constexpr std::string_view kFourByTwoTwoCoilCartesianXml = R"xml(
 struct TestFiles final {
   std::filesystem::path input;
   std::filesystem::path image;
-  std::filesystem::path metadata;
 
   ~TestFiles() {
     std::error_code error;
     std::filesystem::remove(input, error);
     std::filesystem::remove(image, error);
-    std::filesystem::remove(metadata, error);
   }
 };
 
+void set_standard_image_source_header(ISMRMRD::Acquisition& acquisition) {
+  acquisition.measurement_uid() = 42U;
+  acquisition.position()[0] = 1.0F;
+  acquisition.position()[1] = 2.0F;
+  acquisition.position()[2] = 3.0F;
+  acquisition.read_dir()[0] = 1.0F;
+  acquisition.read_dir()[1] = 0.0F;
+  acquisition.read_dir()[2] = 0.0F;
+  acquisition.phase_dir()[0] = 0.0F;
+  acquisition.phase_dir()[1] = 1.0F;
+  acquisition.phase_dir()[2] = 0.0F;
+  acquisition.slice_dir()[0] = 0.0F;
+  acquisition.slice_dir()[1] = 0.0F;
+  acquisition.slice_dir()[2] = 1.0F;
+  acquisition.patient_table_position()[0] = 4.0F;
+  acquisition.patient_table_position()[1] = 5.0F;
+  acquisition.patient_table_position()[2] = 6.0F;
+  acquisition.acquisition_time_stamp() = 123U;
+}
+
 void append_two_coil_line(ISMRMRD::Dataset& dataset, const std::uint16_t ky, const float coil_zero_dc,
                           const float coil_one_dc,
-                          const std::optional<ISMRMRD::ISMRMRD_AcquisitionFlags> flag = std::nullopt) {
+                          const std::optional<ISMRMRD::ISMRMRD_AcquisitionFlags> flag = std::nullopt,
+                          const std::uint16_t segment = 0U) {
   ISMRMRD::Acquisition acquisition(2U, 2U, 0U);
   acquisition.idx().kspace_encode_step_1 = ky;
   acquisition.idx().kspace_encode_step_2 = 0U;
+  acquisition.idx().segment = segment;
+  set_standard_image_source_header(acquisition);
   if (flag.has_value()) {
     acquisition.setFlag(*flag);
   }
@@ -109,6 +129,7 @@ void append_two_coil_four_sample_line(ISMRMRD::Dataset& dataset, const std::uint
   ISMRMRD::Acquisition acquisition(4U, 2U, 0U);
   acquisition.idx().kspace_encode_step_1 = ky;
   acquisition.idx().kspace_encode_step_2 = 0U;
+  set_standard_image_source_header(acquisition);
   if (flag.has_value()) {
     acquisition.setFlag(*flag);
   }
@@ -152,6 +173,22 @@ void write_flagged_frame(const std::filesystem::path& path) {
   append_two_coil_line(dataset, 1U, 4.0F, 8.0F);
 }
 
+void write_control_flagged_frame(const std::filesystem::path& path) {
+  const auto filename = path.string();
+  ISMRMRD::Dataset dataset(filename.c_str(), "dataset", true);
+  dataset.writeHeader(std::string(kTwoByTwoTwoCoilCartesianXml));
+  append_two_coil_line(dataset, 0U, 4.0F, 8.0F, ISMRMRD::ISMRMRD_ACQ_FIRST_IN_ENCODE_STEP1);
+  append_two_coil_line(dataset, 1U, 4.0F, 8.0F, ISMRMRD::ISMRMRD_ACQ_LAST_IN_MEASUREMENT);
+}
+
+void write_mixed_semantic_context_frame(const std::filesystem::path& path) {
+  const auto filename = path.string();
+  ISMRMRD::Dataset dataset(filename.c_str(), "dataset", true);
+  dataset.writeHeader(std::string(kTwoByTwoTwoCoilCartesianXml));
+  append_two_coil_line(dataset, 0U, 4.0F, 8.0F, std::nullopt, 0U);
+  append_two_coil_line(dataset, 1U, 4.0F, 8.0F, std::nullopt, 1U);
+}
+
 void write_full_conditioning_frame(const std::filesystem::path& path) {
   const auto filename = path.string();
   ISMRMRD::Dataset dataset(filename.c_str(), "dataset", true);
@@ -186,23 +223,37 @@ void write_full_conditioning_frame(const std::filesystem::path& path) {
     FourSamples{});
 }
 
-[[nodiscard]] std::vector<float> read_float32_file(const std::filesystem::path& path) {
-  std::ifstream input(path, std::ios::binary | std::ios::ate);
-  EXPECT_TRUE(input.is_open());
-  const auto byte_count = input.tellg();
-  EXPECT_EQ(static_cast<std::streamoff>(4U * sizeof(float)), byte_count);
-  input.seekg(0U);
-  std::vector<float> result(4U);
-  input.read(reinterpret_cast<char*>(result.data()), static_cast<std::streamsize>(result.size() * sizeof(float)));
-  EXPECT_TRUE(static_cast<bool>(input));
-  return result;
+[[nodiscard]] ISMRMRD::Image<float> read_standard_image(const std::filesystem::path& path) {
+  const auto filename = path.string();
+  ISMRMRD::Dataset dataset(filename.c_str(), "dataset", false);
+  std::string xml;
+  dataset.readHeader(xml);
+  EXPECT_NE(std::string::npos, xml.find("<trajectory>cartesian</trajectory>"));
+  EXPECT_EQ(1U, dataset.getNumberOfImages("image_0"));
+  ISMRMRD::Image<float> image;
+  dataset.readImage("image_0", 0U, image);
+  return image;
+}
+
+void expect_standard_metadata(const ISMRMRD::Image<float>& image, const std::size_t expected_operator_count) {
+  std::string serialized;
+  image.getAttributeString(serialized);
+  ISMRMRD::MetaContainer metadata;
+  ISMRMRD::deserialize(serialized.c_str(), metadata);
+  EXPECT_EQ(1U, metadata.length("DataRole"));
+  EXPECT_STREQ("Image", metadata.as_str("DataRole"));
+  EXPECT_EQ(1U, metadata.length("ImageNumber"));
+  EXPECT_STREQ("1", metadata.as_str("ImageNumber"));
+  EXPECT_EQ(expected_operator_count, metadata.length("KSpaceJet.Operator"));
+  EXPECT_EQ(1U, metadata.length("KSpaceJet.ExecutionPlanDigest"));
+  EXPECT_EQ(1U, metadata.length("KSpaceJet.VerificationRecordDigest"));
+  EXPECT_EQ(1U, metadata.length("KSpaceJet.SourceXmlDigest"));
 }
 
 [[nodiscard]] ksj::recon::runtime::CartesianRssHdf5ReconstructionConfig make_config(const TestFiles& files) {
   return {
     .input_file = files.input,
     .output_image_file = files.image,
-    .output_metadata_file = files.metadata,
     .cartesian_provider_module = KSJ_CARTESIAN_RECON_PROVIDER_MODULE,
     .coil_combine_provider_module = KSJ_COIL_COMBINE_PROVIDER_MODULE,
     .cartesian_operator_contract = KSJ_CARTESIAN_RECON_OPERATOR_CONTRACT,
@@ -244,8 +295,7 @@ make_full_conditioning_config(const TestFiles& files) {
 TEST(CartesianRssHdf5Reconstruction, ReconstructsMultiCoilRssThroughTheGenericGraph) {
   TestFiles files{
     .input = temporary_path("two_by_two_two_coil_dc.h5"),
-    .image = temporary_path("two_by_two_two_coil_dc.f32"),
-    .metadata = temporary_path("two_by_two_two_coil_dc.f32.json"),
+    .image = temporary_path("two_by_two_two_coil_dc.mrd"),
   };
   write_two_by_two_two_coil_dc_frame(files.input);
 
@@ -259,26 +309,35 @@ TEST(CartesianRssHdf5Reconstruction, ReconstructsMultiCoilRssThroughTheGenericGr
   EXPECT_FALSE(result.value().execution_plan_digest.empty());
   EXPECT_FALSE(result.value().verification_record_digest.empty());
 
-  const auto image = read_float32_file(files.image);
-  ASSERT_EQ(4U, image.size());
-  for (const auto value : image) {
-    EXPECT_NEAR(std::sqrt(5.0F), value, 1.0e-5F);
+  auto image = read_standard_image(files.image);
+  const auto& header = image.getHead();
+  EXPECT_EQ(ISMRMRD::ISMRMRD_FLOAT, image.getDataType());
+  EXPECT_EQ(2U, header.matrix_size[0]);
+  EXPECT_EQ(2U, header.matrix_size[1]);
+  EXPECT_EQ(1U, header.matrix_size[2]);
+  EXPECT_EQ(1U, header.channels);
+  EXPECT_EQ(ISMRMRD::ISMRMRD_IMTYPE_MAGNITUDE, header.image_type);
+  EXPECT_EQ(42U, header.measurement_uid);
+  EXPECT_FLOAT_EQ(200.0F, header.field_of_view[0]);
+  EXPECT_FLOAT_EQ(200.0F, header.field_of_view[1]);
+  EXPECT_FLOAT_EQ(5.0F, header.field_of_view[2]);
+  EXPECT_FLOAT_EQ(1.0F, header.position[0]);
+  EXPECT_FLOAT_EQ(2.0F, header.position[1]);
+  EXPECT_FLOAT_EQ(3.0F, header.position[2]);
+  EXPECT_EQ(123U, header.acquisition_time_stamp);
+  for (std::uint16_t row = 0U; row < 2U; ++row) {
+    for (std::uint16_t column = 0U; column < 2U; ++column) {
+      EXPECT_NEAR(std::sqrt(5.0F), image(column, row), 1.0e-5F);
+    }
   }
-  std::ifstream metadata(files.metadata, std::ios::binary);
-  ASSERT_TRUE(metadata.is_open());
-  const std::string document{std::istreambuf_iterator<char>{metadata}, std::istreambuf_iterator<char>{}};
-  EXPECT_NE(std::string::npos, document.find("\"rows\":2"));
-  EXPECT_NE(std::string::npos, document.find("\"cols\":2"));
-  EXPECT_NE(std::string::npos, document.find("\"channels\":2"));
-  EXPECT_NE(std::string::npos, document.find("\"cartesian_ifft2_coil_images\""));
-  EXPECT_NE(std::string::npos, document.find("\"coil_combine_rss\""));
+  expect_standard_metadata(image, 2U);
+  EXPECT_FALSE(std::filesystem::exists(files.image.string() + ".json"));
 }
 
 TEST(CartesianRssHdf5Reconstruction, RunsAllExplicitCalibrationAndConditioningBranchesThroughTheGenericGraph) {
   TestFiles files{
     .input = temporary_path("full_conditioning_two_by_two.h5"),
-    .image = temporary_path("full_conditioning_two_by_two.f32"),
-    .metadata = temporary_path("full_conditioning_two_by_two.f32.json"),
+    .image = temporary_path("full_conditioning_two_by_two.mrd"),
   };
   write_full_conditioning_frame(files.input);
 
@@ -289,30 +348,19 @@ TEST(CartesianRssHdf5Reconstruction, RunsAllExplicitCalibrationAndConditioningBr
   EXPECT_EQ(1U, result.value().channels);
   EXPECT_EQ(5U, result.value().acquisitions_read);
 
-  const auto image = read_float32_file(files.image);
-  ASSERT_EQ(4U, image.size());
-  for (const auto value : image) {
-    EXPECT_NEAR(std::sqrt(2.0F), value, 2.0e-4F);
+  auto image = read_standard_image(files.image);
+  for (std::uint16_t row = 0U; row < 2U; ++row) {
+    for (std::uint16_t column = 0U; column < 2U; ++column) {
+      EXPECT_NEAR(std::sqrt(2.0F), image(column, row), 2.0e-4F);
+    }
   }
-  std::ifstream metadata(files.metadata, std::ios::binary);
-  ASSERT_TRUE(metadata.is_open());
-  const std::string document{std::istreambuf_iterator<char>{metadata}, std::istreambuf_iterator<char>{}};
-  EXPECT_NE(std::string::npos, document.find("\"noise_model_estimate\""));
-  EXPECT_NE(std::string::npos, document.find("\"noise_prewhiten\""));
-  EXPECT_NE(std::string::npos, document.find("\"phase_correction_estimate\""));
-  EXPECT_NE(std::string::npos, document.find("\"phase_correct\""));
-  EXPECT_NE(std::string::npos, document.find("\"coil_compression_basis_estimate\""));
-  EXPECT_NE(std::string::npos, document.find("\"coil_compress\""));
-  EXPECT_NE(std::string::npos, document.find("\"readout_oversampling_remove\""));
-  EXPECT_NE(std::string::npos, document.find("\"cartesian_ifft2_coil_images\""));
-  EXPECT_NE(std::string::npos, document.find("\"coil_combine_rss\""));
+  expect_standard_metadata(image, 9U);
 }
 
 TEST(CartesianRssHdf5Reconstruction, RejectsDuplicateKyDuringPreflightBeforeWritingOutputs) {
   TestFiles files{
     .input = temporary_path("duplicate_ky.h5"),
-    .image = temporary_path("duplicate_ky.f32"),
-    .metadata = temporary_path("duplicate_ky.f32.json"),
+    .image = temporary_path("duplicate_ky.mrd"),
   };
   write_duplicate_ky_frame(files.input);
 
@@ -320,14 +368,12 @@ TEST(CartesianRssHdf5Reconstruction, RejectsDuplicateKyDuringPreflightBeforeWrit
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(ksj::base::StatusCode::validation_error, result.status().code());
   EXPECT_FALSE(std::filesystem::exists(files.image));
-  EXPECT_FALSE(std::filesystem::exists(files.metadata));
 }
 
 TEST(CartesianRssHdf5Reconstruction, RejectsMissingKyDuringPreflightBeforeWritingOutputs) {
   TestFiles files{
     .input = temporary_path("missing_ky.h5"),
-    .image = temporary_path("missing_ky.f32"),
-    .metadata = temporary_path("missing_ky.f32.json"),
+    .image = temporary_path("missing_ky.mrd"),
   };
   write_missing_ky_frame(files.input);
 
@@ -335,14 +381,12 @@ TEST(CartesianRssHdf5Reconstruction, RejectsMissingKyDuringPreflightBeforeWritin
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(ksj::base::StatusCode::validation_error, result.status().code());
   EXPECT_FALSE(std::filesystem::exists(files.image));
-  EXPECT_FALSE(std::filesystem::exists(files.metadata));
 }
 
 TEST(CartesianRssHdf5Reconstruction, RejectsFlaggedAcquisitionDuringPreflightBeforeWritingOutputs) {
   TestFiles files{
     .input = temporary_path("flagged_acquisition.h5"),
-    .image = temporary_path("flagged_acquisition.f32"),
-    .metadata = temporary_path("flagged_acquisition.f32.json"),
+    .image = temporary_path("flagged_acquisition.mrd"),
   };
   write_flagged_frame(files.input);
 
@@ -350,7 +394,33 @@ TEST(CartesianRssHdf5Reconstruction, RejectsFlaggedAcquisitionDuringPreflightBef
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(ksj::base::StatusCode::validation_error, result.status().code());
   EXPECT_FALSE(std::filesystem::exists(files.image));
-  EXPECT_FALSE(std::filesystem::exists(files.metadata));
+}
+
+TEST(CartesianRssHdf5Reconstruction, AllowsNonSemanticControlFlagsThroughTheSharedIngress) {
+  TestFiles files{
+    .input = temporary_path("control_flagged_acquisitions.h5"),
+    .image = temporary_path("control_flagged_acquisitions.mrd"),
+  };
+  write_control_flagged_frame(files.input);
+
+  const auto result = ksj::recon::runtime::reconstruct_cartesian_rss_hdf5(make_config(files));
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(2U, result.value().acquisitions_read);
+  EXPECT_TRUE(std::filesystem::exists(files.image));
+}
+
+TEST(CartesianRssHdf5Reconstruction, RejectsMixedFrameSlotSemanticContextsBeforeWritingOutputs) {
+  TestFiles files{
+    .input = temporary_path("mixed_semantic_contexts.h5"),
+    .image = temporary_path("mixed_semantic_contexts.mrd"),
+  };
+  write_mixed_semantic_context_frame(files.input);
+
+  const auto result = ksj::recon::runtime::reconstruct_cartesian_rss_hdf5(make_config(files));
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(ksj::base::StatusCode::validation_error, result.status().code());
+  EXPECT_NE(std::string::npos, result.status().message().find("mixed FrameSlot semantic contexts"));
+  EXPECT_FALSE(std::filesystem::exists(files.image));
 }
 
 } // namespace

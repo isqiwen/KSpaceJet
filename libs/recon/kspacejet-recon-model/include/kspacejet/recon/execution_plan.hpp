@@ -17,7 +17,8 @@ namespace ksj::recon {
 
 struct PlanInputDigestSpec {
   std::string resolved_pipeline;
-  std::string scan_descriptor;
+  std::string scan_facts;
+  std::string effective_pipeline_binding;
   std::string target_envelope;
   std::string machine_policy;
 };
@@ -25,22 +26,29 @@ struct PlanInputDigestSpec {
 class PlanInputDigests final {
 public:
   [[nodiscard]] const ArtifactDigest& resolved_pipeline() const noexcept { return resolved_pipeline_; }
-  [[nodiscard]] const ArtifactDigest& scan_descriptor() const noexcept { return scan_descriptor_; }
+  [[nodiscard]] const ArtifactDigest& scan_facts() const noexcept { return scan_facts_; }
+  [[nodiscard]] const ArtifactDigest& effective_pipeline_binding() const noexcept {
+    return effective_pipeline_binding_;
+  }
   [[nodiscard]] const ArtifactDigest& target_envelope() const noexcept { return target_envelope_; }
   [[nodiscard]] const ArtifactDigest& machine_policy() const noexcept { return machine_policy_; }
 
-  [[nodiscard]] static PlanInputDigests from_validated(ArtifactDigest resolved_pipeline, ArtifactDigest scan_descriptor,
+  [[nodiscard]] static PlanInputDigests from_validated(ArtifactDigest resolved_pipeline, ArtifactDigest scan_facts,
+                                                       ArtifactDigest effective_pipeline_binding,
                                                        ArtifactDigest target_envelope,
                                                        ArtifactDigest machine_policy) noexcept;
 
 private:
-  PlanInputDigests(ArtifactDigest resolved_pipeline, ArtifactDigest scan_descriptor, ArtifactDigest target_envelope,
+  PlanInputDigests(ArtifactDigest resolved_pipeline, ArtifactDigest scan_facts,
+                   ArtifactDigest effective_pipeline_binding, ArtifactDigest target_envelope,
                    ArtifactDigest machine_policy) noexcept
-      : resolved_pipeline_(std::move(resolved_pipeline)), scan_descriptor_(std::move(scan_descriptor)),
+      : resolved_pipeline_(std::move(resolved_pipeline)), scan_facts_(std::move(scan_facts)),
+        effective_pipeline_binding_(std::move(effective_pipeline_binding)),
         target_envelope_(std::move(target_envelope)), machine_policy_(std::move(machine_policy)) {}
 
   ArtifactDigest resolved_pipeline_;
-  ArtifactDigest scan_descriptor_;
+  ArtifactDigest scan_facts_;
+  ArtifactDigest effective_pipeline_binding_;
   ArtifactDigest target_envelope_;
   ArtifactDigest machine_policy_;
 };

@@ -7,6 +7,7 @@ project(
 
 if(WIN32)
   enable_language(RC)
+  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>" "$<$<COMPILE_LANGUAGE:CXX>:/bigobj>")
 endif()
 
 set(CMAKE_CXX_STANDARD 20)

@@ -29,7 +29,7 @@ namespace {
   return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
 }
 
-[[nodiscard]] ksj::recon::ScanDescriptor scan_descriptor() {
+[[nodiscard]] std::string_view scan_xml() {
   constexpr std::string_view xml = R"xml(
 <ismrmrdHeader xmlns="http://www.ismrm.org/ISMRMRD">
   <experimentalConditions><H1resonanceFrequency_Hz>123456789</H1resonanceFrequency_Hz></experimentalConditions>
@@ -50,9 +50,24 @@ namespace {
   </encoding>
 </ismrmrdHeader>
 )xml";
-  auto parsed = ksj::recon::ScanDescriptor::parse_ismrmrd_xml(xml);
+  return xml;
+}
+
+[[nodiscard]] ksj::recon::ScanDescriptor scan_descriptor() {
+  auto parsed = ksj::recon::ScanDescriptor::parse_ismrmrd_xml(scan_xml());
   EXPECT_TRUE(parsed.ok()) << parsed.status();
   return std::move(parsed).value();
+}
+
+[[nodiscard]] ksj::recon::ScanFacts scan_facts() {
+  auto facts = ksj::recon::ScanFacts::create({.descriptor = scan_descriptor(),
+                                              .source_xml = std::string(scan_xml()),
+                                              .acquisition_count = 64U,
+                                              .physical_channel_count = 8U,
+                                              .maximum_samples_per_acquisition = 64U,
+                                              .trajectory_dimensions = 2U});
+  EXPECT_TRUE(facts.ok()) << facts.status();
+  return std::move(facts).value();
 }
 
 [[nodiscard]] ksj::recon::TargetEnvelope target_envelope() {
@@ -103,12 +118,18 @@ namespace {
   return std::move(result).value();
 }
 
+[[nodiscard]] ksj::recon::OperatorContract noise_contract();
+[[nodiscard]] ksj::recon::OperatorContract reconstruct_contract();
+
 [[nodiscard]] ksj::recon::graph::ResolvedProvider provider() {
+  const auto noise = noise_contract();
+  const auto reconstruct = reconstruct_contract();
   return {
     .alias = "recon",
     .provider_id = "org.example.recon",
     .bundle_digest = digest("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-    .operators = {{.id = "noise_model_estimate"}, {.id = "noncartesian_reconstruct"}},
+    .operators = {{.id = "noise_model_estimate", .contract_digest = noise.artifact_digest()},
+                  {.id = "noncartesian_reconstruct", .contract_digest = reconstruct.artifact_digest()}},
   };
 }
 
@@ -239,7 +260,8 @@ reconstruct_keyed_dynamic_requirements(const ksj::recon::OperatorContract& contr
 
 struct TestInputs final {
   ksj::recon::graph::ResolvedPipeline resolved_pipeline;
-  ksj::recon::ScanDescriptor scan;
+  ksj::recon::ScanFacts scan_facts;
+  ksj::recon::graph::EffectivePipelineBinding effective_pipeline_binding;
   ksj::recon::TargetEnvelope envelope;
   ksj::recon::MachinePolicy policy;
   std::vector<ksj::recon::graph::OperatorContractBinding> contracts;
@@ -251,6 +273,7 @@ struct TestInputs final {
 {
   "kind":"PipelineDefinition",
   "pipeline":{"id":"org.example.noncartesian","display_name":"Non-Cartesian join"},
+  "input_profile":{"kind":"ismrmrd-hdf5","dataset_group":"dataset"},
   "allowed_profiles":["bounded-reconstruction-graph"],
   "parameters":{},
   "provider_requirements":[{"alias":"recon","provider_id":"org.example.recon"}],
@@ -277,10 +300,21 @@ struct TestInputs final {
   EXPECT_TRUE(definition.ok()) << definition.status();
   auto resolved = ksj::recon::graph::ResolvedPipeline::resolve(std::move(definition).value(), {provider()});
   EXPECT_TRUE(resolved.ok()) << resolved.status();
+  auto resolved_pipeline = std::move(resolved).value();
+  auto facts = scan_facts();
+  std::vector<ksj::recon::graph::HostDerivedNodeConfig> effective_configs;
+  effective_configs.reserve(resolved_pipeline.definition().nodes().size());
+  for (const auto& node : resolved_pipeline.definition().nodes()) {
+    effective_configs.push_back({.node_id = node.id, .canonical_config = node.canonical_config});
+  }
+  auto effective_pipeline_binding = ksj::recon::graph::EffectivePipelineBinding::create_from_host_derived_configs(
+    resolved_pipeline, facts, std::move(effective_configs));
+  EXPECT_TRUE(effective_pipeline_binding.ok()) << effective_pipeline_binding.status();
   const auto noise = noise_contract();
   const auto reconstruct = reconstruct_contract();
-  return {.resolved_pipeline = std::move(resolved).value(),
-          .scan = scan_descriptor(),
+  return {.resolved_pipeline = std::move(resolved_pipeline),
+          .scan_facts = std::move(facts),
+          .effective_pipeline_binding = std::move(effective_pipeline_binding).value(),
           .envelope = target_envelope(),
           .policy = machine_policy(),
           .contracts = {{.node_id = "noise_estimate", .contract = noise},
@@ -292,13 +326,10 @@ struct TestInputs final {
 [[nodiscard]] ksj::recon::graph::PlanBuildRequest request_for(const TestInputs& inputs) {
   return {.resolved_pipeline = inputs.resolved_pipeline,
           .requested_profile = ksj::recon::ExecutionProfile::bounded_reconstruction_graph,
-          .scan_descriptor = inputs.scan,
+          .scan_facts = inputs.scan_facts,
+          .effective_pipeline_binding = inputs.effective_pipeline_binding,
           .target_envelope = inputs.envelope,
           .machine_policy = inputs.policy,
-          .artifact_digests =
-            {.scan_descriptor = digest("sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
-             .target_envelope = digest("sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
-             .machine_policy = digest("sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")},
           .operator_contract_bindings = inputs.contracts,
           .node_planning_requirements = inputs.requirements};
 }
@@ -323,6 +354,14 @@ TEST(SynchronousGraphPlan, CompilesAndVerifiesTwoDynamicInputsWithStaticCalibrat
             2);
   auto verified = ksj::recon::graph::ExecutionPlanVerifier::verify(compiled.value().plan, build_request);
   ASSERT_TRUE(verified.ok()) << verified.status();
+  EXPECT_EQ(compiled.value().plan.inputs().scan_facts(), inputs.scan_facts.digest());
+  EXPECT_EQ(compiled.value().plan.inputs().effective_pipeline_binding(), inputs.effective_pipeline_binding.digest());
+  auto target_digest = ksj::recon::derive_target_envelope_artifact_digest(inputs.envelope);
+  auto machine_digest = ksj::recon::derive_machine_policy_artifact_digest(inputs.policy);
+  ASSERT_TRUE(target_digest.ok()) << target_digest.status();
+  ASSERT_TRUE(machine_digest.ok()) << machine_digest.status();
+  EXPECT_EQ(compiled.value().plan.inputs().target_envelope(), target_digest.value());
+  EXPECT_EQ(compiled.value().plan.inputs().machine_policy(), machine_digest.value());
 }
 
 TEST(SynchronousGraphPlan, UsesArtifactProducerCapacityForKeyedDynamicStaticCalibration) {

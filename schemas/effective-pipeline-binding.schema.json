@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/effective-pipeline-binding.schema.json",
+  "title": "KSpaceJet EffectivePipelineBinding",
+  "description": "Runtime-owned, scan-specific binding of one resolved PipelineDefinition and ScanFacts artifact to the canonical effective configuration of every node. It is not authored input and never contains paths, loader material, or physical runtime policy.",
+  "type": "object",
+  "required": [
+    "kind",
+    "resolved_pipeline_digest",
+    "scan_facts_digest",
+    "node_configs"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "EffectivePipelineBinding"
+    },
+    "resolved_pipeline_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "scan_facts_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "node_configs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/nodeConfig"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "safeInteger": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "effectiveValue": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        {
+          "$ref": "#/$defs/safeInteger"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effectiveValue"
+          }
+        },
+        {
+          "$ref": "#/$defs/effectiveObject"
+        }
+      ]
+    },
+    "effectiveObject": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "anyOf": [
+            {
+              "enum": [
+                "path",
+                "file",
+                "directory",
+                "uri",
+                "url",
+                "bundle",
+                "bundle_digest",
+                "catalog",
+                "command",
+                "contract",
+                "dll",
+                "environment",
+                "executable",
+                "library",
+                "manifest",
+                "module",
+                "operator",
+                "operator_id",
+                "provider",
+                "provider_id",
+                "script",
+                "shared_library",
+                "shell",
+                "allocator",
+                "batch_size",
+                "cpu_permits",
+                "device_bytes",
+                "edge_capacity",
+                "gpu_stream_count",
+                "memory_bytes",
+                "memory_limit",
+                "memory_reservation",
+                "num_threads",
+                "num_workers",
+                "numa_home",
+                "queue_bytes",
+                "queue_capacity",
+                "queue_items",
+                "runtime_queue",
+                "runtime_threads",
+                "scheduler",
+                "shard_count",
+                "slot_count",
+                "task_count",
+                "tasks",
+                "thread_affinity",
+                "thread_count",
+                "threads",
+                "worker_count"
+              ]
+            },
+            {
+              "pattern": ".+_(path|file|directory|uri|url)$"
+            }
+          ]
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/effectiveValue"
+      }
+    },
+    "nodeConfig": {
+      "type": "object",
+      "required": [
+        "node_id",
+        "canonical_config"
+      ],
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "canonical_config": {
+          "$ref": "#/$defs/effectiveObject"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

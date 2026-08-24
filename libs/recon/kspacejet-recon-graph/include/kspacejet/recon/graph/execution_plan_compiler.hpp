@@ -1,6 +1,8 @@
 #pragma once
 
 #include "kspacejet/recon/model.hpp"
+#include "kspacejet/recon/scan_facts.hpp"
+#include "kspacejet/recon/graph/effective_pipeline_binding.hpp"
 #include "kspacejet/recon/graph/pipeline_definition.hpp"
 
 #include <string>
@@ -17,26 +19,17 @@ struct OperatorContractBinding {
   OperatorContract contract;
 };
 
-// ScanDescriptor, TargetEnvelope, and MachinePolicy are C++ value models.
-// Their artifact digests are supplied by the parser/registry that produced
-// them, rather than re-serialising a second representation in the compiler.
-struct PlanArtifactDigests {
-  ArtifactDigest scan_descriptor;
-  ArtifactDigest target_envelope;
-  ArtifactDigest machine_policy;
-};
-
 struct PlanBuildRequest {
-  // Node configuration identity is deliberately not caller-supplied here.
-  // The compiler derives one OperatorPlanBinding for every node from this
-  // resolved pipeline's canonical authored configuration, then the verifier
-  // independently derives and exact-compares the frozen plan bindings.
+  // The resolved pipeline identifies the user's authored graph and Provider
+  // selection.  ScanFacts and EffectivePipelineBinding are host-owned values:
+  // they bind concrete ISMRMRD observations and resulting effective node
+  // configurations without letting callers assert unrelated digest strings.
   const ResolvedPipeline& resolved_pipeline;
   ExecutionProfile requested_profile{ExecutionProfile::bounded_reconstruction_graph};
-  const ScanDescriptor& scan_descriptor;
+  const ScanFacts& scan_facts;
+  const EffectivePipelineBinding& effective_pipeline_binding;
   const TargetEnvelope& target_envelope;
   const MachinePolicy& machine_policy;
-  PlanArtifactDigests artifact_digests;
   std::vector<OperatorContractBinding> operator_contract_bindings;
   // Planning requirements are scan-node bindings rather than Provider
   // contract content. They must form the same complete node-id set as the

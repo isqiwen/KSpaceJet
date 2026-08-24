@@ -52,13 +52,15 @@ public:
 
   [[nodiscard]] const std::string& operator_id() const noexcept { return operator_id_; }
   [[nodiscard]] const std::vector<ResolvedPort>& ports() const noexcept { return ports_; }
+  [[nodiscard]] const ArtifactDigest& artifact_digest() const noexcept { return artifact_digest_; }
 
 private:
-  OperatorContract(std::string operator_id, std::vector<ResolvedPort> ports) noexcept
-      : operator_id_(std::move(operator_id)), ports_(std::move(ports)) {}
+  OperatorContract(std::string operator_id, std::vector<ResolvedPort> ports, ArtifactDigest artifact_digest) noexcept
+      : operator_id_(std::move(operator_id)), ports_(std::move(ports)), artifact_digest_(std::move(artifact_digest)) {}
 
   std::string operator_id_;
   std::vector<ResolvedPort> ports_;
+  ArtifactDigest artifact_digest_;
 };
 
 } // namespace ksj::recon

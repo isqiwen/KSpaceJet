@@ -1,10 +1,14 @@
 #include "kspacejet/recon/runtime/synchronous_graph_executor.hpp"
 
 #include "kspacejet/recon/runtime/host_frame_assembler.hpp"
+#include "kspacejet/recon/runtime/ismrmrd_image_artifact_sink.hpp"
 
 #include "kspacejet/provider/loader/provider_loader.hpp"
 #include "kspacejet/recon/artifact_digest.hpp"
 #include "kspacejet/recon/type_registry.hpp"
+
+#include <ismrmrd/dataset.h>
+#include <ismrmrd/meta.h>
 
 #include <gtest/gtest.h>
 
@@ -14,11 +18,14 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <new>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -78,7 +85,9 @@ constexpr std::string_view kVerificationDigest =
   "sha256:303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f";
 constexpr std::string_view kResolvedPipelineDigest =
   "sha256:505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f";
-constexpr std::string_view kScanDigest = "sha256:707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f";
+constexpr std::string_view kScanFactsDigest = "sha256:707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f";
+constexpr std::string_view kEffectivePipelineBindingDigest =
+  "sha256:808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f";
 constexpr std::string_view kEnvelopeDigest = "sha256:909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf";
 constexpr std::string_view kMachinePolicyDigest =
   "sha256:b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecf";
@@ -86,6 +95,10 @@ constexpr Quantity kPayloadCapacityBytes = 64U;
 constexpr Quantity kMetadataCapacityBytes = 0U;
 constexpr Quantity kGraphHostCapacityBytes = 2U * 1024U * 1024U;
 constexpr Quantity kGraphDescriptorCapacity = 4096U;
+constexpr std::string_view kArtifactSinkSourceXml =
+  "<ismrmrdHeader xmlns=\"http://www.ismrm.org/ISMRMRD\"><experimentalConditions>"
+  "<H1resonanceFrequency_Hz>123456789</H1resonanceFrequency_Hz>"
+  "</experimentalConditions></ismrmrdHeader>";
 
 [[nodiscard]] Result<ArtifactDigest> parse_digest(const std::string_view value, const std::string_view field) {
   return ArtifactDigest::parse(value, field);
@@ -422,7 +435,8 @@ public:
     ExecutionPlanSpec specification;
     specification.inputs = {
       .resolved_pipeline = std::string(kResolvedPipelineDigest),
-      .scan_descriptor = std::string(kScanDigest),
+      .scan_facts = std::string(kScanFactsDigest),
+      .effective_pipeline_binding = std::string(kEffectivePipelineBindingDigest),
       .target_envelope = std::string(kEnvelopeDigest),
       .machine_policy = std::string(kMachinePolicyDigest),
     };
@@ -635,6 +649,56 @@ private:
     return Status::InternalError("test ingress payload capacity is unexpectedly small");
   std::fill_n(payload.value().begin(), 4U, fill);
   return output.value().seal_and_commit(4U, {}, identity);
+}
+
+[[nodiscard]] Status publish_float32_image_ingress(SynchronousGraphExecutor& executor,
+                                                   const std::string_view ingress_id, const DataItemIdentity identity,
+                                                   const std::array<float, 4U>& pixels) {
+  auto output = executor.try_acquire_ingress(ingress_id);
+  if (!output.ok())
+    return output.status();
+  auto payload = output.value().writable_payload();
+  if (!payload.ok())
+    return payload.status();
+  if (payload.value().size() < sizeof(pixels))
+    return Status::InternalError("test ingress payload capacity is unexpectedly small for a float32 image");
+  std::memcpy(payload.value().data(), pixels.data(), sizeof(pixels));
+  return output.value().seal_and_commit(sizeof(pixels), {}, identity);
+}
+
+[[nodiscard]] std::filesystem::path artifact_sink_test_path(const std::string_view filename) {
+  const auto directory = std::filesystem::temp_directory_path() / "ksj_ismrmrd_image_artifact_sink_tests";
+  std::error_code error;
+  std::filesystem::create_directories(directory, error);
+  const auto path = directory / filename;
+  std::filesystem::remove(path, error);
+  return path;
+}
+
+struct TemporaryArtifactSinkPath final {
+  std::filesystem::path path;
+
+  ~TemporaryArtifactSinkPath() {
+    std::error_code error;
+    std::filesystem::remove(path, error);
+  }
+};
+
+[[nodiscard]] ksj::recon::runtime::IsmrmrdMagnitudeImageArtifactDescriptor artifact_sink_descriptor() {
+  ksj::recon::runtime::IsmrmrdMagnitudeImageArtifactDescriptor descriptor;
+  descriptor.source_xml = std::string(kArtifactSinkSourceXml);
+  descriptor.source_acquisition.measurement_uid = 42U;
+  descriptor.source_acquisition.acquisition_time_stamp = 123U;
+  descriptor.source_acquisition.position = {1.0F, 2.0F, 3.0F};
+  descriptor.source_acquisition.read_dir = {1.0F, 0.0F, 0.0F};
+  descriptor.source_acquisition.phase_dir = {0.0F, 1.0F, 0.0F};
+  descriptor.source_acquisition.slice_dir = {0.0F, 0.0F, 1.0F};
+  descriptor.source_acquisition.patient_table_position = {4.0F, 5.0F, 6.0F};
+  descriptor.field_of_view_mm = {.x = 200.0, .y = 200.0, .z = 5.0};
+  descriptor.rows = 2U;
+  descriptor.cols = 2U;
+  descriptor.provenance_attributes = {{"KSpaceJet.Test", "synchronous-graph-terminal-sink"}};
+  return descriptor;
 }
 
 [[nodiscard]] HostFrameAssemblerConfig host_frame_assembler_config() {
@@ -1261,6 +1325,234 @@ TEST(SynchronousGraphExecutor, TerminalPropagatesEndOfInputAfterNodeDrains) {
   EXPECT_EQ(ksj::recon::runtime::SynchronousFiringOutcome::done, terminal.value().outcome);
   EXPECT_EQ(SynchronousGraphExecutorLifecycle::completed, executor_value->snapshot().lifecycle);
   EXPECT_EQ(FixedBufferEdgePollKind::completed, executor_value->egress_poll_kind("images"));
+}
+
+TEST(SynchronousGraphExecutor,
+     IsmrmrdImageArtifactSinkAtomicallyReplacesExistingDestinationThenAcknowledgesTerminalEgress) {
+  auto image = ksj::recon::types::image_frame();
+  ASSERT_TRUE(image.ok()) << image.status();
+  const auto image_type = std::move(image).value();
+
+  GraphPlanBuilder builder;
+  ASSERT_TRUE(builder.add_pool("pool.input", SynchronousDataEndpointKind::ingress, "input", "", image_type).ok());
+  ASSERT_TRUE(
+    builder.add_pool("pool.output", SynchronousDataEndpointKind::node, "operator", "output", image_type).ok());
+  ASSERT_TRUE(builder
+                .add_edge("edge.input", "pool.input", SynchronousDataEndpointKind::ingress, "input", "", 0U,
+                          SynchronousDataEndpointKind::node, "operator", "input", 0U, image_type)
+                .ok());
+  ASSERT_TRUE(builder
+                .add_edge("edge.output", "pool.output", SynchronousDataEndpointKind::node, "operator", "output", 0U,
+                          SynchronousDataEndpointKind::egress, "images", "", 0U, image_type)
+                .ok());
+  auto artifacts =
+    builder.build({{.plan = make_node("operator", {data_input("input", 0U, "edge.input", image_type)},
+                                      {data_output("output", 0U, "edge.output", "pool.output", image_type)}),
+                    .canonical_config = "{\"mode\":\"mirror-input\"}"}});
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  auto artifacts_value = std::move(artifacts).value();
+  auto slabs = GraphSlabs::create(artifacts_value.plan);
+  ASSERT_TRUE(slabs.ok()) << slabs.status();
+  auto slabs_value = std::move(slabs).value();
+  auto executor = make_executor(artifacts_value, slabs_value);
+  ASSERT_TRUE(executor.ok()) << executor.status();
+  auto executor_value = std::move(executor).value();
+
+  ProviderInstance provider;
+  ASSERT_TRUE(initialize_provider(provider, "{\"mode\":\"mirror-input\"}").ok());
+  const std::array<float, 4U> pixels{1.25F, 2.5F, 3.75F, 5.0F};
+  ASSERT_TRUE(publish_float32_image_ingress(*executor_value, "input",
+                                            {.semantic_key_hash = 43U, .order_key = 47U, .item_ordinal = 53U}, pixels)
+                .ok());
+  auto provider_invocation = provider.invocation("operator", "{\"mode\":\"mirror-input\"}");
+  ASSERT_TRUE(provider_invocation.ok()) << provider_invocation.status();
+  ASSERT_TRUE(executor_value->try_fire("operator", invocation(std::move(provider_invocation).value())).ok());
+
+  auto acquired = executor_value->try_acquire_egress("images");
+  ASSERT_TRUE(acquired.ok()) << acquired.status();
+  auto egress = std::move(acquired).value();
+  ASSERT_TRUE(egress.valid());
+
+  constexpr std::string_view kPreviousArtifactContents = "previous ISMRMRD artifact must be replaced as one file";
+  TemporaryArtifactSinkPath output{.path = artifact_sink_test_path("published_terminal_image.mrd")};
+  {
+    std::ofstream existing_output(output.path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(existing_output.is_open());
+    existing_output.write(kPreviousArtifactContents.data(),
+                          static_cast<std::streamsize>(kPreviousArtifactContents.size()));
+    ASSERT_TRUE(existing_output.good());
+  }
+  ASSERT_TRUE(std::filesystem::exists(output.path));
+  ASSERT_EQ(kPreviousArtifactContents.size(), std::filesystem::file_size(output.path));
+
+  ksj::recon::runtime::IsmrmrdImageArtifactSink sink(output.path, artifact_sink_descriptor());
+  ASSERT_TRUE(sink.commit(egress).ok());
+
+  EXPECT_FALSE(egress.valid());
+  EXPECT_EQ(FixedBufferEdgePollKind::empty, executor_value->egress_poll_kind("images"));
+  EXPECT_TRUE(std::filesystem::exists(output.path));
+  {
+    std::ifstream published_bytes(output.path, std::ios::binary);
+    ASSERT_TRUE(published_bytes.is_open());
+    const std::string contents{std::istreambuf_iterator<char>{published_bytes}, std::istreambuf_iterator<char>{}};
+    EXPECT_EQ(std::string::npos, contents.find(kPreviousArtifactContents));
+  }
+
+  const auto filename = output.path.string();
+  ISMRMRD::Dataset dataset(filename.c_str(), "dataset", false);
+  std::string source_xml;
+  dataset.readHeader(source_xml);
+  EXPECT_EQ(kArtifactSinkSourceXml, source_xml);
+  ASSERT_EQ(1U, dataset.getNumberOfImages("image_0"));
+  ISMRMRD::Image<float> artifact;
+  dataset.readImage("image_0", 0U, artifact);
+  const auto& header = artifact.getHead();
+  EXPECT_EQ(ISMRMRD::ISMRMRD_FLOAT, artifact.getDataType());
+  EXPECT_EQ(2U, header.matrix_size[0]);
+  EXPECT_EQ(2U, header.matrix_size[1]);
+  EXPECT_EQ(1U, header.matrix_size[2]);
+  EXPECT_EQ(1U, header.channels);
+  EXPECT_EQ(ISMRMRD::ISMRMRD_IMTYPE_MAGNITUDE, header.image_type);
+  EXPECT_EQ(42U, header.measurement_uid);
+  EXPECT_EQ(123U, header.acquisition_time_stamp);
+  EXPECT_FLOAT_EQ(200.0F, header.field_of_view[0]);
+  EXPECT_FLOAT_EQ(200.0F, header.field_of_view[1]);
+  EXPECT_FLOAT_EQ(5.0F, header.field_of_view[2]);
+  EXPECT_FLOAT_EQ(1.0F, header.position[0]);
+  EXPECT_FLOAT_EQ(2.0F, header.position[1]);
+  EXPECT_FLOAT_EQ(3.0F, header.position[2]);
+  for (std::uint16_t row = 0U; row < 2U; ++row) {
+    for (std::uint16_t column = 0U; column < 2U; ++column) {
+      EXPECT_FLOAT_EQ(pixels[static_cast<std::size_t>(row) * 2U + column], artifact(column, row));
+    }
+  }
+  std::string attributes;
+  artifact.getAttributeString(attributes);
+  ISMRMRD::MetaContainer metadata;
+  ISMRMRD::deserialize(attributes.c_str(), metadata);
+  EXPECT_STREQ("Image", metadata.as_str("DataRole"));
+  EXPECT_STREQ("1", metadata.as_str("ImageNumber"));
+  EXPECT_STREQ("synchronous-graph-terminal-sink", metadata.as_str("KSpaceJet.Test"));
+}
+
+TEST(SynchronousGraphExecutor, IsmrmrdImageArtifactSinkPublicationFailureLeavesExistingDestinationAndEgressUnchanged) {
+  auto image = ksj::recon::types::image_frame();
+  ASSERT_TRUE(image.ok()) << image.status();
+  const auto image_type = std::move(image).value();
+
+  GraphPlanBuilder builder;
+  ASSERT_TRUE(builder.add_pool("pool.input", SynchronousDataEndpointKind::ingress, "input", "", image_type).ok());
+  ASSERT_TRUE(
+    builder.add_pool("pool.output", SynchronousDataEndpointKind::node, "operator", "output", image_type).ok());
+  ASSERT_TRUE(builder
+                .add_edge("edge.input", "pool.input", SynchronousDataEndpointKind::ingress, "input", "", 0U,
+                          SynchronousDataEndpointKind::node, "operator", "input", 0U, image_type)
+                .ok());
+  ASSERT_TRUE(builder
+                .add_edge("edge.output", "pool.output", SynchronousDataEndpointKind::node, "operator", "output", 0U,
+                          SynchronousDataEndpointKind::egress, "images", "", 0U, image_type)
+                .ok());
+  auto artifacts =
+    builder.build({{.plan = make_node("operator", {data_input("input", 0U, "edge.input", image_type)},
+                                      {data_output("output", 0U, "edge.output", "pool.output", image_type)}),
+                    .canonical_config = "{\"mode\":\"mirror-input\"}"}});
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  auto artifacts_value = std::move(artifacts).value();
+  auto slabs = GraphSlabs::create(artifacts_value.plan);
+  ASSERT_TRUE(slabs.ok()) << slabs.status();
+  auto slabs_value = std::move(slabs).value();
+  auto executor = make_executor(artifacts_value, slabs_value);
+  ASSERT_TRUE(executor.ok()) << executor.status();
+  auto executor_value = std::move(executor).value();
+
+  ProviderInstance provider;
+  ASSERT_TRUE(initialize_provider(provider, "{\"mode\":\"mirror-input\"}").ok());
+  const std::array<float, 4U> pixels{1.0F, 2.0F, 3.0F, 4.0F};
+  ASSERT_TRUE(publish_float32_image_ingress(*executor_value, "input",
+                                            {.semantic_key_hash = 59U, .order_key = 61U, .item_ordinal = 67U}, pixels)
+                .ok());
+  auto provider_invocation = provider.invocation("operator", "{\"mode\":\"mirror-input\"}");
+  ASSERT_TRUE(provider_invocation.ok()) << provider_invocation.status();
+  ASSERT_TRUE(executor_value->try_fire("operator", invocation(std::move(provider_invocation).value())).ok());
+
+  auto acquired = executor_value->try_acquire_egress("images");
+  ASSERT_TRUE(acquired.ok()) << acquired.status();
+  auto egress = std::move(acquired).value();
+  ASSERT_TRUE(egress.valid());
+
+  TemporaryArtifactSinkPath failing_output{.path = artifact_sink_test_path("unpublished_terminal_image.mrd")};
+  ASSERT_TRUE(std::filesystem::create_directory(failing_output.path));
+  ksj::recon::runtime::IsmrmrdImageArtifactSink sink(failing_output.path, artifact_sink_descriptor());
+  const auto committed = sink.commit(egress);
+
+  EXPECT_FALSE(committed.ok());
+  EXPECT_EQ(ksj::base::StatusCode::io_error, committed.code());
+  EXPECT_NE(std::string::npos, committed.message().find("unable to publish ISMRMRD image artifact"));
+  EXPECT_TRUE(egress.valid());
+  EXPECT_TRUE(std::filesystem::is_directory(failing_output.path));
+  const auto temporary_prefix = failing_output.path.filename().string() + ".tmp.";
+  std::error_code iteration_error;
+  for (const auto& entry : std::filesystem::directory_iterator(failing_output.path.parent_path(), iteration_error)) {
+    EXPECT_FALSE(entry.path().filename().string().starts_with(temporary_prefix));
+  }
+  EXPECT_FALSE(iteration_error);
+  ASSERT_TRUE(egress.acknowledge_consumed().ok());
+  EXPECT_FALSE(egress.valid());
+  EXPECT_EQ(FixedBufferEdgePollKind::empty, executor_value->egress_poll_kind("images"));
+}
+
+TEST(SynchronousGraphExecutor, IsmrmrdImageArtifactSinkRejectsNegativeMagnitudeWithoutAcknowledgingEgress) {
+  auto image = ksj::recon::types::image_frame();
+  ASSERT_TRUE(image.ok()) << image.status();
+  const auto image_type = std::move(image).value();
+
+  GraphPlanBuilder builder;
+  ASSERT_TRUE(builder.add_pool("pool.input", SynchronousDataEndpointKind::ingress, "input", "", image_type).ok());
+  ASSERT_TRUE(
+    builder.add_pool("pool.output", SynchronousDataEndpointKind::node, "operator", "output", image_type).ok());
+  ASSERT_TRUE(builder
+                .add_edge("edge.input", "pool.input", SynchronousDataEndpointKind::ingress, "input", "", 0U,
+                          SynchronousDataEndpointKind::node, "operator", "input", 0U, image_type)
+                .ok());
+  ASSERT_TRUE(builder
+                .add_edge("edge.output", "pool.output", SynchronousDataEndpointKind::node, "operator", "output", 0U,
+                          SynchronousDataEndpointKind::egress, "images", "", 0U, image_type)
+                .ok());
+  auto artifacts =
+    builder.build({{.plan = make_node("operator", {data_input("input", 0U, "edge.input", image_type)},
+                                      {data_output("output", 0U, "edge.output", "pool.output", image_type)}),
+                    .canonical_config = "{\"mode\":\"mirror-input\"}"}});
+  ASSERT_TRUE(artifacts.ok()) << artifacts.status();
+  auto artifacts_value = std::move(artifacts).value();
+  auto slabs = GraphSlabs::create(artifacts_value.plan);
+  ASSERT_TRUE(slabs.ok()) << slabs.status();
+  auto slabs_value = std::move(slabs).value();
+  auto executor = make_executor(artifacts_value, slabs_value);
+  ASSERT_TRUE(executor.ok()) << executor.status();
+  auto executor_value = std::move(executor).value();
+
+  ProviderInstance provider;
+  ASSERT_TRUE(initialize_provider(provider, "{\"mode\":\"mirror-input\"}").ok());
+  ASSERT_TRUE(publish_float32_image_ingress(*executor_value, "input",
+                                            {.semantic_key_hash = 71U, .order_key = 73U, .item_ordinal = 79U},
+                                            {-1.0F, 2.0F, 3.0F, 4.0F})
+                .ok());
+  auto provider_invocation = provider.invocation("operator", "{\"mode\":\"mirror-input\"}");
+  ASSERT_TRUE(provider_invocation.ok()) << provider_invocation.status();
+  ASSERT_TRUE(executor_value->try_fire("operator", invocation(std::move(provider_invocation).value())).ok());
+
+  auto acquired = executor_value->try_acquire_egress("images");
+  ASSERT_TRUE(acquired.ok()) << acquired.status();
+  auto egress = std::move(acquired).value();
+  TemporaryArtifactSinkPath output{.path = artifact_sink_test_path("negative_magnitude.mrd")};
+  ksj::recon::runtime::IsmrmrdImageArtifactSink sink(output.path, artifact_sink_descriptor());
+  const auto committed = sink.commit(egress);
+
+  EXPECT_FALSE(committed.ok());
+  EXPECT_EQ(ksj::base::StatusCode::validation_error, committed.code());
+  EXPECT_TRUE(egress.valid());
+  EXPECT_FALSE(std::filesystem::exists(output.path));
+  ASSERT_TRUE(egress.acknowledge_consumed().ok());
 }
 
 } // namespace

@@ -2,6 +2,7 @@
 
 #include "kspacejet/recon/graph/artifact_json.hpp"
 #include "kspacejet/recon/graph/canonical_json.hpp"
+#include "kspacejet/recon/planning_input_artifacts.hpp"
 #include "kspacejet/recon/type_registry.hpp"
 
 #include <algorithm>
@@ -192,7 +193,8 @@ struct DerivedSynchronousPlan final {
       return validation("Every pipeline node needs one unique resolved Provider, contract, and planning binding.");
     }
     const auto* resolved_operator = find_operator(*provider, node.operator_id);
-    if (resolved_operator == nullptr || contract->contract.operator_id() != node.operator_id) {
+    if (resolved_operator == nullptr || contract->contract.operator_id() != node.operator_id ||
+        contract->contract.artifact_digest() != resolved_operator->contract_digest) {
       return validation("Node '" + node.id + "' does not match its resolved Provider operator.");
     }
     const auto requirements_status = requirement->requirements.validate_against(contract->contract);
@@ -219,6 +221,16 @@ struct DerivedSynchronousPlan final {
       return validation("NodePlanningRequirements binding references an unknown node.");
   }
   return result;
+}
+
+[[nodiscard]] Status validate_effective_pipeline_binding(const PlanBuildRequest& request) {
+  if (request.effective_pipeline_binding.resolved_pipeline_digest() != request.resolved_pipeline.digest()) {
+    return validation("EffectivePipelineBinding does not attest the PlanBuildRequest ResolvedPipeline.");
+  }
+  if (request.effective_pipeline_binding.scan_facts_digest() != request.scan_facts.digest()) {
+    return validation("EffectivePipelineBinding does not attest the PlanBuildRequest ScanFacts.");
+  }
+  return Status::Ok();
 }
 
 [[nodiscard]] const NodeContext* find_node_context(const std::vector<NodeContext>& nodes,
@@ -438,7 +450,11 @@ make_edge(std::string edge_id, std::string source_pool_id, const SynchronousData
 }
 
 [[nodiscard]] Result<DerivedSynchronousPlan> derive_synchronous_plan(const PlanBuildRequest& request) {
-  if (request.scan_descriptor.source_xml_bytes() > request.target_envelope.max_xml_bytes()) {
+  const auto binding_status = validate_effective_pipeline_binding(request);
+  if (!binding_status.ok()) {
+    return binding_status;
+  }
+  if (request.scan_facts.descriptor().source_xml_bytes() > request.target_envelope.max_xml_bytes()) {
     return validation("ScanDescriptor source XML byte length exceeds TargetEnvelope.max_xml_bytes before ingress.");
   }
   auto nodes = validate_node_contexts(request);
@@ -898,7 +914,11 @@ make_edge(std::string edge_id, std::string source_pool_id, const SynchronousData
   std::vector<OperatorPlanBindingSpec> result;
   result.reserve(request.resolved_pipeline.definition().nodes().size());
   for (const auto& node : request.resolved_pipeline.definition().nodes()) {
-    auto digest = derive_canonical_config_digest(node.canonical_config, "node '" + node.id + "' canonical_config");
+    auto config = request.effective_pipeline_binding.config_for(node.id);
+    if (!config.ok()) {
+      return config.status();
+    }
+    auto digest = derive_canonical_config_digest(config.value(), "node '" + node.id + "' effective canonical_config");
     if (!digest.ok())
       return digest.status();
     result.push_back({.node_id = node.id, .canonical_config_digest = digest.value().value()});
@@ -914,11 +934,20 @@ make_edge(std::string edge_id, std::string source_pool_id, const SynchronousData
   auto bindings = operator_plan_bindings(request);
   if (!bindings.ok())
     return bindings.status();
+  auto target_envelope = derive_target_envelope_artifact_digest(request.target_envelope);
+  if (!target_envelope.ok()) {
+    return target_envelope.status();
+  }
+  auto machine_policy = derive_machine_policy_artifact_digest(request.machine_policy);
+  if (!machine_policy.ok()) {
+    return machine_policy.status();
+  }
   return ExecutionPlanSpec{
     .inputs = {.resolved_pipeline = request.resolved_pipeline.digest().value(),
-               .scan_descriptor = request.artifact_digests.scan_descriptor.value(),
-               .target_envelope = request.artifact_digests.target_envelope.value(),
-               .machine_policy = request.artifact_digests.machine_policy.value()},
+               .scan_facts = request.scan_facts.digest().value(),
+               .effective_pipeline_binding = request.effective_pipeline_binding.digest().value(),
+               .target_envelope = target_envelope.value().value(),
+               .machine_policy = machine_policy.value().value()},
     .operator_plan_bindings = std::move(bindings).value(),
     .execution_profile = request.requested_profile,
     .synchronous_node_plans = derived.nodes,
@@ -945,8 +974,8 @@ make_edge(std::string edge_id, std::string source_pool_id, const SynchronousData
   auto canonical = serialize_execution_plan_canonical_json(serializable.value());
   if (!canonical.ok())
     return canonical.status();
-  auto digest = domain_separated_sha256_digest("kspacejet:artifact:execution-plan", canonical.value(),
-                                               "synchronous ExecutionPlan compiler output");
+  auto digest = derive_domain_separated_sha256_digest("kspacejet:artifact:execution-plan", canonical.value(),
+                                                      "synchronous ExecutionPlan compiler output");
   if (!digest.ok())
     return digest.status();
   return ExecutionPlan::create(std::move(digest).value(), specification.value());

@@ -28,12 +28,11 @@ Options:
   -Smoke           Run the lightweight check scripts after provisioning.
   -Help            Show this help.
 
-The script never invokes winget or installs system software. Git, Git LFS,
+The script uses winget to install just when it is absent. Git, Git LFS,
 Visual Studio 2022 C++ Build Tools (v143), and a Windows SDK are host
-prerequisites. It installs pinned uv and just bootstrap binaries under
-.kspacejet/, then uses uv to create .venv/ and sync the locked developer-tool
-set. After this first bootstrap, use .\tools\devenv\windows\run.ps1 just
-<recipe> for the shared development commands.
+prerequisites. It installs pinned uv under .kspacejet/, then uses uv to create
+.venv/ and sync the locked developer-tool set. Use just <recipe> for the
+shared development commands.
 "@ | Write-Host
 }
 
@@ -63,11 +62,8 @@ foreach ($line in Get-Content -LiteralPath $manifestPath) {
 $uvVersion = $versions["KSJ_UV_VERSION"]
 $uvChecksum = $versions["KSJ_UV_WINDOWS_X86_64_SHA256"]
 $uvBinaryChecksum = $versions["KSJ_UV_WINDOWS_X86_64_BINARY_SHA256"]
-$justVersion = $versions["KSJ_JUST_VERSION"]
-$justChecksum = $versions["KSJ_JUST_WINDOWS_X86_64_SHA256"]
-$justBinaryChecksum = $versions["KSJ_JUST_WINDOWS_X86_64_BINARY_SHA256"]
 $pythonVersion = $versions["KSJ_PYTHON_VERSION"]
-if ([string]::IsNullOrWhiteSpace($uvVersion) -or [string]::IsNullOrWhiteSpace($uvChecksum) -or [string]::IsNullOrWhiteSpace($uvBinaryChecksum) -or [string]::IsNullOrWhiteSpace($justVersion) -or [string]::IsNullOrWhiteSpace($justChecksum) -or [string]::IsNullOrWhiteSpace($justBinaryChecksum) -or [string]::IsNullOrWhiteSpace($pythonVersion)) {
+if ([string]::IsNullOrWhiteSpace($uvVersion) -or [string]::IsNullOrWhiteSpace($uvChecksum) -or [string]::IsNullOrWhiteSpace($uvBinaryChecksum) -or [string]::IsNullOrWhiteSpace($pythonVersion)) {
   throw "[kspacejet-devenv] tool version manifest is incomplete"
 }
 
@@ -96,7 +92,107 @@ function Invoke-KSpaceJetDevNative {
 
   & $Executable @Arguments
   if ($LASTEXITCODE -ne 0) {
-    throw "[kspacejet-devenv] command failed with exit code $LASTEXITCODE: $Executable $($Arguments -join ' ')"
+    throw "[kspacejet-devenv] command failed with exit code ${LASTEXITCODE}: $Executable $($Arguments -join ' ')"
+  }
+}
+
+function Get-KSpaceJetSha256 {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $stream = [IO.File]::OpenRead($Path)
+  try {
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+      return -join ($algorithm.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") })
+    } finally {
+      $algorithm.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
+}
+
+function Add-WingetJustToPath {
+  $wingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+  $justExecutables = @(Get-ChildItem -LiteralPath $wingetPackages -Filter "just.exe" -File -Recurse -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -match "Casey[.]Just_" })
+  if ($justExecutables.Count -ne 1) {
+    return $false
+  }
+  $justDirectory = Split-Path -Parent $justExecutables[0].FullName
+  $pathSeparator = [IO.Path]::PathSeparator
+  $env:PATH = "$justDirectory$pathSeparator$env:PATH"
+
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $userPathEntries = @($userPath -split [regex]::Escape($pathSeparator) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  if (-not ($userPathEntries | Where-Object { $_.TrimEnd('\\') -ieq $justDirectory.TrimEnd('\\') })) {
+    [Environment]::SetEnvironmentVariable("Path", "$justDirectory$pathSeparator$userPath", "User")
+  }
+
+  Publish-UserEnvironmentChange
+
+  return [bool](Get-Command "just" -ErrorAction SilentlyContinue)
+}
+
+function Publish-UserEnvironmentChange {
+  if (-not ("KSpaceJet.EnvironmentChangeNotification" -as [type])) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+namespace KSpaceJet {
+  public static class EnvironmentChangeNotification {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+      IntPtr hWnd,
+      uint message,
+      IntPtr wParam,
+      string lParam,
+      uint flags,
+      uint timeout,
+      out IntPtr result);
+  }
+}
+"@
+  }
+
+  $result = [IntPtr]::Zero
+  [void][KSpaceJet.EnvironmentChangeNotification]::SendMessageTimeout(
+      [IntPtr]0xffff,
+      0x001a,
+      [IntPtr]::Zero,
+      "Environment",
+      0x0002,
+      5000,
+      [ref]$result)
+}
+
+function Ensure-HostJust {
+  if (Get-Command "just" -ErrorAction SilentlyContinue) {
+    return
+  }
+  if (Add-WingetJustToPath) {
+    return
+  }
+  if ($Verify) {
+    Stop-KSpaceJetDev "host prerequisite is missing: just; rerun bootstrap without -Verify to install it"
+  }
+  if ($Offline) {
+    Stop-KSpaceJetDev "host prerequisite is missing: just while -Offline is set"
+  }
+
+  Require-HostCommand "winget"
+  Write-KSpaceJetDevNote "installing host just with winget"
+  Invoke-KSpaceJetDevNative -Executable "winget" -Arguments @(
+    "install",
+    "--id",
+    "Casey.Just",
+    "--exact",
+    "--accept-package-agreements",
+    "--accept-source-agreements")
+
+  if (-not (Add-WingetJustToPath)) {
+    Stop-KSpaceJetDev "winget installed just but its executable could not be located"
   }
 }
 
@@ -124,7 +220,7 @@ function Test-HostPrerequisites {
 
   $toolsetRoot = Join-Path $installationPath "VC\Tools\MSVC"
   $msvc194Toolsets = @(Get-ChildItem -LiteralPath $toolsetRoot -Directory -ErrorAction SilentlyContinue |
-      Where-Object { $_.Name -match "^14\\.4" })
+      Where-Object { $_.Name -match "^14\.4" })
   if ($msvc194Toolsets.Count -eq 0) {
     Stop-KSpaceJetDev "MSVC 19.4x (toolset 14.4x, Conan msvc/194) is required by the Windows profile"
   }
@@ -137,8 +233,6 @@ function Test-HostPrerequisites {
 
 $uvRoot = Join-Path $repoRoot ".kspacejet\bootstrap\uv\$uvVersion\windows-x86_64"
 $uvPath = Join-Path $uvRoot "uv.exe"
-$justRoot = Join-Path $repoRoot ".kspacejet\bootstrap\just\$justVersion\windows-x86_64"
-$justPath = Join-Path $justRoot "just.exe"
 
 function Test-ProjectUv {
   if (-not (Test-Path -LiteralPath $uvPath -PathType Leaf)) {
@@ -147,7 +241,7 @@ function Test-ProjectUv {
   try {
     $reported = & $uvPath --version
     $uvExitCode = $LASTEXITCODE
-    $actualChecksum = (Get-FileHash -LiteralPath $uvPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actualChecksum = Get-KSpaceJetSha256 -Path $uvPath
     return $uvExitCode -eq 0 -and (($reported -split "\s+")[1] -eq $uvVersion) -and $actualChecksum -eq $uvBinaryChecksum
   } catch {
     return $false
@@ -174,7 +268,7 @@ function Install-ProjectUv {
     Write-KSpaceJetDevNote "downloading pinned uv $uvVersion"
     Invoke-WebRequest -Uri $url -OutFile $archivePath -UseBasicParsing
 
-    $actualChecksum = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actualChecksum = Get-KSpaceJetSha256 -Path $archivePath
     if ($actualChecksum -ne $uvChecksum) {
       Stop-KSpaceJetDev "uv archive SHA-256 mismatch"
     }
@@ -200,74 +294,6 @@ function Install-ProjectUv {
     Move-Item -LiteralPath $temporaryTarget -Destination $uvPath -Force
     if (-not (Test-ProjectUv)) {
       Stop-KSpaceJetDev "installed uv executable failed integrity verification"
-    }
-  } finally {
-    if (Test-Path -LiteralPath $temporaryDirectory) {
-      Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force
-    }
-  }
-}
-
-function Test-ProjectJust {
-  if (-not (Test-Path -LiteralPath $justPath -PathType Leaf)) {
-    return $false
-  }
-  try {
-    $reported = & $justPath --version
-    $justExitCode = $LASTEXITCODE
-    $actualChecksum = (Get-FileHash -LiteralPath $justPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    return $justExitCode -eq 0 -and (($reported -split "\s+")[1] -eq $justVersion) -and $actualChecksum -eq $justBinaryChecksum
-  } catch {
-    return $false
-  }
-}
-
-function Install-ProjectJust {
-  if (Test-ProjectJust) {
-    Write-KSpaceJetDevNote "using pinned project-local just $justVersion"
-    return
-  }
-  if ($Verify) {
-    Stop-KSpaceJetDev "project-local just $justVersion is absent or invalid; -Verify never downloads tools"
-  }
-  if ($Offline) {
-    Stop-KSpaceJetDev "project-local just $justVersion is absent or invalid while -Offline is set"
-  }
-
-  $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("kspacejet-just-" + [Guid]::NewGuid().ToString("N"))
-  New-Item -ItemType Directory -Path $temporaryDirectory -Force | Out-Null
-  try {
-    $archivePath = Join-Path $temporaryDirectory "just.zip"
-    $url = "https://github.com/casey/just/releases/download/$justVersion/just-$justVersion-x86_64-pc-windows-msvc.zip"
-    Write-KSpaceJetDevNote "downloading pinned just $justVersion"
-    Invoke-WebRequest -Uri $url -OutFile $archivePath -UseBasicParsing
-
-    $actualChecksum = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actualChecksum -ne $justChecksum) {
-      Stop-KSpaceJetDev "just archive SHA-256 mismatch"
-    }
-
-    $extractDirectory = Join-Path $temporaryDirectory "extract"
-    Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDirectory -Force
-    $candidates = @(Get-ChildItem -LiteralPath $extractDirectory -Filter "just.exe" -File -Recurse)
-    if ($candidates.Count -ne 1) {
-      Stop-KSpaceJetDev "unexpected just archive layout"
-    }
-
-    $reported = & $candidates[0].FullName --version
-    if ($LASTEXITCODE -ne 0 -or (($reported -split "\s+")[1] -ne $justVersion)) {
-      Stop-KSpaceJetDev "downloaded just reports an unexpected version"
-    }
-
-    New-Item -ItemType Directory -Path $justRoot -Force | Out-Null
-    $temporaryTarget = "$justPath.new"
-    Copy-Item -LiteralPath $candidates[0].FullName -Destination $temporaryTarget -Force
-    if (Test-Path -LiteralPath $justPath -PathType Leaf) {
-      Remove-Item -LiteralPath $justPath -Force
-    }
-    Move-Item -LiteralPath $temporaryTarget -Destination $justPath -Force
-    if (-not (Test-ProjectJust)) {
-      Stop-KSpaceJetDev "installed just executable failed integrity verification"
     }
   } finally {
     if (Test-Path -LiteralPath $temporaryDirectory) {
@@ -331,7 +357,7 @@ function Invoke-ProjectTool {
   param([Parameter(Mandatory = $true)][string[]]$Arguments)
   & $toolRunner @Arguments
   if ($LASTEXITCODE -ne 0) {
-    throw "[kspacejet-devenv] project tool failed with exit code $LASTEXITCODE: $($Arguments -join ' ')"
+    throw "[kspacejet-devenv] project tool failed with exit code ${LASTEXITCODE}: $($Arguments -join ' ')"
   }
 }
 
@@ -383,7 +409,7 @@ function Prepare-Build {
   Write-KSpaceJetDevNote "preparing $Prepare"
   Invoke-ProjectTool -Arguments @("conan", "export", "conan/recipes/ismrmrd", "--user=kspacejet", "--channel=stable")
   Invoke-ProjectTool -Arguments @("conan", "export", "third_party/intel", "--user=kspacejet", "--channel=stable")
-  $conanInstallArguments = @("conan", "install", ".", "--output-folder=$outputFolder", "--profile:host=$profile", "--build=missing")
+  $conanInstallArguments = @("conan", "install", ".", "--output-folder=$outputFolder", "--profile:host=$profile", "--profile:build=$profile", "-cc", "core.net.http:timeout=300", "--build=missing")
   if ($Offline) {
     $conanInstallArguments += "--no-remote"
   }
@@ -393,7 +419,7 @@ function Prepare-Build {
 
 function Show-Versions {
   Write-KSpaceJetDevNote "tool versions"
-  Invoke-KSpaceJetDevNative -Executable $justPath -Arguments @("--version")
+  Invoke-KSpaceJetDevNative -Executable "just" -Arguments @("--version")
   Invoke-ProjectTool -Arguments @("python", "--version")
   Invoke-ProjectTool -Arguments @("conan", "--version")
   Invoke-ProjectTool -Arguments @("cmake", "--version")
@@ -414,13 +440,13 @@ function Invoke-SmokeChecks {
 }
 
 Set-Location $repoRoot
+Ensure-HostJust
 Test-HostPrerequisites
 Install-ProjectUv
-Install-ProjectJust
 Sync-PythonTools
 Configure-Repository
 Prepare-Build
 Show-Versions
 Invoke-SmokeChecks
-Write-KSpaceJetDevNote "shared commands: .\tools\devenv\windows\run.ps1 just --list"
+Write-KSpaceJetDevNote "shared commands: just --list"
 Write-KSpaceJetDevNote "developer environment is ready"

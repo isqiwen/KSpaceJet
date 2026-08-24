@@ -1,9 +1,9 @@
 # KSpaceJet applications
 
-KSpaceJet has four explicitly named executable projects. Their output names use the
+KSpaceJet has five explicitly named executable projects. Their output names use the
 `ksj` prefix; their source directories use the repository-wide `kspacejet-*` form.
-When `KSJ_BUILD_APPLICATIONS=ON`, all four targets participate in the default build.
-When `KSJ_ENABLE_INSTALL_RULES=ON`, all four executables are installed. The experiment
+When `KSJ_BUILD_APPLICATIONS=ON`, all five targets participate in the default build.
+When `KSJ_ENABLE_INSTALL_RULES=ON`, all five executables are installed. The experiment
 workloads below `tests/research` remain independently controlled by `KSJ_BUILD_RESEARCH`.
 
 `apps/` contains process entry points only. Every executable declares and parses its
@@ -13,23 +13,34 @@ own owning framework library, not in a second command-line parser target.
 | Source directory | CMake target | Executable | Role |
 | --- | --- | --- | --- |
 | `kspacejet-cli` | `ksj_cli` | `ksj` | Pipeline validation and Provider-scaffold tools. |
-| `kspacejet-gateway` | `ksj_gateway` | `ksj-gateway` | Installed application scaffold; operations are unimplemented. |
-| `kspacejet-recon` | `ksj_recon` | `ksj-recon` | Offline HDF5 Cartesian/non-Cartesian RSS reference executable. |
+| `kspacejet-gateway` | `ksj_gateway` | `ksj-gateway` | Planned sole external-integration gateway; current operations are unimplemented scaffold behavior. |
+| `kspacejet-recon` | `ksj_recon` | `ksj-recon` | Offline HDF5 Cartesian RSS, direct non-Cartesian RSS oracle, and explicit radial-gridding RSS reference executable. |
 | `kspacejet-research` | `ksj_research` | `ksj-research` | Installed research application scaffold; operations are unimplemented. |
+| `kspacejet-viewer` | `ksj_viewer` | `ksj-viewer` | Local read-only Qt Widgets inspector for standard ISMRMRD metadata/acquisitions/images and parse-only PipelineDefinition views; exports only labelled display derivatives. |
 
 `ksj-gateway` and `ksj-research` currently provide only scaffold help/version behavior; a
 requested gateway configuration or research operation reports `unimplemented`. They do not
 implement external-system integration, a data-plane service, session forwarding, Connector
 management, scanner integration, routing, or relay behavior.
 
+The candidate-stable future boundary is [KSpaceJet gateway architecture](../docs/architecture/KSpaceJet_gateway_architecture.md).
+It makes ksj-gateway the sole external-integration entry point only after P5-009 onward passes
+its profile, security, runtime and qualification gates. The design still excludes vendor protocol,
+scanner control and private wire behavior.
+
 The current `ksj-recon` reference routes receive caller-selected HDF5 input together with
 explicit Provider modules and OperatorContracts. Provider loading is in-process and is not a
 fault-isolation claim.
 
 The default application build creates and installs `ksj`, `ksj-gateway`, `ksj-recon`,
-and `ksj-research`. The four executables share the same application build and installation
+`ksj-research`, and `ksj-viewer`. The five executables share the same application build and installation
 policy; no executable-specific build option or preset is needed. `KSJ_BUILD_RESEARCH`
 remains reserved for `tests/research` and does not control any application executable.
+
+`ksj-viewer` is read-only and never becomes a reconstruction, Provider, gateway, or research
+data-plane dependency. It consumes the bounded standard ISMRMRD inspection reader and the
+parse-only PipelineDefinition parser; its PNG/SVG/CSV/JSON output is explicitly a visualization
+derivative rather than a second MRI artifact.
 
 Each executable implements CLI11 `--help`/`-h`, `--version`, and its documented
 `--format text|json` behavior. JSON is a machine-readable command-result protocol;

@@ -50,12 +50,6 @@ inline constexpr JsonParseLimits kPipelineDefinitionJsonParseLimits{
                                                     const JsonParseLimits& limits = kDefaultJsonParseLimits);
 [[nodiscard]] Result<ArtifactDigest> sha256_digest(std::string_view canonical_document,
                                                    std::string_view field_name = "artifact digest");
-// Artifact identity is domain separated from cache-only semantic identity.
-// Callers must pass already-normalized canonical bytes; this helper never
-// chooses which fields are semantic.
-[[nodiscard]] Result<ArtifactDigest> domain_separated_sha256_digest(std::string_view domain,
-                                                                    std::string_view canonical_document,
-                                                                    std::string_view field_name = "artifact digest");
 [[nodiscard]] Result<ArtifactDigest> canonical_json_digest(std::string_view document,
                                                            std::string_view field_name = "artifact digest");
 

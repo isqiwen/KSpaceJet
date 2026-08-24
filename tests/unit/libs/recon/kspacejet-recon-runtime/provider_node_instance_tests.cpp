@@ -51,7 +51,9 @@ constexpr std::string_view kOperatorId = "synchronous_firing_lease_test_operator
 constexpr std::string_view kPlanDigest = "sha256:101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
 constexpr std::string_view kResolvedPipelineDigest =
   "sha256:505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f";
-constexpr std::string_view kScanDigest = "sha256:707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f";
+constexpr std::string_view kScanFactsDigest = "sha256:707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f";
+constexpr std::string_view kEffectivePipelineBindingDigest =
+  "sha256:808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f";
 constexpr std::string_view kEnvelopeDigest = "sha256:909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf";
 constexpr std::string_view kMachinePolicyDigest =
   "sha256:b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecf";
@@ -143,7 +145,8 @@ make_edge(const std::string_view edge_id, const std::string_view source_pool_id,
 
   ExecutionPlanSpec specification;
   specification.inputs = {.resolved_pipeline = std::string(kResolvedPipelineDigest),
-                          .scan_descriptor = std::string(kScanDigest),
+                          .scan_facts = std::string(kScanFactsDigest),
+                          .effective_pipeline_binding = std::string(kEffectivePipelineBindingDigest),
                           .target_envelope = std::string(kEnvelopeDigest),
                           .machine_policy = std::string(kMachinePolicyDigest)};
   specification.execution_profile = ExecutionProfile::bounded_reconstruction_graph;
@@ -196,7 +199,7 @@ make_edge(const std::string_view edge_id, const std::string_view source_pool_id,
     .module_path = std::filesystem::path(KSJ_SYNCHRONOUS_FIRING_LEASE_TEST_PROVIDER_MODULE),
     .node_id = "node",
     .canonical_config = std::string(canonical_config),
-    .start_facts = ProviderNodeStartFacts{.normalized_scan_facts_digest = plan.inputs().scan_descriptor(),
+    .start_facts = ProviderNodeStartFacts{.normalized_scan_facts_digest = plan.inputs().scan_facts(),
                                           .execution_plan_digest = plan.digest(),
                                           .run_id = "runtime-test",
                                           .scan_instance_id = "scan-instance",
@@ -302,11 +305,19 @@ TEST(SynchronousGraphPlanStorage, OwnsExactFrozenSlabsWithAtLeast64ByteAlignment
 TEST(SynchronousGraphPlanStorage, MakesStableFrameIdentityWithoutUsingPlacementAsDataIdentity) {
   FrameSlotContext context{};
   context.semantic_key = {
-    .encoding_space = 1U, .slice = 2U, .contrast = 3U, .repetition = 4U, .set = 5U, .phase = 6U, .average = 7U};
+    .encoding_space = 1U,
+    .slice = 2U,
+    .contrast = 3U,
+    .repetition = 4U,
+    .set = 5U,
+    .phase = 6U,
+    .average = 7U,
+    .segment = 8U,
+  };
   context.order_key = 101U;
   context.placement_key = 103U;
   const auto identity = ksj::recon::runtime::make_data_item_identity(context, 107U);
-  EXPECT_EQ(4501807756642851595ULL, identity.semantic_key_hash);
+  EXPECT_EQ(1282725276430990459ULL, identity.semantic_key_hash);
   EXPECT_EQ(101U, identity.order_key);
   EXPECT_EQ(107U, identity.item_ordinal);
 
@@ -316,6 +327,9 @@ TEST(SynchronousGraphPlanStorage, MakesStableFrameIdentityWithoutUsingPlacementA
   EXPECT_EQ(identity.order_key, changed_placement.order_key);
   EXPECT_EQ(identity.item_ordinal, changed_placement.item_ordinal);
   ++context.semantic_key.slice;
+  EXPECT_NE(identity.semantic_key_hash, ksj::recon::runtime::make_data_item_identity(context, 107U).semantic_key_hash);
+  --context.semantic_key.slice;
+  ++context.semantic_key.segment;
   EXPECT_NE(identity.semantic_key_hash, ksj::recon::runtime::make_data_item_identity(context, 107U).semantic_key_hash);
 }
 

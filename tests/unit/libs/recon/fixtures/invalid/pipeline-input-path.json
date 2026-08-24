@@ -1,0 +1,84 @@
+{
+  "kind": "PipelineDefinition",
+  "pipeline": {
+    "id": "org.example.cartesian-image",
+    "display_name": "Cartesian image reconstruction"
+  },
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "dataset_group": "dataset"
+  },
+  "allowed_profiles": [
+    "offline-reference",
+    "bounded-reconstruction-graph"
+  ],
+  "parameters": {},
+  "provider_requirements": [
+    {
+      "alias": "cartesian",
+      "provider_id": "org.kspacejet.cartesian-recon"
+    },
+    {
+      "alias": "coilcombine",
+      "provider_id": "org.kspacejet.coil-combine"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "reconstruct",
+      "operator": {
+        "provider": "cartesian",
+        "id": "cartesian_ifft2_coil_images"
+      },
+      "config": {
+        "input_path": "scan.mrd"
+      }
+    },
+    {
+      "id": "combine",
+      "operator": {
+        "provider": "coilcombine",
+        "id": "coil_combine_rss"
+      },
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "coil_images",
+      "from": {
+        "node": "reconstruct",
+        "port": "coil_images"
+      },
+      "to": {
+        "node": "combine",
+        "port": "coil_images"
+      }
+    }
+  ],
+  "bindings": {
+    "ingress": [
+      {
+        "id": "kspace",
+        "type": "ksj.kspace-frame",
+        "to": {
+          "node": "reconstruct",
+          "port": "kspace"
+        }
+      }
+    ],
+    "egress": [
+      {
+        "id": "images",
+        "type": "ksj.image-frame",
+        "from": {
+          "node": "combine",
+          "port": "image"
+        }
+      }
+    ],
+    "calibration": [],
+    "merge": []
+  },
+  "annotations": {}
+}

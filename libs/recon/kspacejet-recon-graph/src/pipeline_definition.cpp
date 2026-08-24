@@ -6,8 +6,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <initializer_list>
+#include <limits>
 #include <optional>
 #include <set>
 #include <string>
@@ -177,6 +179,54 @@ using Json = nlohmann::json;
   return std::move(value).value();
 }
 
+[[nodiscard]] Result<std::string> require_bounded_json_string(const Json& value, const std::string_view path,
+                                                              const std::size_t max_characters,
+                                                              const bool allow_empty = false) {
+  if (!value.is_string()) {
+    return validation_error(path, "must be a string");
+  }
+  const auto& string_value = value.get_ref<const std::string&>();
+  if (!allow_empty && string_value.empty()) {
+    return validation_error(path, "must be a non-empty string");
+  }
+  auto count = utf8_character_count(string_value, path);
+  if (!count.ok()) {
+    return count.status();
+  }
+  if (count.value() > max_characters) {
+    return validation_error(path, "exceeds its maximum character length");
+  }
+  return string_value;
+}
+
+constexpr std::int64_t kMaximumExactJsonInteger = 9'007'199'254'740'991LL;
+
+[[nodiscard]] Result<std::int64_t> require_exact_json_integer(const Json& value, const std::string_view path) {
+  if (value.is_number_integer()) {
+    const auto integer = value.get<std::int64_t>();
+    if (integer < -kMaximumExactJsonInteger || integer > kMaximumExactJsonInteger) {
+      return validation_error(path, "must be an exactly representable JSON integer");
+    }
+    return integer;
+  }
+  if (value.is_number_unsigned()) {
+    const auto integer = value.get<std::uint64_t>();
+    if (integer > static_cast<std::uint64_t>(kMaximumExactJsonInteger)) {
+      return validation_error(path, "must be an exactly representable JSON integer");
+    }
+    return static_cast<std::int64_t>(integer);
+  }
+  return validation_error(path, "must be an integer");
+}
+
+[[nodiscard]] Result<std::string> canonical_scalar_json(const Json& value, const std::string_view path) {
+  auto canonical = canonicalize_json(value.dump(), kPipelineDefinitionJsonParseLimits);
+  if (!canonical.ok()) {
+    return validation_error(path, "could not be canonicalized");
+  }
+  return std::move(canonical).value();
+}
+
 [[nodiscard]] Result<NodePortReference> parse_node_port_reference(const Json& value, const std::string_view path) {
   const auto status = validate_object_keys(value, path, {"node", "port"}, {"node", "port"});
   if (!status.ok())
@@ -190,34 +240,110 @@ using Json = nlohmann::json;
   return NodePortReference{.node = std::move(node).value(), .port = std::move(port).value()};
 }
 
-[[nodiscard]] bool has_forbidden_runtime_field(const Json& value, std::string& path) {
+[[nodiscard]] bool is_external_path_field(const std::string_view name) {
+  return name == "path" || name == "file" || name == "directory" || name == "uri" || name == "url" ||
+         name.ends_with("_path") || name.ends_with("_file") || name.ends_with("_directory") || name.ends_with("_uri") ||
+         name.ends_with("_url");
+}
+
+[[nodiscard]] bool has_forbidden_authored_field(const Json& value, std::string& path) {
   static const std::unordered_set<std::string> forbidden{
-    "task_count",       "tasks",
-    "key_shards",       "dense_dimensions",
-    "slot_count",       "max_live_keys",
-    "key_domain_bound", "host_metadata_charged_bytes",
-    "shard_count",      "queue_capacity",
-    "queue_bytes",      "edge_capacity",
-    "worker_count",     "num_workers",
-    "threads",          "num_threads",
-    "numa_home",        "runtime_queue",
-    "runtime_threads",  "gpu_stream_count",
-    "batch_size",       "memory_reservation",
+    // Runtime/compiler-owned physical scheduling and resource policy.
+    "task_count",
+    "tasks",
+    "key_shards",
+    "dense_dimensions",
+    "slot_count",
+    "max_live_keys",
+    "key_domain_bound",
+    "host_metadata_charged_bytes",
+    "shard_count",
+    "queue_capacity",
+    "queue_bytes",
+    "edge_capacity",
+    "worker_count",
+    "num_workers",
+    "threads",
+    "num_threads",
+    "numa_home",
+    "runtime_queue",
+    "runtime_threads",
+    "gpu_stream_count",
+    "batch_size",
+    "memory_reservation",
+    "allocator",
+    "cpu_permits",
+    "device_bytes",
+    "memory_bytes",
+    "memory_limit",
+    "queue_items",
+    "scheduler",
+    "thread_affinity",
+    "thread_count",
+    // Pipeline selection is symbolic. Dynamic loading, contract discovery and
+    // bundle/catalog lookup are resolver-owned and cannot be smuggled through
+    // a node's authored algorithm configuration.
+    "bundle",
+    "bundle_digest",
+    "catalog",
+    "command",
+    "contract",
+    "dll",
+    "environment",
+    "executable",
+    "library",
+    "manifest",
+    "module",
+    "script",
+    "shared_library",
+    "shell",
+    // ISMRMRD-derived facts.  Algorithm choices may be authored, but concrete
+    // scan shape, counts and physical channel observations are host-owned.
+    "acquisition_count",
+    "channel_count",
+    "channels",
+    "coil_count",
+    "columns",
+    "encoded_columns",
+    "encoded_matrix",
+    "encoded_rows",
+    "encoding_count",
+    "field_of_view",
+    "fov",
+    "image_columns",
+    "image_rows",
+    "matrix",
+    "matrix_columns",
+    "matrix_rows",
+    "matrix_size",
+    "maximum_samples_per_acquisition",
+    "physical_channel_count",
+    "readout_samples",
+    "recon_columns",
+    "recon_rows",
+    "reconstruction_columns",
+    "reconstruction_rows",
+    "rows",
+    "sample_count",
+    "samples_per_acquisition",
+    "scan_descriptor",
+    "trajectory_dimension",
+    "trajectory_dimensions",
   };
   if (value.is_object()) {
     for (auto iterator = value.begin(); iterator != value.end(); ++iterator) {
-      if (forbidden.contains(iterator.key())) {
+      if (forbidden.contains(iterator.key()) || is_external_path_field(iterator.key())) {
         path = iterator.key();
         return true;
       }
-      if (has_forbidden_runtime_field(iterator.value(), path)) {
+      if (has_forbidden_authored_field(iterator.value(), path)) {
         path = iterator.key() + "." + path;
         return true;
       }
     }
   } else if (value.is_array()) {
     for (std::size_t index = 0; index < value.size(); ++index) {
-      if (has_forbidden_runtime_field(value[index], path)) {
+      if (has_forbidden_authored_field(value[index], path)) {
         path = "[" + std::to_string(index) + "]" + path;
         return true;
       }
@@ -239,8 +365,342 @@ using Json = nlohmann::json;
   return ProviderSelection{.alias = std::move(alias).value(), .provider_id = std::move(provider_id).value()};
 }
 
-[[nodiscard]] Result<PipelineNode> parse_node(const Json& value, const std::string_view path) {
-  const auto status = validate_object_keys(value, path, {"id", "operator", "config"}, {"id", "operator", "config"});
+[[nodiscard]] Result<PipelineInputProfile> parse_input_profile(const Json& value, const std::string_view path) {
+  const auto status = validate_object_keys(value, path, {"kind", "dataset_group"}, {"kind", "dataset_group"});
+  if (!status.ok()) {
+    return status;
+  }
+  auto kind = require_string(value, "kind", path);
+  auto dataset_group = require_bounded_string(value, "dataset_group", path, 128U);
+  if (!kind.ok()) {
+    return kind.status();
+  }
+  if (!dataset_group.ok()) {
+    return dataset_group.status();
+  }
+  if (kind.value() != "ismrmrd-hdf5") {
+    return validation_error(std::string(path) + ".kind", "must equal 'ismrmrd-hdf5'");
+  }
+  if (dataset_group.value() != "dataset") {
+    return validation_error(std::string(path) + ".dataset_group",
+                            "must equal the standard ISMRMRD HDF5 dataset group 'dataset'");
+  }
+  return PipelineInputProfile{.kind = PipelineInputProfileKind::ismrmrd_hdf5,
+                              .dataset_group = std::move(dataset_group).value()};
+}
+
+[[nodiscard]] Result<PipelineParameterType> parse_parameter_type(const Json& value, const std::string_view path) {
+  auto type = require_string(value, "type", path);
+  if (!type.ok()) {
+    return type.status();
+  }
+  if (type.value() == "boolean") {
+    return PipelineParameterType::boolean;
+  }
+  if (type.value() == "integer") {
+    return PipelineParameterType::integer;
+  }
+  if (type.value() == "string") {
+    return PipelineParameterType::string;
+  }
+  if (type.value() == "enum") {
+    return PipelineParameterType::enumeration;
+  }
+  return validation_error(std::string(path) + ".type", "must be one of 'boolean', 'integer', 'string', or 'enum'");
+}
+
+[[nodiscard]] Result<PipelineParameter> parse_parameter(const std::string_view name, const Json& value,
+                                                        const std::string_view path) {
+  const auto object_status = require_object(value, path);
+  if (!object_status.ok()) {
+    return object_status;
+  }
+  auto type = parse_parameter_type(value, path);
+  if (!type.ok()) {
+    return type.status();
+  }
+
+  PipelineParameter parameter{.name = std::string(name), .type = type.value()};
+  switch (type.value()) {
+    case PipelineParameterType::boolean:
+      {
+        const auto status = validate_object_keys(value, path, {"type", "default"}, {"type", "default"});
+        if (!status.ok()) {
+          return status;
+        }
+        if (!value.at("default").is_boolean()) {
+          return validation_error(std::string(path) + ".default", "must be a boolean");
+        }
+        break;
+      }
+    case PipelineParameterType::integer:
+      {
+        const auto status = validate_object_keys(value, path, {"type", "minimum", "maximum", "default"},
+                                                 {"type", "minimum", "maximum", "default"});
+        if (!status.ok()) {
+          return status;
+        }
+        auto minimum = require_exact_json_integer(value.at("minimum"), std::string(path) + ".minimum");
+        auto maximum = require_exact_json_integer(value.at("maximum"), std::string(path) + ".maximum");
+        auto default_value = require_exact_json_integer(value.at("default"), std::string(path) + ".default");
+        if (!minimum.ok()) {
+          return minimum.status();
+        }
+        if (!maximum.ok()) {
+          return maximum.status();
+        }
+        if (!default_value.ok()) {
+          return default_value.status();
+        }
+        if (minimum.value() > maximum.value()) {
+          return validation_error(path, "minimum must not exceed maximum");
+        }
+        if (default_value.value() < minimum.value() || default_value.value() > maximum.value()) {
+          return validation_error(std::string(path) + ".default", "must lie within [minimum, maximum]");
+        }
+        parameter.minimum = minimum.value();
+        parameter.maximum = maximum.value();
+        break;
+      }
+    case PipelineParameterType::string:
+      {
+        const auto status = validate_object_keys(value, path, {"type", "default"}, {"type", "default"});
+        if (!status.ok()) {
+          return status;
+        }
+        auto default_value =
+          require_bounded_json_string(value.at("default"), std::string(path) + ".default", 4'096U, true);
+        if (!default_value.ok()) {
+          return default_value.status();
+        }
+        break;
+      }
+    case PipelineParameterType::enumeration:
+      {
+        const auto status =
+          validate_object_keys(value, path, {"type", "values", "default"}, {"type", "values", "default"});
+        if (!status.ok()) {
+          return status;
+        }
+        const auto values_status = require_array(value.at("values"), std::string(path) + ".values");
+        if (!values_status.ok() || value.at("values").empty()) {
+          return !values_status.ok() ? values_status
+                                     : validation_error(std::string(path) + ".values", "must not be empty");
+        }
+        std::unordered_set<std::string> distinct_values;
+        for (std::size_t index = 0U; index < value.at("values").size(); ++index) {
+          auto enum_value = require_bounded_json_string(
+            value.at("values")[index], std::string(path) + ".values[" + std::to_string(index) + "]", 4'096U);
+          if (!enum_value.ok()) {
+            return enum_value.status();
+          }
+          if (!distinct_values.insert(enum_value.value()).second) {
+            return validation_error(std::string(path) + ".values", "contains a duplicate value");
+          }
+          parameter.enum_values.push_back(std::move(enum_value).value());
+        }
+        auto default_value = require_bounded_json_string(value.at("default"), std::string(path) + ".default", 4'096U);
+        if (!default_value.ok()) {
+          return default_value.status();
+        }
+        if (!distinct_values.contains(default_value.value())) {
+          return validation_error(std::string(path) + ".default", "must be one of the declared enum values");
+        }
+        std::ranges::sort(parameter.enum_values);
+        break;
+      }
+  }
+
+  auto canonical_default = canonical_scalar_json(value.at("default"), std::string(path) + ".default");
+  if (!canonical_default.ok()) {
+    return canonical_default.status();
+  }
+  parameter.canonical_default_json = std::move(canonical_default).value();
+  return parameter;
+}
+
+[[nodiscard]] Result<std::vector<PipelineParameter>> parse_parameters(const Json& value, const std::string_view path) {
+  const auto object_status = require_object(value, path);
+  if (!object_status.ok()) {
+    return object_status;
+  }
+  std::vector<PipelineParameter> parameters;
+  parameters.reserve(value.size());
+  for (auto iterator = value.begin(); iterator != value.end(); ++iterator) {
+    if (!is_identifier(iterator.key())) {
+      return validation_error(path, "contains a parameter name that is not an identifier");
+    }
+    auto parameter = parse_parameter(iterator.key(), iterator.value(), std::string(path) + "." + iterator.key());
+    if (!parameter.ok()) {
+      return parameter.status();
+    }
+    parameters.push_back(std::move(parameter).value());
+  }
+  std::ranges::sort(parameters, {}, &PipelineParameter::name);
+  return parameters;
+}
+
+[[nodiscard]] Result<ScanFactSelector> parse_scan_fact_selector(const Json& value, const std::string_view path) {
+  auto selector = require_bounded_json_string(value, path, 128U);
+  if (!selector.ok()) {
+    return selector.status();
+  }
+  static const std::unordered_map<std::string, ScanFactSelector> selectors{
+    {"acquisition_count", ScanFactSelector::acquisition_count},
+    {"physical_channel_count", ScanFactSelector::physical_channel_count},
+    {"maximum_samples_per_acquisition", ScanFactSelector::maximum_samples_per_acquisition},
+    {"trajectory_dimensions", ScanFactSelector::trajectory_dimensions},
+    {"encoded_matrix_x", ScanFactSelector::encoded_matrix_x},
+    {"encoded_matrix_y", ScanFactSelector::encoded_matrix_y},
+    {"encoded_matrix_z", ScanFactSelector::encoded_matrix_z},
+    {"recon_matrix_x", ScanFactSelector::recon_matrix_x},
+    {"recon_matrix_y", ScanFactSelector::recon_matrix_y},
+    {"recon_matrix_z", ScanFactSelector::recon_matrix_z},
+  };
+  const auto found = selectors.find(selector.value());
+  if (found == selectors.end()) {
+    return validation_error(path, "names an unknown scan fact selector");
+  }
+  return found->second;
+}
+
+[[nodiscard]] bool selector_requires_encoding(const ScanFactSelector selector) noexcept {
+  switch (selector) {
+    case ScanFactSelector::encoded_matrix_x:
+    case ScanFactSelector::encoded_matrix_y:
+    case ScanFactSelector::encoded_matrix_z:
+    case ScanFactSelector::recon_matrix_x:
+    case ScanFactSelector::recon_matrix_y:
+    case ScanFactSelector::recon_matrix_z:
+      return true;
+    case ScanFactSelector::acquisition_count:
+    case ScanFactSelector::physical_channel_count:
+    case ScanFactSelector::maximum_samples_per_acquisition:
+    case ScanFactSelector::trajectory_dimensions:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] Result<std::vector<ScanFactBinding>> parse_scan_fact_bindings(const Json& value, const Json& config,
+                                                                            const std::string_view path) {
+  const auto object_status = require_object(value, path);
+  if (!object_status.ok()) {
+    return object_status;
+  }
+  std::vector<ScanFactBinding> bindings;
+  bindings.reserve(value.size());
+  for (auto iterator = value.begin(); iterator != value.end(); ++iterator) {
+    const auto binding_path = std::string(path) + "." + iterator.key();
+    if (!is_identifier(iterator.key())) {
+      return validation_error(path, "contains a configuration key that is not an identifier");
+    }
+    if (config.contains(iterator.key())) {
+      return validation_error(binding_path, "collides with a static authored config key");
+    }
+    const auto status =
+      validate_object_keys(iterator.value(), binding_path, {"$scan_fact"}, {"$scan_fact", "encoding"});
+    if (!status.ok()) {
+      return status;
+    }
+    auto selector = parse_scan_fact_selector(iterator.value().at("$scan_fact"), binding_path + ".$scan_fact");
+    if (!selector.ok()) {
+      return selector.status();
+    }
+    std::optional<std::uint32_t> encoding;
+    if (selector_requires_encoding(selector.value())) {
+      if (!iterator.value().contains("encoding")) {
+        return validation_error(binding_path, "requires an encoding index for this geometry selector");
+      }
+      auto encoding_value = require_exact_json_integer(iterator.value().at("encoding"), binding_path + ".encoding");
+      if (!encoding_value.ok()) {
+        return encoding_value.status();
+      }
+      if (encoding_value.value() < 0 ||
+          encoding_value.value() > static_cast<std::int64_t>(std::numeric_limits<std::uint32_t>::max())) {
+        return validation_error(binding_path + ".encoding", "must be a non-negative 32-bit integer");
+      }
+      encoding = static_cast<std::uint32_t>(encoding_value.value());
+    } else if (iterator.value().contains("encoding")) {
+      return validation_error(binding_path + ".encoding", "is only valid for a geometry selector");
+    }
+    bindings.push_back(
+      ScanFactBinding{.config_key = iterator.key(), .selector = selector.value(), .encoding = encoding});
+  }
+  std::ranges::sort(bindings, {}, &ScanFactBinding::config_key);
+  return bindings;
+}
+
+[[nodiscard]] Status validate_parameter_references(const Json& value,
+                                                   const std::unordered_set<std::string>& parameter_names,
+                                                   const std::string_view path) {
+  if (value.is_object()) {
+    if (value.contains("$param")) {
+      const auto status = validate_object_keys(value, path, {"$param"}, {"$param"});
+      if (!status.ok()) {
+        return status;
+      }
+      auto parameter = require_bounded_json_string(value.at("$param"), std::string(path) + ".$param", 128U);
+      if (!parameter.ok()) {
+        return parameter.status();
+      }
+      if (!is_identifier(parameter.value())) {
+        return validation_error(std::string(path) + ".$param", "must name a parameter identifier");
+      }
+      if (!parameter_names.contains(parameter.value())) {
+        return validation_error(std::string(path) + ".$param", "references an undeclared parameter");
+      }
+      return Status::Ok();
+    }
+    if (value.contains("$scan_fact")) {
+      return validation_error(path, "'$scan_fact' is only valid in node scan_fact_bindings");
+    }
+    for (auto iterator = value.begin(); iterator != value.end(); ++iterator) {
+      const auto status =
+        validate_parameter_references(iterator.value(), parameter_names, std::string(path) + "." + iterator.key());
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  } else if (value.is_array()) {
+    for (std::size_t index = 0U; index < value.size(); ++index) {
+      const auto status = validate_parameter_references(value[index], parameter_names,
+                                                        std::string(path) + "[" + std::to_string(index) + "]");
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Status reject_special_references(const Json& value, const std::string_view path) {
+  if (value.is_object()) {
+    if (value.contains("$param") || value.contains("$scan_fact")) {
+      return validation_error(path, "'$param' and '$scan_fact' are only valid in node configuration declarations");
+    }
+    for (auto iterator = value.begin(); iterator != value.end(); ++iterator) {
+      const auto status = reject_special_references(iterator.value(), std::string(path) + "." + iterator.key());
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  } else if (value.is_array()) {
+    for (std::size_t index = 0U; index < value.size(); ++index) {
+      const auto status =
+        reject_special_references(value[index], std::string(path) + "[" + std::to_string(index) + "]");
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Result<PipelineNode> parse_node(const Json& value, const std::string_view path,
+                                              const std::unordered_set<std::string>& parameter_names) {
+  const auto status =
+    validate_object_keys(value, path, {"id", "operator", "config"}, {"id", "operator", "config", "scan_fact_bindings"});
   if (!status.ok())
     return status;
   auto id = require_identifier(value, "id", path);
@@ -259,13 +719,37 @@ using Json = nlohmann::json;
   const auto config_status = require_object(value.at("config"), std::string(path) + ".config");
   if (!config_status.ok())
     return config_status;
+  if (value.at("config").contains("$param")) {
+    return validation_error(std::string(path) + ".config",
+                            "must remain an object; '$param' may only be a member value");
+  }
+  std::string forbidden_path;
+  if (has_forbidden_authored_field(value.at("config"), forbidden_path)) {
+    return validation_error(std::string(path) + ".config",
+                            "must not contain non-authored field '" + forbidden_path + "'");
+  }
+  const auto parameter_status =
+    validate_parameter_references(value.at("config"), parameter_names, std::string(path) + ".config");
+  if (!parameter_status.ok()) {
+    return parameter_status;
+  }
+  std::vector<ScanFactBinding> scan_fact_bindings;
+  if (value.contains("scan_fact_bindings")) {
+    auto parsed_bindings = parse_scan_fact_bindings(value.at("scan_fact_bindings"), value.at("config"),
+                                                    std::string(path) + ".scan_fact_bindings");
+    if (!parsed_bindings.ok()) {
+      return parsed_bindings.status();
+    }
+    scan_fact_bindings = std::move(parsed_bindings).value();
+  }
   auto config = canonicalize_json(value.at("config").dump());
   if (!config.ok())
     return config.status();
   return PipelineNode{.id = std::move(id).value(),
                       .provider_alias = std::move(provider).value(),
                       .operator_id = std::move(operator_id).value(),
-                      .canonical_config = std::move(config).value()};
+                      .canonical_config = std::move(config).value(),
+                      .scan_fact_bindings = std::move(scan_fact_bindings)};
 }
 
 [[nodiscard]] const PipelineNode* find_node(const std::vector<PipelineNode>& nodes,
@@ -398,7 +882,17 @@ void sort_string_array(Json& array) {
 
 void normalize_pipeline_json(Json& root) {
   sort_string_array(root["allowed_profiles"]);
+  for (auto parameter = root["parameters"].begin(); parameter != root["parameters"].end(); ++parameter) {
+    if (parameter.value().value("type", std::string{}) == "enum") {
+      sort_string_array(parameter.value()["values"]);
+    }
+  }
   sort_array_by_member(root["provider_requirements"], "alias");
+  for (auto& node : root["nodes"]) {
+    if (!node.contains("scan_fact_bindings")) {
+      node["scan_fact_bindings"] = Json::object();
+    }
+  }
   sort_array_by_member(root["nodes"], "id");
   sort_array_by_member(root["edges"], "id");
   auto& bindings = root["bindings"];
@@ -410,11 +904,11 @@ void normalize_pipeline_json(Json& root) {
 
 [[nodiscard]] Result<std::vector<ResolvedProvider>>
 normalize_resolved_providers(const PipelineDefinition& definition, std::vector<ResolvedProvider> providers) {
-  if (providers.size() != definition.providers().size()) {
+  if (providers.size() != definition.provider_requirements().size()) {
     return Status::ValidationError("resolver did not provide an exact resolution for every Provider requirement");
   }
   std::unordered_map<std::string, const ProviderSelection*> selections;
-  for (const auto& selection : definition.providers())
+  for (const auto& selection : definition.provider_requirements())
     selections.emplace(selection.alias, &selection);
   std::unordered_set<std::string> aliases;
   for (auto& provider : providers) {
@@ -427,7 +921,8 @@ normalize_resolved_providers(const PipelineDefinition& definition, std::vector<R
     }
     std::unordered_set<std::string> operators;
     for (const auto& operator_value : provider.operators) {
-      if (operator_value.id.empty() || !operators.insert(operator_value.id).second) {
+      if (operator_value.id.empty() || operator_value.contract_digest.value().empty() ||
+          !operators.insert(operator_value.id).second) {
         return Status::ValidationError("resolved Provider contains an invalid or duplicate operator");
       }
     }
@@ -445,6 +940,84 @@ normalize_resolved_providers(const PipelineDefinition& definition, std::vector<R
   for (auto& provider : providers)
     std::ranges::sort(provider.operators, {}, &ResolvedOperator::id);
   return providers;
+}
+
+[[nodiscard]] Status resolve_parameter_references(Json& value, const std::unordered_map<std::string, Json>& defaults,
+                                                  const std::string_view path) {
+  if (value.is_object()) {
+    if (value.contains("$param")) {
+      const auto status = validate_object_keys(value, path, {"$param"}, {"$param"});
+      if (!status.ok()) {
+        return status;
+      }
+      auto parameter = require_bounded_json_string(value.at("$param"), std::string(path) + ".$param", 128U);
+      if (!parameter.ok()) {
+        return parameter.status();
+      }
+      const auto default_value = defaults.find(parameter.value());
+      if (default_value == defaults.end()) {
+        return validation_error(std::string(path) + ".$param", "references an undeclared parameter");
+      }
+      value = default_value->second;
+      return Status::Ok();
+    }
+    for (auto iterator = value.begin(); iterator != value.end(); ++iterator) {
+      const auto status =
+        resolve_parameter_references(iterator.value(), defaults, std::string(path) + "." + iterator.key());
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  } else if (value.is_array()) {
+    for (std::size_t index = 0U; index < value.size(); ++index) {
+      const auto status =
+        resolve_parameter_references(value[index], defaults, std::string(path) + "[" + std::to_string(index) + "]");
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Result<std::vector<ResolvedNodeConfig>> resolve_node_configs(const PipelineDefinition& definition) {
+  std::unordered_map<std::string, Json> defaults;
+  defaults.reserve(definition.parameters().size());
+  for (const auto& parameter : definition.parameters()) {
+    try {
+      defaults.emplace(parameter.name, Json::parse(parameter.canonical_default_json));
+    } catch (const Json::exception& exception) {
+      return Status::InternalError("PipelineDefinition retained an invalid canonical parameter default for '" +
+                                   parameter.name + "': " + exception.what());
+    }
+  }
+
+  std::vector<ResolvedNodeConfig> node_configs;
+  node_configs.reserve(definition.nodes().size());
+  for (const auto& node : definition.nodes()) {
+    Json config;
+    try {
+      config = Json::parse(node.canonical_config);
+    } catch (const Json::exception& exception) {
+      return Status::InternalError("PipelineDefinition retained an invalid canonical node config for '" + node.id +
+                                   "': " + exception.what());
+    }
+    const auto status = resolve_parameter_references(config, defaults, "$.nodes." + node.id + ".config");
+    if (!status.ok()) {
+      return status;
+    }
+    if (!config.is_object()) {
+      return Status::InternalError("resolved node config for '" + node.id + "' is not an object");
+    }
+    auto canonical_config = canonicalize_json(config.dump(), kPipelineDefinitionJsonParseLimits);
+    if (!canonical_config.ok()) {
+      return canonical_config.status();
+    }
+    node_configs.push_back(
+      ResolvedNodeConfig{.node_id = node.id, .canonical_config = std::move(canonical_config).value()});
+  }
+  std::ranges::sort(node_configs, {}, &ResolvedNodeConfig::node_id);
+  return node_configs;
 }
 
 } // namespace
@@ -465,16 +1038,12 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
     return Status::InternalError("bounded PipelineDefinition canonicalization produced invalid JSON: " +
                                  std::string(exception.what()));
   }
-  std::string forbidden_path;
-  if (has_forbidden_runtime_field(root, forbidden_path)) {
-    return Status::ValidationError("PipelineDefinition must not contain scan-specific runtime field '" +
-                                   forbidden_path + "'");
-  }
-  const auto root_status = validate_object_keys(root, "$",
-                                                {"kind", "pipeline", "allowed_profiles", "parameters",
-                                                 "provider_requirements", "nodes", "edges", "bindings", "annotations"},
-                                                {"$schema", "kind", "pipeline", "allowed_profiles", "parameters",
-                                                 "provider_requirements", "nodes", "edges", "bindings", "annotations"});
+  const auto root_status =
+    validate_object_keys(root, "$",
+                         {"kind", "pipeline", "input_profile", "allowed_profiles", "parameters",
+                          "provider_requirements", "nodes", "edges", "bindings", "annotations"},
+                         {"$schema", "kind", "pipeline", "input_profile", "allowed_profiles", "parameters",
+                          "provider_requirements", "nodes", "edges", "bindings", "annotations"});
   if (!root_status.ok())
     return root_status;
   if (const auto schema = root.find("$schema");
@@ -495,12 +1064,32 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
     return pipeline_id.status();
   if (!display_name.ok())
     return display_name.status();
+  auto input_profile = parse_input_profile(root.at("input_profile"), "$.input_profile");
+  if (!input_profile.ok()) {
+    return input_profile.status();
+  }
   const auto parameters_status = require_object(root.at("parameters"), "$.parameters");
   const auto annotations_status = require_object(root.at("annotations"), "$.annotations");
   if (!parameters_status.ok())
     return parameters_status;
   if (!annotations_status.ok())
     return annotations_status;
+  auto parameters = parse_parameters(root.at("parameters"), "$.parameters");
+  if (!parameters.ok()) {
+    return parameters.status();
+  }
+  std::unordered_set<std::string> parameter_names;
+  for (const auto& parameter : parameters.value()) {
+    parameter_names.insert(parameter.name);
+  }
+  std::string annotation_forbidden_path;
+  if (has_forbidden_authored_field(root.at("annotations"), annotation_forbidden_path)) {
+    return validation_error("$.annotations", "must not contain non-authored field '" + annotation_forbidden_path + "'");
+  }
+  const auto annotation_references = reject_special_references(root.at("annotations"), "$.annotations");
+  if (!annotation_references.ok()) {
+    return annotation_references;
+  }
 
   const auto profiles_status = require_array(root.at("allowed_profiles"), "$.allowed_profiles");
   if (!profiles_status.ok() || root.at("allowed_profiles").empty()) {
@@ -545,7 +1134,7 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
   std::vector<PipelineNode> nodes;
   std::unordered_set<std::string> node_ids;
   for (std::size_t index = 0; index < root.at("nodes").size(); ++index) {
-    auto node = parse_node(root.at("nodes")[index], "$.nodes[" + std::to_string(index) + "]");
+    auto node = parse_node(root.at("nodes")[index], "$.nodes[" + std::to_string(index) + "]", parameter_names);
     if (!node.ok())
       return node.status();
     if (!node_ids.insert(node.value().id).second) {
@@ -734,22 +1323,15 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
   auto canonical_document = canonicalize_json(root.dump());
   if (!canonical_document.ok())
     return canonical_document.status();
-  Json semantic_root = root;
-  semantic_root["annotations"] = Json::object();
-  auto semantic_document = canonicalize_json(semantic_root.dump());
-  if (!semantic_document.ok())
-    return semantic_document.status();
-  auto artifact = domain_separated_sha256_digest("kspacejet:artifact:pipeline-definition", canonical_document.value(),
-                                                 "PipelineDefinition artifact digest");
+  auto artifact = derive_domain_separated_sha256_digest(
+    "kspacejet:artifact:pipeline-definition", canonical_document.value(), "PipelineDefinition artifact digest");
   if (!artifact.ok())
     return artifact.status();
-  auto semantic = domain_separated_sha256_digest("kspacejet:semantic:pipeline-definition", semantic_document.value(),
-                                                 "PipelineDefinition semantic digest");
-  if (!semantic.ok())
-    return semantic.status();
   return PipelineDefinition{std::move(pipeline_id).value(),
                             std::move(display_name).value(),
+                            std::move(input_profile).value(),
                             std::move(profiles),
+                            std::move(parameters).value(),
                             std::move(providers),
                             std::move(nodes),
                             std::move(edges),
@@ -758,8 +1340,7 @@ Result<PipelineDefinition> PipelineDefinition::parse_json(const std::string_view
                             std::move(calibration_bindings),
                             std::move(merge_bindings),
                             std::move(canonical_document).value(),
-                            std::move(artifact).value(),
-                            std::move(semantic).value()};
+                            std::move(artifact).value()};
 }
 
 Result<ResolvedPipeline> ResolvedPipeline::resolve(const PipelineDefinition& definition,
@@ -767,30 +1348,52 @@ Result<ResolvedPipeline> ResolvedPipeline::resolve(const PipelineDefinition& def
   auto normalized_providers = normalize_resolved_providers(definition, std::move(providers));
   if (!normalized_providers.ok())
     return normalized_providers.status();
+  auto node_configs = resolve_node_configs(definition);
+  if (!node_configs.ok()) {
+    return node_configs.status();
+  }
   Json resolved{
     {"kind", "ResolvedPipeline"},
     {"pipeline_definition_artifact_digest", definition.artifact_digest().value()},
-    {"pipeline_definition_semantic_digest", definition.semantic_digest().value()},
     {"providers", Json::array()},
+    {"nodes", Json::array()},
   };
   for (const auto& provider : normalized_providers.value()) {
     Json provider_json{{"alias", provider.alias},
                        {"provider_id", provider.provider_id},
                        {"bundle_digest", provider.bundle_digest.value()},
                        {"operators", Json::array()}};
-    for (const auto& operator_value : provider.operators)
-      provider_json["operators"].push_back({{"id", operator_value.id}});
+    for (const auto& operator_value : provider.operators) {
+      provider_json["operators"].push_back(
+        {{"id", operator_value.id}, {"contract_digest", operator_value.contract_digest.value()}});
+    }
     resolved["providers"].push_back(std::move(provider_json));
+  }
+  for (const auto& node_config : node_configs.value()) {
+    try {
+      resolved["nodes"].push_back({{"id", node_config.node_id}, {"config", Json::parse(node_config.canonical_config)}});
+    } catch (const Json::exception& exception) {
+      return Status::InternalError("resolved node config for '" + node_config.node_id +
+                                   "' could not be serialized: " + exception.what());
+    }
   }
   auto canonical = canonicalize_json(resolved.dump());
   if (!canonical.ok())
     return canonical.status();
-  auto digest = domain_separated_sha256_digest("kspacejet:artifact:resolved-pipeline", canonical.value(),
-                                               "ResolvedPipeline artifact digest");
+  auto digest = derive_domain_separated_sha256_digest("kspacejet:artifact:resolved-pipeline", canonical.value(),
+                                                      "ResolvedPipeline artifact digest");
   if (!digest.ok())
     return digest.status();
-  return ResolvedPipeline{definition, std::move(normalized_providers).value(), std::move(canonical).value(),
-                          std::move(digest).value()};
+  return ResolvedPipeline{definition, std::move(normalized_providers).value(), std::move(node_configs).value(),
+                          std::move(canonical).value(), std::move(digest).value()};
+}
+
+Result<std::string_view> ResolvedPipeline::config_for(const std::string_view node_id) const {
+  const auto found = std::ranges::find(node_configs_, node_id, &ResolvedNodeConfig::node_id);
+  if (found == node_configs_.end()) {
+    return Status::NotFound("ResolvedPipeline has no configuration for node '" + std::string(node_id) + "'.");
+  }
+  return std::string_view(found->canonical_config);
 }
 
 } // namespace ksj::recon::graph

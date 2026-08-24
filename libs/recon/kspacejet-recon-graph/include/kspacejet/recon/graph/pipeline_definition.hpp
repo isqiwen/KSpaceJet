@@ -5,6 +5,7 @@
 #include "kspacejet/recon/result.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,6 +28,61 @@ struct ProviderSelection {
   std::string provider_id;
 };
 
+// A PipelineDefinition has exactly one portable, persistent MRI input
+// semantic: standard ISMRMRD HDF5.  A file path is intentionally not part of
+// this authored artifact; the application supplies it when starting a run.
+enum class PipelineInputProfileKind {
+  ismrmrd_hdf5,
+};
+
+struct PipelineInputProfile {
+  PipelineInputProfileKind kind = PipelineInputProfileKind::ismrmrd_hdf5;
+  std::string dataset_group;
+};
+
+// Pipeline parameters are a deliberately small, static authoring mechanism.
+// A future invocation may not override them: the user edits the pipeline and
+// its content identity changes.  `canonical_default_json` is one complete,
+// canonical JSON scalar of the declared type.
+enum class PipelineParameterType {
+  boolean,
+  integer,
+  string,
+  enumeration,
+};
+
+struct PipelineParameter {
+  std::string name;
+  PipelineParameterType type = PipelineParameterType::string;
+  std::string canonical_default_json;
+  std::optional<std::int64_t> minimum;
+  std::optional<std::int64_t> maximum;
+  std::vector<std::string> enum_values;
+};
+
+// A scan-fact binding designates one top-level Provider configuration key that
+// the runtime may materialize from the admitted ISMRMRD scan.  It is never a
+// user-supplied runtime value.  Geometry selectors require the declared
+// encoding index; the four whole-scan selectors do not.
+enum class ScanFactSelector {
+  acquisition_count,
+  physical_channel_count,
+  maximum_samples_per_acquisition,
+  trajectory_dimensions,
+  encoded_matrix_x,
+  encoded_matrix_y,
+  encoded_matrix_z,
+  recon_matrix_x,
+  recon_matrix_y,
+  recon_matrix_z,
+};
+
+struct ScanFactBinding {
+  std::string config_key;
+  ScanFactSelector selector = ScanFactSelector::acquisition_count;
+  std::optional<std::uint32_t> encoding;
+};
+
 struct PipelineNode {
   std::string id;
   std::string provider_alias;
@@ -35,6 +91,7 @@ struct PipelineNode {
   // Provider may resolve declared parameters but must not inject runtime
   // thread/shard/queue values.
   std::string canonical_config;
+  std::vector<ScanFactBinding> scan_fact_bindings;
 };
 
 struct PipelineEdge {
@@ -80,6 +137,10 @@ struct MergeBinding {
 // Provider-bundle runtime input.
 struct ResolvedOperator {
   std::string id;
+  // Identity of the exact Provider-owned typed interface selected for this
+  // executable Operator. It is derived from the current OperatorContract,
+  // never authored in PipelineDefinition.
+  ArtifactDigest contract_digest;
 };
 
 struct ResolvedProvider {
@@ -95,8 +156,9 @@ public:
 
   [[nodiscard]] const std::string& id() const noexcept { return id_; }
   [[nodiscard]] const std::string& display_name() const noexcept { return display_name_; }
+  [[nodiscard]] const PipelineInputProfile& input_profile() const noexcept { return input_profile_; }
   [[nodiscard]] const std::vector<ExecutionProfile>& allowed_profiles() const noexcept { return allowed_profiles_; }
-  [[nodiscard]] const std::vector<ProviderSelection>& providers() const noexcept { return providers_; }
+  [[nodiscard]] const std::vector<PipelineParameter>& parameters() const noexcept { return parameters_; }
   [[nodiscard]] const std::vector<ProviderSelection>& provider_requirements() const noexcept { return providers_; }
   [[nodiscard]] const std::vector<PipelineNode>& nodes() const noexcept { return nodes_; }
   [[nodiscard]] const std::vector<PipelineEdge>& edges() const noexcept { return edges_; }
@@ -108,28 +170,27 @@ public:
   [[nodiscard]] const std::vector<MergeBinding>& merge_bindings() const noexcept { return merge_bindings_; }
   [[nodiscard]] const std::string& canonical_json() const noexcept { return canonical_json_; }
   [[nodiscard]] const ArtifactDigest& artifact_digest() const noexcept { return artifact_digest_; }
-  // Kept as a short convenience for existing callers; it always means the
-  // complete artifact identity, never the semantic cache identity.
-  [[nodiscard]] const ArtifactDigest& digest() const noexcept { return artifact_digest_; }
-  [[nodiscard]] const ArtifactDigest& semantic_digest() const noexcept { return semantic_digest_; }
 
 private:
-  PipelineDefinition(std::string id, std::string display_name, std::vector<ExecutionProfile> allowed_profiles,
+  PipelineDefinition(std::string id, std::string display_name, PipelineInputProfile input_profile,
+                     std::vector<ExecutionProfile> allowed_profiles, std::vector<PipelineParameter> parameters,
                      std::vector<ProviderSelection> providers, std::vector<PipelineNode> nodes,
                      std::vector<PipelineEdge> edges, std::vector<IngressPort> ingress_ports,
                      std::vector<EgressPort> egress_ports, std::vector<CalibrationBinding> calibration_bindings,
                      std::vector<MergeBinding> merge_bindings, std::string canonical_json,
-                     ArtifactDigest artifact_digest, ArtifactDigest semantic_digest) noexcept
-      : id_(std::move(id)), display_name_(std::move(display_name)), allowed_profiles_(std::move(allowed_profiles)),
+                     ArtifactDigest artifact_digest) noexcept
+      : id_(std::move(id)), display_name_(std::move(display_name)), input_profile_(std::move(input_profile)),
+        allowed_profiles_(std::move(allowed_profiles)), parameters_(std::move(parameters)),
         providers_(std::move(providers)), nodes_(std::move(nodes)), edges_(std::move(edges)),
         ingress_ports_(std::move(ingress_ports)), egress_ports_(std::move(egress_ports)),
         calibration_bindings_(std::move(calibration_bindings)), merge_bindings_(std::move(merge_bindings)),
-        canonical_json_(std::move(canonical_json)), artifact_digest_(std::move(artifact_digest)),
-        semantic_digest_(std::move(semantic_digest)) {}
+        canonical_json_(std::move(canonical_json)), artifact_digest_(std::move(artifact_digest)) {}
 
   std::string id_;
   std::string display_name_;
+  PipelineInputProfile input_profile_;
   std::vector<ExecutionProfile> allowed_profiles_;
+  std::vector<PipelineParameter> parameters_;
   std::vector<ProviderSelection> providers_;
   std::vector<PipelineNode> nodes_;
   std::vector<PipelineEdge> edges_;
@@ -139,7 +200,14 @@ private:
   std::vector<MergeBinding> merge_bindings_;
   std::string canonical_json_;
   ArtifactDigest artifact_digest_;
-  ArtifactDigest semantic_digest_;
+};
+
+// ResolvedPipeline freezes the exact static configuration that the Provider
+// sees after every declared `$param` has been replaced by its pipeline-owned
+// default. Runtime-derived scan facts are deliberately absent here.
+struct ResolvedNodeConfig {
+  std::string node_id;
+  std::string canonical_config;
 };
 
 // Exact resolution is profile-neutral. It freezes the Provider-bundle
@@ -151,17 +219,21 @@ public:
 
   [[nodiscard]] const PipelineDefinition& definition() const noexcept { return definition_; }
   [[nodiscard]] const std::vector<ResolvedProvider>& providers() const noexcept { return providers_; }
+  [[nodiscard]] const std::vector<ResolvedNodeConfig>& node_configs() const noexcept { return node_configs_; }
+  [[nodiscard]] Result<std::string_view> config_for(std::string_view node_id) const;
   [[nodiscard]] const std::string& canonical_json() const noexcept { return canonical_json_; }
   [[nodiscard]] const ArtifactDigest& digest() const noexcept { return digest_; }
 
 private:
-  ResolvedPipeline(PipelineDefinition definition, std::vector<ResolvedProvider> providers, std::string canonical_json,
+  ResolvedPipeline(PipelineDefinition definition, std::vector<ResolvedProvider> providers,
+                   std::vector<ResolvedNodeConfig> node_configs, std::string canonical_json,
                    ArtifactDigest digest) noexcept
-      : definition_(std::move(definition)), providers_(std::move(providers)),
+      : definition_(std::move(definition)), providers_(std::move(providers)), node_configs_(std::move(node_configs)),
         canonical_json_(std::move(canonical_json)), digest_(std::move(digest)) {}
 
   PipelineDefinition definition_;
   std::vector<ResolvedProvider> providers_;
+  std::vector<ResolvedNodeConfig> node_configs_;
   std::string canonical_json_;
   ArtifactDigest digest_;
 };

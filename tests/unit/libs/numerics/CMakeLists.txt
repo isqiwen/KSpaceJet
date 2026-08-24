@@ -8,7 +8,7 @@ add_subdirectory(kspacejet-optimization)
 add_subdirectory(kspacejet-special)
 add_subdirectory(kspacejet-sparse)
 add_subdirectory(kspacejet-numerics)
-# add_subdirectory(kspacejet-nufft)
+add_subdirectory(kspacejet-nufft)
 
 find_package(Eigen3 CONFIG REQUIRED)
 
@@ -24,7 +24,7 @@ foreach(
         ksj_optimization_tests
         ksj_special_tests
         ksj_sparse_tests
-        # ksj_nufft_tests
+        ksj_nufft_tests
         ksj_numerics_header_tests)
   if(TARGET ${ksj_numerics_test_target})
     target_sources(${ksj_numerics_test_target} PRIVATE "${KSJ_NUMERICS_TEST_MEMORY_BROKER_SOURCE}")

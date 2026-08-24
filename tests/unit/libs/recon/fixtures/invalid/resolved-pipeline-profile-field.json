@@ -1,7 +1,6 @@
 {
   "kind": "ResolvedPipeline",
   "pipeline_definition_artifact_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "pipeline_definition_semantic_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
   "requested_profile": "bounded-reconstruction-graph",
   "providers": [
     {
@@ -10,9 +9,16 @@
       "bundle_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       "operators": [
         {
-          "id": "reference_reconstruct"
+          "id": "reference_reconstruct",
+          "contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
       ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "reference_reconstruct",
+      "config": {}
     }
   ]
 }

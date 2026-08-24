@@ -60,6 +60,11 @@ class KSpaceJetConan(ConanFile):
 
         # I/O and image backends.
         self.requires("cli11/2.6.2")
+        # The installed ksj-viewer desktop application deliberately uses only
+        # Qt Core/Gui/Widgets. Qt stays a shared dependency so Windows can
+        # deploy the platform plugin beside the application rather than
+        # embedding a second UI runtime in KSpaceJet.
+        self.requires("qt/6.8.3")
         # Conan Center no longer resolves ITK 5.3's json-c/0.17 transitive
         # recipe with Conan 2. Use the maintained 5.4 line and validate image
         # behaviour against the existing reconstruction benchmarks.

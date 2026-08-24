@@ -969,7 +969,7 @@ schemas/resolved-pipeline.schema.json
 types/registry.json
 schemas/type-registry.schema.json
 schemas/operator-contract.schema.json
-schemas/plan-build-request.schema.json
+# PlanBuildRequest is in-memory compiler assembly, not a portable schema artifact.
 schemas/target-envelope.schema.json
 schemas/machine-policy.schema.json
 schemas/execution-plan.schema.json

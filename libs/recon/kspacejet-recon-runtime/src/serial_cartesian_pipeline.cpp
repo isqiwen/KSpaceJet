@@ -45,6 +45,9 @@ namespace {
   if (lhs.semantic_key.average != rhs.semantic_key.average) {
     return lhs.semantic_key.average < rhs.semantic_key.average;
   }
+  if (lhs.semantic_key.segment != rhs.semantic_key.segment) {
+    return lhs.semantic_key.segment < rhs.semantic_key.segment;
+  }
   return lhs.placement_key < rhs.placement_key;
 }
 
@@ -405,6 +408,10 @@ SerialCartesianPipelineSnapshot SerialCartesianPipeline::snapshot() const {
     .certified_skips = certified_skips_,
     .last_error = last_error_,
   };
+}
+
+const AcquisitionClassifier& SerialCartesianPipeline::acquisition_classifier() const noexcept {
+  return classifier_;
 }
 
 const std::vector<ExplicitlyIgnoredAcquisitionRecord>&

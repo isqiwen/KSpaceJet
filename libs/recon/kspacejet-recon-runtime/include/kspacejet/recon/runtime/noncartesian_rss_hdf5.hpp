@@ -15,7 +15,6 @@ namespace ksj::recon::runtime {
 struct NoncartesianRssHdf5ReconstructionConfig {
   std::filesystem::path input_file;
   std::filesystem::path output_image_file;
-  std::filesystem::path output_metadata_file;
   std::filesystem::path noncartesian_provider_module;
   std::filesystem::path coil_combine_provider_module;
   std::filesystem::path noncartesian_operator_contract;
@@ -45,8 +44,8 @@ struct NoncartesianRssHdf5ReconstructionReport {
 // explicit finite two-coordinate trajectory, no flags or discarded samples,
 // and the same active-channel count. It aggregates the acquisition sequence
 // into one bounded frame without inferring trajectory units, density weights,
-// sensitivity maps, or a SENSE model. The output is a native-endian,
-// row-major float32 RSS image.
+// sensitivity maps, or a SENSE model. The output is one standard ISMRMRD HDF5
+// magnitude image artifact, with no raw float32 or JSON-sidecar alternative.
 [[nodiscard]] ksj::base::Result<NoncartesianRssHdf5ReconstructionReport>
 reconstruct_noncartesian_rss_hdf5(const NoncartesianRssHdf5ReconstructionConfig& config);
 

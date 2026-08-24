@@ -1,5 +1,6 @@
 #include "kspacejet/recon/runtime/cartesian_rss_hdf5.hpp"
 #include "kspacejet/recon/runtime/noncartesian_rss_hdf5.hpp"
+#include "kspacejet/recon/runtime/radial_rss_hdf5.hpp"
 
 #include "kspacejet/base/status.hpp"
 #include "kspacejet/base/version.hpp"
@@ -37,6 +38,11 @@ struct NoncartesianRssInvocation final {
   OutputFormat output_format{OutputFormat::text};
 };
 
+struct RadialRssInvocation final {
+  ksj::recon::runtime::RadialRssHdf5ReconstructionConfig config{};
+  OutputFormat output_format{OutputFormat::text};
+};
+
 struct CartesianRssCliState final {
   CartesianRssInvocation invocation{};
   std::string requested_output_format{"text"};
@@ -55,6 +61,12 @@ struct NoncartesianRssCliState final {
   NoncartesianRssInvocation invocation{};
   std::string requested_output_format{"text"};
   bool show_help{false};
+};
+
+struct RadialRssCliState final {
+  RadialRssInvocation invocation{};
+  std::string requested_output_format{"text"};
+  std::string requested_trajectory_units;
 };
 
 void write_json_string(std::ostream& stream, const std::string_view value) {
@@ -95,7 +107,7 @@ void write_json_string(std::ostream& stream, const std::string_view value) {
 
 void print_cartesian_rss_usage(const OutputFormat format) {
   constexpr std::string_view kUsage =
-    "ksj-recon cartesian-rss --input <scan.h5> --output <image.f32> "
+    "ksj-recon cartesian-rss --input <scan.h5> --output <image.mrd> "
     "--cartesian-provider <module> --cartesian-contract <contract.json> "
     "--coil-combine-provider <module> --coil-combine-contract <contract.json> "
     "[--noise-model-estimate-provider <module> --noise-model-estimate-contract <contract.json> "
@@ -107,13 +119,13 @@ void print_cartesian_rss_usage(const OutputFormat format) {
     "--coil-compress-contract <contract.json> --virtual-channel-count <N>] "
     "[--readout-oversampling-remove-provider <module> "
     "--readout-oversampling-remove-contract <contract.json> --readout-offset <N>] "
-    "[--metadata <image.json>] [--dataset dataset] [--format text|json]";
+    "[--dataset dataset] [--format text|json]";
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"kspacejet.cartesian-rss-help\",\"usage\":";
     write_json_string(std::cout, kUsage);
-    std::cout
-      << ",\"constraints\":\"one 2-D Cartesian ISMRMRD frame; enabled calibration acquisitions are "
-         "explicitly routed to their matching Provider operators; output is native-endian row-major float32 RSS\"}\n";
+    std::cout << ",\"constraints\":\"one 2-D Cartesian ISMRMRD frame; enabled calibration acquisitions are "
+                 "explicitly routed to their matching Provider operators; output is one standard ISMRMRD HDF5 "
+                 "magnitude image\"}\n";
     return;
   }
   std::cout << "Usage: " << kUsage << "\n\n"
@@ -123,15 +135,15 @@ void print_cartesian_rss_usage(const OutputFormat format) {
 }
 
 void print_noncartesian_rss_usage(const OutputFormat format) {
-  constexpr std::string_view kUsage = "ksj-recon noncartesian-rss --input <scan.h5> --output <image.f32> "
+  constexpr std::string_view kUsage = "ksj-recon noncartesian-rss --input <scan.h5> --output <image.mrd> "
                                       "--noncartesian-provider <module> --noncartesian-contract <contract.json> "
                                       "--coil-combine-provider <module> --coil-combine-contract <contract.json> "
-                                      "[--metadata <image.json>] [--dataset dataset] [--format text|json]";
+                                      "[--dataset dataset] [--format text|json]";
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"kspacejet.noncartesian-rss-help\",\"usage\":";
     write_json_string(std::cout, kUsage);
     std::cout << ",\"constraints\":\"one 2-D non-Cartesian ISMRMRD frame with a finite two-coordinate trajectory "
-                 "per acquisition; output is native-endian row-major float32 RSS\"}\n";
+                 "per acquisition; output is one standard ISMRMRD HDF5 magnitude image\"}\n";
     return;
   }
   std::cout << "Usage: " << kUsage << "\n\n"
@@ -139,10 +151,34 @@ void print_noncartesian_rss_usage(const OutputFormat format) {
                "combination. It does not infer density compensation, sensitivity maps, or a SENSE model.\n";
 }
 
+void print_radial_rss_usage(const OutputFormat format) {
+  constexpr std::string_view kUsage = "ksj-recon radial-rss --input <scan.h5> --output <image.mrd> "
+                                      "--radial-provider <module> --radial-contract <contract.json> "
+                                      "--coil-combine-provider <module> --coil-combine-contract <contract.json> "
+                                      "--trajectory-units cycles-per-fov|radians-per-pixel|encoded-matrix-index "
+                                      "[--dataset dataset] [--format text|json]";
+  if (format == OutputFormat::json) {
+    std::cout << "{\"schema\":\"kspacejet.radial-rss-help\",\"usage\":";
+    write_json_string(std::cout, kUsage);
+    std::cout << ",\"constraints\":\"one declared 2-D radial ISMRMRD frame; trajectory input units are required "
+                 "and normalized to radians-per-pixel; encoded-matrix-index is normalized per XML encoded axis; "
+                 "reconstruction is analytic-ramp density compensation plus linear gridding; output is one standard "
+                 "ISMRMRD HDF5 magnitude image\"}\n";
+    return;
+  }
+  std::cout << "Usage: " << kUsage << "\n\n"
+            << "The radial path is a distinct explicit Provider graph. It requires the caller to declare the input "
+               "trajectory coordinate convention, then runs only analytic radial-ramp density compensation, linear "
+               "Cartesian gridding, and RSS coil combination. It does not perform trajectory correction, SENSE, "
+               "coil compression, or clinical reconstruction.\n";
+}
+
 void print_all_usage() {
   print_cartesian_rss_usage(OutputFormat::text);
   std::cout << '\n';
   print_noncartesian_rss_usage(OutputFormat::text);
+  std::cout << '\n';
+  print_radial_rss_usage(OutputFormat::text);
 }
 
 void print_error(const OutputFormat format, const std::string_view command, const ksj::base::Status& status) {
@@ -166,8 +202,6 @@ void print_cartesian_success(const OutputFormat format, const CartesianRssInvoca
     write_json_string(std::cout, invocation.config.input_file.string());
     std::cout << ",\"output\":";
     write_json_string(std::cout, invocation.config.output_image_file.string());
-    std::cout << ",\"metadata\":";
-    write_json_string(std::cout, invocation.config.output_metadata_file.string());
     std::cout << ",\"rows\":" << report.rows << ",\"cols\":" << report.cols << ",\"channels\":" << report.channels
               << ",\"acquisitions_read\":" << report.acquisitions_read
               << ",\"image_payload_bytes\":" << report.image_payload_bytes << ",\"execution_plan_digest\":";
@@ -180,9 +214,8 @@ void print_cartesian_success(const OutputFormat format, const CartesianRssInvoca
   std::cout << "cartesian-rss reconstruction completed\n"
             << "  input: " << invocation.config.input_file.string() << '\n'
             << "  output: " << invocation.config.output_image_file.string() << '\n'
-            << "  metadata: " << invocation.config.output_metadata_file.string() << '\n'
             << "  image: " << report.rows << " x " << report.cols << ", " << report.channels
-            << " coil inputs, float32 RSS\n"
+            << " coil inputs, ISMRMRD float32 magnitude\n"
             << "  acquisitions read: " << report.acquisitions_read << '\n'
             << "  execution plan digest: " << report.execution_plan_digest << '\n'
             << "  verification record digest: " << report.verification_record_digest << '\n';
@@ -195,8 +228,6 @@ void print_noncartesian_success(const OutputFormat format, const NoncartesianRss
     write_json_string(std::cout, invocation.config.input_file.string());
     std::cout << ",\"output\":";
     write_json_string(std::cout, invocation.config.output_image_file.string());
-    std::cout << ",\"metadata\":";
-    write_json_string(std::cout, invocation.config.output_metadata_file.string());
     std::cout << ",\"rows\":" << report.rows << ",\"cols\":" << report.cols << ",\"channels\":" << report.channels
               << ",\"acquisitions_read\":" << report.acquisitions_read << ",\"samples_read\":" << report.samples_read
               << ",\"image_payload_bytes\":" << report.image_payload_bytes << ",\"execution_plan_digest\":";
@@ -209,9 +240,39 @@ void print_noncartesian_success(const OutputFormat format, const NoncartesianRss
   std::cout << "noncartesian-rss reconstruction completed\n"
             << "  input: " << invocation.config.input_file.string() << '\n'
             << "  output: " << invocation.config.output_image_file.string() << '\n'
-            << "  metadata: " << invocation.config.output_metadata_file.string() << '\n'
             << "  image: " << report.rows << " x " << report.cols << ", " << report.channels
-            << " coil inputs, float32 RSS\n"
+            << " coil inputs, ISMRMRD float32 magnitude\n"
+            << "  acquisitions read: " << report.acquisitions_read << '\n'
+            << "  samples read: " << report.samples_read << '\n'
+            << "  execution plan digest: " << report.execution_plan_digest << '\n'
+            << "  verification record digest: " << report.verification_record_digest << '\n';
+}
+
+void print_radial_success(const OutputFormat format, const RadialRssInvocation& invocation,
+                          const ksj::recon::runtime::RadialRssHdf5ReconstructionReport& report) {
+  if (format == OutputFormat::json) {
+    std::cout << "{\"schema\":\"kspacejet.radial-rss-result\",\"ok\":true,\"input\":";
+    write_json_string(std::cout, invocation.config.input_file.string());
+    std::cout << ",\"output\":";
+    write_json_string(std::cout, invocation.config.output_image_file.string());
+    std::cout << ",\"trajectory_units\":";
+    write_json_string(std::cout, ksj::recon::runtime::to_string(invocation.config.input_trajectory_units));
+    std::cout << ",\"rows\":" << report.rows << ",\"cols\":" << report.cols << ",\"channels\":" << report.channels
+              << ",\"acquisitions_read\":" << report.acquisitions_read << ",\"samples_read\":" << report.samples_read
+              << ",\"image_payload_bytes\":" << report.image_payload_bytes << ",\"execution_plan_digest\":";
+    write_json_string(std::cout, report.execution_plan_digest);
+    std::cout << ",\"verification_record_digest\":";
+    write_json_string(std::cout, report.verification_record_digest);
+    std::cout << "}\n";
+    return;
+  }
+  std::cout << "radial-rss reconstruction completed\n"
+            << "  input: " << invocation.config.input_file.string() << '\n'
+            << "  output: " << invocation.config.output_image_file.string() << '\n'
+            << "  input trajectory units: " << ksj::recon::runtime::to_string(invocation.config.input_trajectory_units)
+            << '\n'
+            << "  image: " << report.rows << " x " << report.cols << ", " << report.channels
+            << " coil inputs, ISMRMRD float32 magnitude\n"
             << "  acquisitions read: " << report.acquisitions_read << '\n'
             << "  samples read: " << report.samples_read << '\n'
             << "  execution plan digest: " << report.execution_plan_digest << '\n'
@@ -245,8 +306,7 @@ void add_command_controls(CLI::App& command, std::string& requested_output_forma
 
   auto& config = state.invocation.config;
   add_value_option(*command, "--input", config.input_file, "Input ISMRMRD HDF5 scan");
-  add_value_option(*command, "--output", config.output_image_file, "Output float32 RSS image");
-  add_value_option(*command, "--metadata", config.output_metadata_file, "Output image metadata JSON sidecar");
+  add_value_option(*command, "--output", config.output_image_file, "Output ISMRMRD HDF5 magnitude image (.mrd)");
   add_value_option(*command, "--cartesian-provider", config.cartesian_provider_module,
                    "Cartesian reconstruction Provider module");
   add_value_option(*command, "--cartesian-contract", config.cartesian_operator_contract,
@@ -307,8 +367,7 @@ void add_command_controls(CLI::App& command, std::string& requested_output_forma
 
   auto& config = state.invocation.config;
   add_value_option(*command, "--input", config.input_file, "Input ISMRMRD HDF5 scan");
-  add_value_option(*command, "--output", config.output_image_file, "Output float32 RSS image");
-  add_value_option(*command, "--metadata", config.output_metadata_file, "Output image metadata JSON sidecar");
+  add_value_option(*command, "--output", config.output_image_file, "Output ISMRMRD HDF5 magnitude image (.mrd)");
   add_value_option(*command, "--noncartesian-provider", config.noncartesian_provider_module,
                    "Non-Cartesian reconstruction Provider module");
   add_value_option(*command, "--noncartesian-contract", config.noncartesian_operator_contract,
@@ -318,6 +377,32 @@ void add_command_controls(CLI::App& command, std::string& requested_output_forma
   add_value_option(*command, "--coil-combine-contract", config.coil_combine_operator_contract,
                    "Coil-combine OperatorContract");
   add_value_option(*command, "--dataset", config.dataset_group, "ISMRMRD HDF5 dataset group");
+  return command;
+}
+
+[[nodiscard]] CLI::App* register_radial_rss(CLI::App& application, RadialRssCliState& state) {
+  auto* command = application.add_subcommand("radial-rss", "Reconstruct one 2-D radial RSS image from HDF5");
+  // This command has a required explicit trajectory unit. CLI11's native help
+  // flag must be installed directly (rather than the legacy state flag) so
+  // help bypasses required-option validation.
+  command->set_help_flag("-h,--help", "Print this command's help message and exit");
+  auto* format = add_value_option(*command, "--format", state.requested_output_format, "Output format: text or json");
+  format->trigger_on_parse()->check(CLI::IsMember({"text", "json"}));
+
+  auto& config = state.invocation.config;
+  add_value_option(*command, "--input", config.input_file, "Input ISMRMRD HDF5 scan");
+  add_value_option(*command, "--output", config.output_image_file, "Output ISMRMRD HDF5 magnitude image (.mrd)");
+  add_value_option(*command, "--radial-provider", config.radial_provider_module, "Radial gridding Provider module");
+  add_value_option(*command, "--radial-contract", config.radial_operator_contract, "Radial gridding OperatorContract");
+  add_value_option(*command, "--coil-combine-provider", config.coil_combine_provider_module,
+                   "Coil-combine Provider module");
+  add_value_option(*command, "--coil-combine-contract", config.coil_combine_operator_contract,
+                   "Coil-combine OperatorContract");
+  add_value_option(*command, "--dataset", config.dataset_group, "ISMRMRD HDF5 dataset group");
+  add_value_option(*command, "--trajectory-units", state.requested_trajectory_units,
+                   "Input trajectory coordinates: cycles-per-fov, radians-per-pixel, or encoded-matrix-index")
+    ->required()
+    ->check(CLI::IsMember({"cycles-per-fov", "radians-per-pixel", "encoded-matrix-index"}));
   return command;
 }
 
@@ -400,9 +485,6 @@ require_provider_selection(const bool requested, const ksj::recon::runtime::Cart
     }
     return kExitUsage;
   }
-  if (invocation.config.output_metadata_file.empty() && !invocation.config.output_image_file.empty()) {
-    invocation.config.output_metadata_file = invocation.config.output_image_file.string() + ".json";
-  }
   const auto result = ksj::recon::runtime::reconstruct_cartesian_rss_hdf5(invocation.config);
   if (!result.ok()) {
     if (result.status().code() != ksj::base::StatusCode::invalid_argument) {
@@ -424,9 +506,6 @@ require_provider_selection(const bool requested, const ksj::recon::runtime::Cart
     print_noncartesian_rss_usage(invocation.output_format);
     return kExitSuccess;
   }
-  if (invocation.config.output_metadata_file.empty() && !invocation.config.output_image_file.empty()) {
-    invocation.config.output_metadata_file = invocation.config.output_image_file.string() + ".json";
-  }
   const auto result = ksj::recon::runtime::reconstruct_noncartesian_rss_hdf5(invocation.config);
   if (!result.ok()) {
     if (result.status().code() != ksj::base::StatusCode::invalid_argument) {
@@ -441,10 +520,40 @@ require_provider_selection(const bool requested, const ksj::recon::runtime::Cart
   return kExitSuccess;
 }
 
+[[nodiscard]] ksj::recon::runtime::RadialHdf5TrajectoryUnits
+radial_trajectory_units_from(const std::string_view requested_units) noexcept {
+  if (requested_units == "cycles-per-fov")
+    return ksj::recon::runtime::RadialHdf5TrajectoryUnits::cycles_per_fov;
+  if (requested_units == "radians-per-pixel")
+    return ksj::recon::runtime::RadialHdf5TrajectoryUnits::radians_per_pixel;
+  if (requested_units == "encoded-matrix-index")
+    return ksj::recon::runtime::RadialHdf5TrajectoryUnits::encoded_matrix_index;
+  return ksj::recon::runtime::RadialHdf5TrajectoryUnits::unspecified;
+}
+
+[[nodiscard]] int run_radial_rss(RadialRssCliState& state) {
+  auto& invocation = state.invocation;
+  invocation.output_format = output_format_from(state.requested_output_format);
+  invocation.config.input_trajectory_units = radial_trajectory_units_from(state.requested_trajectory_units);
+  const auto result = ksj::recon::runtime::reconstruct_radial_rss_hdf5(invocation.config);
+  if (!result.ok()) {
+    if (result.status().code() != ksj::base::StatusCode::invalid_argument) {
+      KSJ_LOG_ERROR("radial-rss reconstruction failed: {}", result.status());
+    }
+    print_error(invocation.output_format, "radial-rss", result.status());
+    return result.status().code() == ksj::base::StatusCode::invalid_argument ? kExitUsage : kExitReconstructionFailure;
+  }
+  KSJ_LOG_INFO("radial-rss reconstruction completed: input=[{}], output=[{}]", invocation.config.input_file.string(),
+               invocation.config.output_image_file.string());
+  print_radial_success(invocation.output_format, invocation, result.value());
+  return kExitSuccess;
+}
+
 [[nodiscard]] int report_parse_error(const CLI::ParseError& error, const CartesianRssCliState& cartesian_state,
                                      const CLI::App& cartesian_command,
                                      const NoncartesianRssCliState& noncartesian_state,
-                                     const CLI::App& noncartesian_command) {
+                                     const CLI::App& noncartesian_command, const RadialRssCliState& radial_state,
+                                     const CLI::App& radial_command) {
   if (cartesian_command.parsed()) {
     const auto format = output_format_from(cartesian_state.requested_output_format);
     print_error(format, "cartesian-rss", ksj::base::Status::InvalidArgument(error.what()));
@@ -458,6 +567,14 @@ require_provider_selection(const bool requested, const ksj::recon::runtime::Cart
     print_error(format, "noncartesian-rss", ksj::base::Status::InvalidArgument(error.what()));
     if (format == OutputFormat::text) {
       print_noncartesian_rss_usage(format);
+    }
+    return kExitUsage;
+  }
+  if (radial_command.parsed()) {
+    const auto format = output_format_from(radial_state.requested_output_format);
+    print_error(format, "radial-rss", ksj::base::Status::InvalidArgument(error.what()));
+    if (format == OutputFormat::text) {
+      print_radial_rss_usage(format);
     }
     return kExitUsage;
   }
@@ -475,6 +592,7 @@ int main(int argc, char* argv[]) {
 
   CartesianRssCliState cartesian_state;
   NoncartesianRssCliState noncartesian_state;
+  RadialRssCliState radial_state;
   bool show_help{false};
   bool show_version{false};
 
@@ -486,12 +604,21 @@ int main(int argc, char* argv[]) {
 
   auto* cartesian_command = register_cartesian_rss(application, cartesian_state);
   auto* noncartesian_command = register_noncartesian_rss(application, noncartesian_state);
+  auto* radial_command = register_radial_rss(application, radial_state);
   application.require_subcommand(0, 1);
 
   try {
     application.parse(argc, argv);
+  } catch (const CLI::CallForHelp&) {
+    if (radial_command->parsed()) {
+      print_radial_rss_usage(output_format_from(radial_state.requested_output_format));
+      return kExitSuccess;
+    }
+    print_all_usage();
+    return kExitSuccess;
   } catch (const CLI::ParseError& error) {
-    return report_parse_error(error, cartesian_state, *cartesian_command, noncartesian_state, *noncartesian_command);
+    return report_parse_error(error, cartesian_state, *cartesian_command, noncartesian_state, *noncartesian_command,
+                              radial_state, *radial_command);
   }
 
   if (show_help || argc == 1) {
@@ -507,6 +634,9 @@ int main(int argc, char* argv[]) {
   }
   if (noncartesian_command->parsed()) {
     return run_noncartesian_rss(noncartesian_state);
+  }
+  if (radial_command->parsed()) {
+    return run_radial_rss(radial_state);
   }
 
   print_all_usage();

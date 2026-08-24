@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -81,7 +82,8 @@ edge_spec(const std::string_view id, const std::string_view pool_id, const Synch
   ExecutionPlanSpec result;
   result.inputs = {
     .resolved_pipeline = std::string(kDigest),
-    .scan_descriptor = std::string(kDigest),
+    .scan_facts = std::string(kDigest),
+    .effective_pipeline_binding = std::string(kDigest),
     .target_envelope = std::string(kDigest),
     .machine_policy = std::string(kDigest),
   };
@@ -222,6 +224,23 @@ TEST(KSpaceJetReconModelOperatorContract, SupportsExplicitMultiInputPorts) {
   EXPECT_EQ("trajectory", contract.value().ports()[1].name);
 }
 
+TEST(KSpaceJetReconModelOperatorContract, DerivesStableInterfaceIdentityIndependentOfPortDeclarationOrder) {
+  const auto first = OperatorContract::create(basic_contract_spec());
+  ASSERT_TRUE(first.ok()) << first.status();
+
+  auto reordered = basic_contract_spec();
+  std::ranges::reverse(reordered.ports);
+  const auto second = OperatorContract::create(reordered);
+  ASSERT_TRUE(second.ok()) << second.status();
+  EXPECT_EQ(first.value().artifact_digest(), second.value().artifact_digest());
+
+  auto changed = basic_contract_spec();
+  changed.ports[1].type_ref = "ksj.kspace-frame";
+  const auto third = OperatorContract::create(changed);
+  ASSERT_TRUE(third.ok()) << third.status();
+  EXPECT_NE(first.value().artifact_digest(), third.value().artifact_digest());
+}
+
 TEST(KSpaceJetReconModelNodePlanningRequirements, ValidatesOutputReservationsAndMultiInputRates) {
   auto specification = basic_contract_spec();
   specification.ports.insert(
@@ -244,6 +263,8 @@ TEST(KSpaceJetReconModelNodePlanningRequirements, ValidatesOutputReservationsAnd
 TEST(KSpaceJetReconModelExecutionPlan, CreatesOnlyGenericSynchronousTopology) {
   auto plan = ExecutionPlan::create(artifact_digest(), valid_execution_plan_spec());
   ASSERT_TRUE(plan.ok()) << plan.status();
+  EXPECT_EQ(kDigest, plan.value().inputs().scan_facts().value());
+  EXPECT_EQ(kDigest, plan.value().inputs().effective_pipeline_binding().value());
   EXPECT_EQ(1U, plan.value().synchronous_node_plans().size());
   EXPECT_EQ(2U, plan.value().synchronous_buffer_pool_plans().size());
   EXPECT_EQ(2U, plan.value().synchronous_data_edge_plans().size());
@@ -259,6 +280,10 @@ TEST(KSpaceJetReconModelExecutionPlan, CreatesOnlyGenericSynchronousTopology) {
   auto duplicate_binding = valid_execution_plan_spec();
   duplicate_binding.operator_plan_bindings.push_back(duplicate_binding.operator_plan_bindings.front());
   EXPECT_FALSE(ExecutionPlan::create(artifact_digest(), duplicate_binding).ok());
+
+  auto missing_effective_pipeline_binding = valid_execution_plan_spec();
+  missing_effective_pipeline_binding.inputs.effective_pipeline_binding.clear();
+  EXPECT_FALSE(ExecutionPlan::create(artifact_digest(), missing_effective_pipeline_binding).ok());
 }
 
 TEST(KSpaceJetReconModelRecords, ValidateFinitePlanVerificationAndAdmissionFields) {

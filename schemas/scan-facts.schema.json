@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kspacejet.org/scan-facts.schema.json",
+  "title": "KSpaceJet ScanFacts",
+  "description": "Runtime-owned observations from one admitted ISMRMRD input. The artifact records detached identities for the parsed ScanDescriptor and exact source XML; raw XML remains a runtime input and is never embedded here.",
+  "type": "object",
+  "required": [
+    "kind",
+    "scan_descriptor_digest",
+    "source_xml_digest",
+    "acquisition_count",
+    "physical_channel_count",
+    "maximum_samples_per_acquisition",
+    "trajectory_dimensions"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "kind": {
+      "const": "ScanFacts"
+    },
+    "scan_descriptor_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "source_xml_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "acquisition_count": {
+      "$ref": "#/$defs/positiveSafeInteger"
+    },
+    "physical_channel_count": {
+      "$ref": "#/$defs/positiveSafeInteger"
+    },
+    "maximum_samples_per_acquisition": {
+      "$ref": "#/$defs/positiveSafeInteger"
+    },
+    "trajectory_dimensions": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    }
+  }
+}

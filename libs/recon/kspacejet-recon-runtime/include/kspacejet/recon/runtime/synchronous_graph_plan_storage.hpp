@@ -43,7 +43,7 @@ private:
 
 // Maps one completed host-frame context to the exact immutable graph identity
 // used by ingress publication.  The semantic-key hash is a stable FNV-1a
-// encoding of the seven FrameSemanticKey uint16 fields in field order; order
+// encoding of the eight FrameSemanticKey uint16 fields in field order; order
 // and ordinal are deliberately not folded into that hash.
 [[nodiscard]] DataItemIdentity make_data_item_identity(const FrameSlotContext& context,
                                                        std::uint64_t item_ordinal) noexcept;

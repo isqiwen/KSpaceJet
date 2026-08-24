@@ -1,21 +1,22 @@
 #include "kspacejet/recon/runtime/cartesian_rss_hdf5.hpp"
 
-#include "kspacejet/ismrmrd/dataset_reader.hpp"
 #include "kspacejet/provider/loader/provider_loader.hpp"
-#include "kspacejet/recon/graph/canonical_json.hpp"
+#include "kspacejet/recon/graph/effective_pipeline_binding.hpp"
 #include "kspacejet/recon/graph/execution_plan_compiler.hpp"
 #include "kspacejet/recon/graph/operator_contract_json.hpp"
 #include "kspacejet/recon/graph/pipeline_definition.hpp"
 #include "kspacejet/recon/node_planning_requirements.hpp"
 #include "kspacejet/recon/runtime/cartesian_frame_slot.hpp"
 #include "kspacejet/recon/runtime/host_frame_assembler.hpp"
+#include "kspacejet/recon/runtime/ismrmrd_hdf5_replay.hpp"
+#include "kspacejet/recon/runtime/ismrmrd_image_artifact_sink.hpp"
+#include "kspacejet/recon/runtime/ismrmrd_semantic_ingress.hpp"
 #include "kspacejet/recon/runtime/provider_node_instance.hpp"
 #include "kspacejet/recon/runtime/resource_vector_ledger.hpp"
 #include "kspacejet/recon/runtime/synchronous_graph_executor.hpp"
 #include "kspacejet/recon/runtime/synchronous_graph_plan_storage.hpp"
+#include "kspacejet/recon/scan_facts.hpp"
 #include "kspacejet/recon/type_registry.hpp"
-
-#include <ismrmrd/ismrmrd.h>
 
 #include <algorithm>
 #include <array>
@@ -119,20 +120,20 @@ struct FrameDimensions final {
 };
 
 struct Preflight final {
-  ScanDescriptor scan_descriptor;
+  ScanFacts scan_facts;
   Shape shape;
+  FrameSlotContext frame_context{};
+  std::string source_xml;
+  ksj::ismrmrd::AcquisitionHeader image_source_acquisition{};
   std::uint32_t acquisitions_read{0U};
   CalibrationLane noise;
   CalibrationLane phase;
   CalibrationLane coil;
-  ArtifactDigest source_xml_digest;
-  ArtifactDigest normalized_scan_facts_digest;
 };
 
 struct PlanningArtifacts final {
   TargetEnvelope target_envelope;
   MachinePolicy machine_policy;
-  graph::PlanArtifactDigests digests;
 };
 
 struct RuntimeNode final {
@@ -143,6 +144,7 @@ struct RuntimeNode final {
 
 struct ResolvedGraphInputs final {
   graph::ResolvedPipeline pipeline;
+  std::vector<graph::HostDerivedNodeConfig> effective_node_configs;
   std::vector<RuntimeNode> nodes;
   std::vector<std::string> estimator_node_ids;
   std::vector<std::string> data_node_ids;
@@ -302,11 +304,8 @@ struct ResolvedGraphInputs final {
     return Status::InvalidArgument(
       "Cartesian RSS HDF5 requires input/output, both explicit Provider modules/contracts, and a dataset group");
   }
-  if ((!config.output_metadata_file.empty() && same_path(config.output_image_file, config.output_metadata_file)) ||
-      same_path(config.input_file, config.output_image_file) ||
-      (!config.output_metadata_file.empty() && same_path(config.input_file, config.output_metadata_file))) {
-    return Status::InvalidArgument(
-      "Cartesian RSS HDF5 input, image output, and metadata output must be distinct files");
+  if (same_path(config.input_file, config.output_image_file)) {
+    return Status::InvalidArgument("Cartesian RSS HDF5 input and ISMRMRD image output must be distinct files");
   }
   if (config.noise_prewhiten.has_value()) {
     const auto estimator =
@@ -352,6 +351,11 @@ struct ResolvedGraphInputs final {
   return Status::IoError("Cartesian RSS HDF5 input failed: " + std::string(message));
 }
 
+[[nodiscard]] Status hdf5_source_error(const Status& source_status) {
+  return source_status.code() == ksj::base::StatusCode::io_error ? hdf5_io_error(source_status.message())
+                                                                 : source_status;
+}
+
 [[nodiscard]] std::string json_string(const std::string_view value) {
   constexpr char kHex[] = "0123456789abcdef";
   std::string result;
@@ -387,14 +391,6 @@ struct ResolvedGraphInputs final {
   }
   result.push_back('"');
   return result;
-}
-
-[[nodiscard]] Result<ArtifactDigest> canonical_digest(const std::string_view domain, const std::string_view document,
-                                                      const std::string_view field_name) {
-  auto canonical = graph::canonicalize_json(document);
-  if (!canonical.ok())
-    return canonical.status();
-  return graph::domain_separated_sha256_digest(domain, canonical.value(), field_name);
 }
 
 [[nodiscard]] Result<std::string> read_contract_file(const std::filesystem::path& path) {
@@ -462,7 +458,13 @@ struct ExpectedContractPort final {
 [[nodiscard]] Result<graph::ResolvedProvider> resolve_provider(const std::filesystem::path& module_path,
                                                                const std::string_view alias,
                                                                const std::string_view expected_provider_id,
-                                                               const std::string_view expected_operator_id) {
+                                                               const std::string_view expected_operator_id,
+                                                               const OperatorContract& expected_contract) {
+  if (expected_contract.operator_id() != expected_operator_id) {
+    return Status::ValidationError(
+      "Cartesian RSS HDF5 OperatorContract identity does not match the required Operator '" +
+      std::string(expected_operator_id) + "'");
+  }
   auto module = ksj::provider::loader::ProviderModule::load(module_path,
                                                             {.host_build_id = "KSpaceJet cartesian-rss HDF5 resolver"});
   if (!module.ok())
@@ -483,10 +485,11 @@ struct ExpectedContractPort final {
   auto bundle = artifact_digest(descriptor->bundle_digest, "Cartesian RSS HDF5 Provider bundle digest");
   if (!bundle.ok())
     return bundle.status();
-  return graph::ResolvedProvider{.alias = std::string(alias),
-                                 .provider_id = std::string(expected_provider_id),
-                                 .bundle_digest = std::move(bundle).value(),
-                                 .operators = {{.id = std::string(expected_operator_id)}}};
+  return graph::ResolvedProvider{
+    .alias = std::string(alias),
+    .provider_id = std::string(expected_provider_id),
+    .bundle_digest = std::move(bundle).value(),
+    .operators = {{.id = std::string(expected_operator_id), .contract_digest = expected_contract.artifact_digest()}}};
 }
 
 struct GraphNodeSpec final {
@@ -494,7 +497,8 @@ struct GraphNodeSpec final {
   std::string provider_alias;
   std::string provider_id;
   std::string operator_id;
-  std::string canonical_config;
+  std::string authored_config;
+  std::string effective_config;
   std::filesystem::path provider_module;
   std::filesystem::path operator_contract;
   std::vector<ExpectedContractPort> ports;
@@ -536,7 +540,8 @@ struct CalibrationRoute final {
                    .provider_alias = "noise_estimator",
                    .provider_id = kCalibrationProviderId,
                    .operator_id = kNoiseModelEstimateOperatorId,
-                   .canonical_config = "{\"channel_count\":" + std::to_string(shape.physical_channels) + "}",
+                   .authored_config = "{}",
+                   .effective_config = "{\"channel_count\":" + std::to_string(shape.physical_channels) + "}",
                    .provider_module = config.noise_prewhiten->noise_model_estimate.provider_module,
                    .operator_contract = config.noise_prewhiten->noise_model_estimate.operator_contract,
                    .ports = {{"noise_calibration", types::kNoiseCalibrationFrameTypeRef, PortDirection::input},
@@ -545,7 +550,8 @@ struct CalibrationRoute final {
                      .provider_alias = "noise_prewhitener",
                      .provider_id = kConditioningProviderId,
                      .operator_id = kNoisePrewhitenOperatorId,
-                     .canonical_config = raw_frame_config,
+                     .authored_config = "{}",
+                     .effective_config = raw_frame_config,
                      .provider_module = config.noise_prewhiten->noise_prewhiten.provider_module,
                      .operator_contract = config.noise_prewhiten->noise_prewhiten.operator_contract,
                      .ports = {{"kspace", types::kKspaceFrameTypeRef, PortDirection::input},
@@ -564,7 +570,8 @@ struct CalibrationRoute final {
                    .provider_alias = "phase_estimator",
                    .provider_id = kCalibrationProviderId,
                    .operator_id = kPhaseCorrectionEstimateOperatorId,
-                   .canonical_config = "{\"channel_count\":" + std::to_string(shape.physical_channels) +
+                   .authored_config = "{}",
+                   .effective_config = "{\"channel_count\":" + std::to_string(shape.physical_channels) +
                                        ",\"readout_sample_count\":" + std::to_string(shape.input_cols) + "}",
                    .provider_module = config.phase_correction->phase_correction_estimate.provider_module,
                    .operator_contract = config.phase_correction->phase_correction_estimate.operator_contract,
@@ -574,7 +581,8 @@ struct CalibrationRoute final {
                      .provider_alias = "phase_corrector",
                      .provider_id = kConditioningProviderId,
                      .operator_id = kPhaseCorrectOperatorId,
-                     .canonical_config = raw_frame_config,
+                     .authored_config = "{}",
+                     .effective_config = raw_frame_config,
                      .provider_module = config.phase_correction->phase_correct.provider_module,
                      .operator_contract = config.phase_correction->phase_correct.operator_contract,
                      .ports = {{"kspace", types::kKspaceFrameTypeRef, PortDirection::input},
@@ -594,7 +602,8 @@ struct CalibrationRoute final {
                    .provider_alias = "coil_basis_estimator",
                    .provider_id = kCalibrationProviderId,
                    .operator_id = kCoilCompressionBasisEstimateOperatorId,
-                   .canonical_config = "{\"physical_channel_count\":" + std::to_string(shape.physical_channels) +
+                   .authored_config = "{\"virtual_channel_count\":" + std::to_string(virtual_channels) + "}",
+                   .effective_config = "{\"physical_channel_count\":" + std::to_string(shape.physical_channels) +
                                        ",\"virtual_channel_count\":" + std::to_string(virtual_channels) + "}",
                    .provider_module = config.coil_compression->coil_compression_basis_estimate.provider_module,
                    .operator_contract = config.coil_compression->coil_compression_basis_estimate.operator_contract,
@@ -604,7 +613,8 @@ struct CalibrationRoute final {
                      .provider_alias = "coil_compressor",
                      .provider_id = kConditioningProviderId,
                      .operator_id = kCoilCompressOperatorId,
-                     .canonical_config = "{\"cols\":" + std::to_string(shape.input_cols) +
+                     .authored_config = "{\"virtual_channel_count\":" + std::to_string(virtual_channels) + "}",
+                     .effective_config = "{\"cols\":" + std::to_string(shape.input_cols) +
                                          ",\"physical_channel_count\":" + std::to_string(shape.physical_channels) +
                                          ",\"rows\":" + std::to_string(shape.rows) +
                                          ",\"virtual_channel_count\":" + std::to_string(virtual_channels) + "}",
@@ -626,7 +636,9 @@ struct CalibrationRoute final {
        .provider_alias = "readout_cropper",
        .provider_id = kConditioningProviderId,
        .operator_id = kReadoutOversamplingRemoveOperatorId,
-       .canonical_config =
+       .authored_config =
+         "{\"readout_offset\":" + std::to_string(config.readout_oversampling_removal->readout_offset) + "}",
+       .effective_config =
          "{\"channel_count\":" + std::to_string(shape.channels) +
          ",\"input_cols\":" + std::to_string(shape.input_cols) + ",\"output_cols\":" + std::to_string(shape.cols) +
          ",\"readout_offset\":" + std::to_string(config.readout_oversampling_removal->readout_offset) +
@@ -641,7 +653,8 @@ struct CalibrationRoute final {
                    .provider_alias = "cartesian",
                    .provider_id = kCartesianProviderId,
                    .operator_id = kCartesianOperatorId,
-                   .canonical_config = frame_config,
+                   .authored_config = "{}",
+                   .effective_config = frame_config,
                    .provider_module = config.cartesian_provider_module,
                    .operator_contract = config.cartesian_operator_contract,
                    .ports = {{"kspace", types::kKspaceFrameTypeRef, PortDirection::input},
@@ -651,7 +664,8 @@ struct CalibrationRoute final {
                    .provider_alias = "coilcombine",
                    .provider_id = kCoilCombineProviderId,
                    .operator_id = kCoilCombineOperatorId,
-                   .canonical_config = frame_config,
+                   .authored_config = "{}",
+                   .effective_config = frame_config,
                    .provider_module = config.coil_combine_provider_module,
                    .operator_contract = config.coil_combine_operator_contract,
                    .ports = {{"coil_images", types::kCoilImageFrameTypeRef, PortDirection::input},
@@ -660,6 +674,8 @@ struct CalibrationRoute final {
 
   std::vector<graph::ResolvedProvider> providers;
   providers.reserve(specs.size());
+  std::vector<graph::HostDerivedNodeConfig> effective_node_configs;
+  effective_node_configs.reserve(specs.size());
   std::vector<RuntimeNode> runtime_nodes;
   runtime_nodes.reserve(specs.size());
   for (const auto& specification : specs) {
@@ -674,10 +690,12 @@ struct CalibrationRoute final {
     if (!contract_status.ok())
       return contract_status;
     auto provider = resolve_provider(specification.provider_module, specification.provider_alias,
-                                     specification.provider_id, specification.operator_id);
+                                     specification.provider_id, specification.operator_id, contract.value());
     if (!provider.ok())
       return provider.status();
     providers.push_back(std::move(provider).value());
+    effective_node_configs.push_back(
+      {.node_id = specification.node_id, .canonical_config = specification.effective_config});
     runtime_nodes.push_back({.node_id = specification.node_id,
                              .provider_module = specification.provider_module,
                              .contract = std::move(contract).value()});
@@ -696,7 +714,7 @@ struct CalibrationRoute final {
     append_json(nodes, "{\"id\":" + json_string(specification.node_id) +
                          ",\"operator\":{\"provider\":" + json_string(specification.provider_alias) +
                          ",\"id\":" + json_string(specification.operator_id) +
-                         "},\"config\":" + specification.canonical_config + "}");
+                         "},\"config\":" + specification.authored_config + "}");
   }
 
   std::string edges;
@@ -738,7 +756,8 @@ struct CalibrationRoute final {
 
   const auto pipeline_document =
     "{\"kind\":\"PipelineDefinition\",\"pipeline\":{\"id\":\"org.kspacejet.cartesian-rss\","
-    "\"display_name\":\"Cartesian RSS reconstruction\"},\"allowed_profiles\":[\"offline-reference\"],"
+    "\"display_name\":\"Cartesian RSS reconstruction\"},\"input_profile\":{\"kind\":\"ismrmrd-hdf5\","
+    "\"dataset_group\":\"dataset\"},\"allowed_profiles\":[\"offline-reference\"],"
     "\"parameters\":{},\"provider_requirements\":[" +
     provider_requirements + "],\"nodes\":[" + nodes + "],\"edges\":[" + edges + "],\"bindings\":{\"ingress\":[" +
     ingress +
@@ -757,6 +776,7 @@ struct CalibrationRoute final {
     data_node_ids.push_back(route.node_id);
   }
   return ResolvedGraphInputs{.pipeline = std::move(pipeline).value(),
+                             .effective_node_configs = std::move(effective_node_configs),
                              .nodes = std::move(runtime_nodes),
                              .estimator_node_ids = std::move(estimator_node_ids),
                              .data_node_ids = std::move(data_node_ids)};
@@ -1061,7 +1081,7 @@ make_cartesian_planning_bindings(const ResolvedGraphInputs& graph_inputs, const 
     return host_budget.status();
 
   auto target = TargetEnvelope::create(
-    {.max_xml_bytes = preflight.scan_descriptor.source_xml_bytes(),
+    {.max_xml_bytes = preflight.scan_facts.descriptor().source_xml_bytes(),
      .max_frame_charged_bytes =
        std::max({shape.raw_kspace_charged_bytes, shape.compressed_kspace_charged_bytes, shape.kspace_charged_bytes}),
      .max_image_charged_bytes = shape.image_charged_bytes,
@@ -1102,54 +1122,7 @@ make_cartesian_planning_bindings(const ResolvedGraphInputs& graph_inputs, const 
   if (!policy.ok())
     return policy.status();
 
-  const auto target_document =
-    "{\"arrival\":{\"max_acquisitions_per_second\":" + std::to_string(preflight.acquisitions_read) +
-    ",\"max_burst_acquisitions\":" + std::to_string(preflight.acquisitions_read) +
-    "},"
-    "\"calibration_horizon_charged_bytes\":" +
-    std::to_string(calibration_horizon_bytes) +
-    ",\"calibration_horizon_items\":" + std::to_string(calibration_horizon_items) +
-    ","
-    "\"max_active_channels\":" +
-    std::to_string(shape.physical_channels) +
-    ",\"max_active_scans\":1,"
-    "\"max_channel_groups\":1,\"max_decoder_staging_bytes\":" +
-    std::to_string(shape.line_bytes) + ",\"max_dynamic_keys_per_scan\":1,\"max_frame_charged_bytes\":" +
-    std::to_string(
-      std::max({shape.raw_kspace_charged_bytes, shape.compressed_kspace_charged_bytes, shape.kspace_charged_bytes})) +
-    ",\"max_image_charged_bytes\":" + std::to_string(shape.image_charged_bytes) +
-    ",\"max_samples_per_acquisition\":" + std::to_string(shape.input_cols) +
-    ",\"max_trajectory_dimensions\":0,\"max_xml_bytes\":" +
-    std::to_string(preflight.scan_descriptor.source_xml_bytes()) +
-    ",\"sink\":{\"max_pause_us\":0,\"minimum_drain_items_per_second\":1,\"slow_sink_policy\":\"fail\","
-    "\"transport_staging_bytes\":" +
-    std::to_string(shape.image_charged_bytes) + "}}";
-  auto target_digest = canonical_digest("kspacejet:artifact:cartesian-rss-hdf5-target-envelope", target_document,
-                                        "Cartesian RSS HDF5 target envelope input");
-  if (!target_digest.ok())
-    return target_digest.status();
-  const auto machine_document =
-    "{\"allowed_memory_domains\":[\"host\"],\"allowed_profiles\":[\"offline-reference\"],"
-    "\"host_total_cap_bytes\":" +
-    std::to_string(host_budget.value()) +
-    ",\"numa_domain_count\":1,\"resources\":{\"async_token_count\":0,\"backend_gang_permits\":0,"
-    "\"cpu_leaf_permits\":" +
-    std::to_string(node_count) +
-    ",\"descriptor_count\":1024,\"host_hugepage_bytes\":0,"
-    "\"host_normal_bytes\":" +
-    std::to_string(host_budget.value()) +
-    ",\"host_pinned_bytes\":0,\"io_slots\":0,\"provider_private_permits\":0,\"shared_host_bytes\":0,"
-    "\"spool_bytes\":0,\"transport_bytes\":0},\"scheduler_policy\":\"fifo\"}";
-  auto machine_digest = canonical_digest("kspacejet:artifact:cartesian-rss-hdf5-machine-policy", machine_document,
-                                         "Cartesian RSS HDF5 machine policy input");
-  if (!machine_digest.ok())
-    return machine_digest.status();
-
-  return PlanningArtifacts{.target_envelope = std::move(target).value(),
-                           .machine_policy = std::move(policy).value(),
-                           .digests = {.scan_descriptor = preflight.normalized_scan_facts_digest,
-                                       .target_envelope = std::move(target_digest).value(),
-                                       .machine_policy = std::move(machine_digest).value()}};
+  return PlanningArtifacts{.target_envelope = std::move(target).value(), .machine_policy = std::move(policy).value()};
 }
 
 struct DeclaredCartesianGeometry final {
@@ -1202,96 +1175,103 @@ derive_declared_cartesian_geometry(const ScanDescriptor& descriptor,
   return Status::Ok();
 }
 
-enum class AcquisitionLane : std::uint8_t {
-  imaging,
-  noise,
-  phase_reference,
-  coil_calibration,
-  coil_calibration_and_imaging,
-};
-
-[[nodiscard]] constexpr std::uint64_t acquisition_flag_bit(const ISMRMRD::ISMRMRD_AcquisitionFlags flag) noexcept {
-  return UINT64_C(1) << (static_cast<std::uint64_t>(flag) - 1U);
+[[nodiscard]] Status validate_route_lane(const NormalizedIsmrmrdAcquisition& normalized,
+                                         const CartesianRssHdf5ReconstructionConfig& config) {
+  switch (normalized.classification.lane) {
+    case AcquisitionLane::imaging:
+    case AcquisitionLane::ignored_explicitly:
+      return Status::Ok();
+    case AcquisitionLane::noise:
+      if (!config.noise_prewhiten.has_value()) {
+        return Status::ValidationError("Cartesian RSS HDF5 received noise calibration but noise_prewhiten is disabled");
+      }
+      return Status::Ok();
+    case AcquisitionLane::phase_correction:
+      if (!config.phase_correction.has_value()) {
+        return Status::ValidationError("Cartesian RSS HDF5 received phase reference but phase_correction is disabled");
+      }
+      return Status::Ok();
+    case AcquisitionLane::calibration:
+    case AcquisitionLane::calibration_and_imaging:
+      if (!config.coil_compression.has_value()) {
+        return Status::ValidationError(
+          "Cartesian RSS HDF5 received parallel calibration but coil_compression is disabled");
+      }
+      return Status::Ok();
+    case AcquisitionLane::navigator:
+      return Status::ValidationError("Cartesian RSS HDF5 has no navigator lane policy");
+  }
+  return Status::InternalError("Cartesian RSS HDF5 received an unknown normalized acquisition lane");
 }
 
-[[nodiscard]] Result<AcquisitionLane> classify_acquisition_lane(const std::uint64_t flags,
-                                                                const CartesianRssHdf5ReconstructionConfig& config) {
-  if (flags == 0U) {
-    return AcquisitionLane::imaging;
-  }
-  if (flags == acquisition_flag_bit(ISMRMRD::ISMRMRD_ACQ_IS_NOISE_MEASUREMENT)) {
-    if (!config.noise_prewhiten.has_value()) {
-      return Status::ValidationError("Cartesian RSS HDF5 received noise calibration but noise_prewhiten is disabled");
-    }
-    return AcquisitionLane::noise;
-  }
-  if (flags == acquisition_flag_bit(ISMRMRD::ISMRMRD_ACQ_IS_PHASECORR_DATA)) {
-    if (!config.phase_correction.has_value()) {
-      return Status::ValidationError("Cartesian RSS HDF5 received phase reference but phase_correction is disabled");
-    }
-    return AcquisitionLane::phase_reference;
-  }
-  if (flags == acquisition_flag_bit(ISMRMRD::ISMRMRD_ACQ_IS_PARALLEL_CALIBRATION)) {
-    if (!config.coil_compression.has_value()) {
-      return Status::ValidationError(
-        "Cartesian RSS HDF5 received parallel calibration but coil_compression is disabled");
-    }
-    return AcquisitionLane::coil_calibration;
-  }
-  if (flags == acquisition_flag_bit(ISMRMRD::ISMRMRD_ACQ_IS_PARALLEL_CALIBRATION_AND_IMAGING)) {
-    if (!config.coil_compression.has_value()) {
-      return Status::ValidationError(
-        "Cartesian RSS HDF5 received combined parallel-calibration/imaging data but coil_compression is disabled");
-    }
-    return AcquisitionLane::coil_calibration_and_imaging;
-  }
-  return Status::ValidationError("Cartesian RSS HDF5 accepts only unflagged imaging and exactly one enabled noise, "
-                                 "phase, or parallel-calibration flag");
+[[nodiscard]] FrameSlotContext frame_context_for(const NormalizedIsmrmrdAcquisition& normalized) noexcept {
+  // This single-frame development route has one frozen plan-approved order
+  // and placement. A general frame dispatcher will supply these bindings.
+  // ISMRMRD first/last control flags are intentionally not completion signals
+  // here: exact frozen ky coverage determines completion.
+  return make_ismrmrd_frame_slot_context(normalized, {.order_key = 0U, .placement_key = 0U});
 }
 
-[[nodiscard]] Result<AcquisitionLane> validate_acquisition(const ksj::ismrmrd::AcquisitionView& acquisition,
-                                                           const DeclaredCartesianGeometry& declared_geometry,
-                                                           const CartesianRssHdf5ReconstructionConfig& config,
-                                                           std::optional<std::uint32_t>& physical_channels) {
+[[nodiscard]] Status observe_single_frame_context(const NormalizedIsmrmrdAcquisition& normalized,
+                                                  std::optional<FrameSlotContext>& expected_context) {
+  if (normalized.classification.lane == AcquisitionLane::ignored_explicitly) {
+    return Status::Ok();
+  }
+  const auto context = frame_context_for(normalized);
+  if (!expected_context.has_value()) {
+    expected_context = context;
+    return Status::Ok();
+  }
+  if (expected_context->semantic_key != context.semantic_key) {
+    return Status::ValidationError(
+      "Cartesian RSS HDF5 cannot merge acquisitions from mixed FrameSlot semantic contexts");
+  }
+  return Status::Ok();
+}
+
+[[nodiscard]] Result<NormalizedIsmrmrdAcquisition>
+validate_acquisition(const ksj::ismrmrd::AcquisitionView& acquisition,
+                     const DeclaredCartesianGeometry& declared_geometry,
+                     const CartesianRssHdf5ReconstructionConfig& config, const AcquisitionClassifier& classifier,
+                     std::optional<std::uint32_t>& physical_channels) {
+  auto normalized = normalize_ismrmrd_acquisition(acquisition, classifier);
+  if (!normalized.ok()) {
+    return normalized.status();
+  }
+  const auto route_lane = validate_route_lane(normalized.value(), config);
+  if (!route_lane.ok()) {
+    return route_lane;
+  }
+  if (normalized.value().classification.lane == AcquisitionLane::ignored_explicitly) {
+    return normalized;
+  }
+
   const auto& header = acquisition.header;
-  auto lane = classify_acquisition_lane(header.flags, config);
-  if (!lane.ok())
-    return lane.status();
-  if (header.trajectory_dimensions != 0U || !acquisition.trajectory.empty() || header.discard_pre != 0U ||
-      header.discard_post != 0U) {
+  if (normalized.value().ingress_facts.trajectory_dimensions != 0U || !normalized.value().trajectory.empty() ||
+      header.discard_pre != 0U || header.discard_post != 0U) {
     return Status::ValidationError(
       "Cartesian RSS HDF5 accepts no trajectory or discarded samples on imaging or enabled calibration acquisitions");
   }
-  if (header.encoding_space_ref != 0U || header.index.kspace_encode_step_2 != 0U || header.index.average != 0U ||
-      header.index.slice != 0U || header.index.contrast != 0U || header.index.phase != 0U ||
-      header.index.repetition != 0U || header.index.set != 0U || header.index.segment != 0U) {
-    return Status::ValidationError("Cartesian RSS HDF5 accepts exactly one 2-D semantic frame");
+  if (normalized.value().frame_key.encoding_space != 0U ||
+      normalized.value().cartesian_coordinate.phase_encode_2 != 0U) {
+    return Status::ValidationError("Cartesian RSS HDF5 supports its one declared 2-D encoding only");
   }
-  if (header.number_of_samples < kMinimumDimension || header.number_of_samples > kMaximumDimension ||
-      header.active_channels == 0U || header.active_channels > kMaximumChannels ||
-      header.available_channels < header.active_channels) {
+  const auto samples = normalized.value().ingress_facts.samples_per_acquisition;
+  const auto channels = normalized.value().ingress_facts.active_channels;
+  if (samples < kMinimumDimension || samples > kMaximumDimension || channels == 0U || channels > kMaximumChannels) {
     return Status::ValidationError(
       "Cartesian RSS HDF5 acquisition samples/channels do not describe a supported full active-channel frame");
   }
-  if (header.number_of_samples != declared_geometry.input_cols) {
+  if (samples != declared_geometry.input_cols) {
     return Status::ValidationError(
       "Cartesian RSS HDF5 acquisition number_of_samples does not match the XML Cartesian readout matrix");
   }
-  const auto expected_samples = static_cast<std::uint64_t>(header.number_of_samples) * header.active_channels;
-  if (expected_samples != acquisition.samples.size()) {
-    return Status::ValidationError("Cartesian RSS HDF5 acquisition payload does not match samples * active_channels");
-  }
   if (!physical_channels.has_value()) {
-    physical_channels = header.active_channels;
-  } else if (*physical_channels != header.active_channels) {
+    physical_channels = static_cast<std::uint32_t>(channels);
+  } else if (*physical_channels != channels) {
     return Status::ValidationError("Cartesian RSS HDF5 acquisition active_channels changes within one frame");
   }
-  for (const auto value : acquisition.samples) {
-    if (!std::isfinite(value.real()) || !std::isfinite(value.imag())) {
-      return Status::ValidationError("Cartesian RSS HDF5 rejects non-finite raw complex samples");
-    }
-  }
-  return lane.value();
+  return normalized;
 }
 
 [[nodiscard]] Result<CalibrationLane> make_calibration_lane(const std::uint32_t line_count, const Shape& shape,
@@ -1313,15 +1293,17 @@ enum class AcquisitionLane : std::uint8_t {
   return CalibrationLane{.line_count = line_count, .payload_bytes = bytes.value(), .charged_bytes = charged.value()};
 }
 
-[[nodiscard]] Result<Preflight> preflight_input(const CartesianRssHdf5ReconstructionConfig& config) {
-  ksj::ismrmrd::DatasetReader reader;
-  std::string reader_error;
-  if (!reader.open(config.input_file, config.dataset_group, reader_error))
-    return hdf5_io_error(reader_error);
-  if (reader.metadata().xml_header.empty()) {
+[[nodiscard]] Result<Preflight> preflight_input(const CartesianRssHdf5ReconstructionConfig& config,
+                                                const AcquisitionClassifier& classifier) {
+  const IsmrmrdHdf5ReplaySource source({.input_file = config.input_file, .dataset_group = config.dataset_group});
+  auto opened = source.open();
+  if (!opened.ok())
+    return hdf5_source_error(opened.status());
+  auto session = std::move(opened).value();
+  if (session.metadata().xml_header.empty()) {
     return Status::ValidationError("Cartesian RSS HDF5 requires an ISMRMRD XML header");
   }
-  auto scan = ScanDescriptor::parse_ismrmrd_xml(reader.metadata().xml_header);
+  auto scan = ScanDescriptor::parse_ismrmrd_xml(session.metadata().xml_header);
   if (!scan.ok())
     return scan.status();
   auto geometry = derive_declared_cartesian_geometry(scan.value(), config);
@@ -1330,66 +1312,74 @@ enum class AcquisitionLane : std::uint8_t {
 
   std::vector<bool> seen_lines(geometry.value().rows, false);
   std::optional<std::uint32_t> physical_channels;
+  std::optional<FrameSlotContext> expected_context;
+  std::optional<ksj::ismrmrd::AcquisitionHeader> image_source_acquisition;
   std::uint32_t acquisitions{0U};
   std::uint32_t noise_lines{0U};
   std::uint32_t phase_lines{0U};
   std::uint32_t coil_lines{0U};
   Status callback_status = Status::Ok();
-  const auto iteration = reader.for_each_acquisition(
-    [&](const ksj::ismrmrd::AcquisitionView& acquisition) {
-      const auto lane = validate_acquisition(acquisition, geometry.value(), config, physical_channels);
-      if (!lane.ok()) {
-        callback_status = lane.status();
+  const auto iteration = session.for_each_acquisition([&](const ksj::ismrmrd::AcquisitionView& acquisition) {
+    const auto normalized = validate_acquisition(acquisition, geometry.value(), config, classifier, physical_channels);
+    if (!normalized.ok()) {
+      callback_status = normalized.status();
+      return false;
+    }
+    const auto context_status = observe_single_frame_context(normalized.value(), expected_context);
+    if (!context_status.ok()) {
+      callback_status = context_status;
+      return false;
+    }
+    const auto lane = normalized.value().classification.lane;
+    if (is_imaging_lane(lane)) {
+      if (!image_source_acquisition.has_value())
+        image_source_acquisition = acquisition.header;
+      if (normalized.value().cartesian_coordinate.phase_encode_1 >= geometry.value().rows) {
+        callback_status =
+          Status::ValidationError("Cartesian RSS HDF5 ky coordinate is outside the XML Cartesian matrix");
         return false;
       }
-      if (lane.value() == AcquisitionLane::imaging || lane.value() == AcquisitionLane::coil_calibration_and_imaging) {
-        if (acquisition.header.index.kspace_encode_step_1 >= geometry.value().rows) {
-          callback_status =
-            Status::ValidationError("Cartesian RSS HDF5 ky coordinate is outside the XML Cartesian matrix");
-          return false;
-        }
-        const auto ky = static_cast<std::size_t>(acquisition.header.index.kspace_encode_step_1);
-        if (seen_lines[ky]) {
-          callback_status = Status::ValidationError("Cartesian RSS HDF5 received a duplicate imaging ky acquisition");
-          return false;
-        }
-        seen_lines[ky] = true;
-      }
-      const auto increment = [&](std::uint32_t& count, const std::string_view lane_name) -> bool {
-        if (count == std::numeric_limits<std::uint32_t>::max()) {
-          callback_status = Status::ValidationError("Cartesian RSS HDF5 " + std::string(lane_name) +
-                                                    " acquisition count overflows uint32");
-          return false;
-        }
-        ++count;
-        return true;
-      };
-      if (lane.value() == AcquisitionLane::noise && !increment(noise_lines, "noise calibration"))
-        return false;
-      if (lane.value() == AcquisitionLane::phase_reference && !increment(phase_lines, "phase reference"))
-        return false;
-      if ((lane.value() == AcquisitionLane::coil_calibration ||
-           lane.value() == AcquisitionLane::coil_calibration_and_imaging) &&
-          !increment(coil_lines, "coil calibration")) {
+      const auto ky = static_cast<std::size_t>(normalized.value().cartesian_coordinate.phase_encode_1);
+      if (seen_lines[ky]) {
+        callback_status = Status::ValidationError("Cartesian RSS HDF5 received a duplicate imaging ky acquisition");
         return false;
       }
-      if (acquisitions == std::numeric_limits<std::uint32_t>::max()) {
-        callback_status = Status::ValidationError("Cartesian RSS HDF5 acquisition count overflows uint32");
+      seen_lines[ky] = true;
+    }
+    const auto increment = [&](std::uint32_t& count, const std::string_view lane_name) -> bool {
+      if (count == std::numeric_limits<std::uint32_t>::max()) {
+        callback_status = Status::ValidationError("Cartesian RSS HDF5 " + std::string(lane_name) +
+                                                  " acquisition count overflows uint32");
         return false;
       }
-      ++acquisitions;
+      ++count;
       return true;
-    },
-    reader_error);
-  if (iteration == ksj::ismrmrd::AcquisitionIterationResult::failed)
-    return hdf5_io_error(reader_error);
-  if (iteration == ksj::ismrmrd::AcquisitionIterationResult::stopped) {
+    };
+    if (lane == AcquisitionLane::noise && !increment(noise_lines, "noise calibration"))
+      return false;
+    if (lane == AcquisitionLane::phase_correction && !increment(phase_lines, "phase reference"))
+      return false;
+    if ((lane == AcquisitionLane::calibration || lane == AcquisitionLane::calibration_and_imaging) &&
+        !increment(coil_lines, "coil calibration")) {
+      return false;
+    }
+    if (acquisitions == std::numeric_limits<std::uint32_t>::max()) {
+      callback_status = Status::ValidationError("Cartesian RSS HDF5 acquisition count overflows uint32");
+      return false;
+    }
+    ++acquisitions;
+    return true;
+  });
+  if (!iteration.ok())
+    return hdf5_source_error(iteration.status());
+  if (iteration.value() == IsmrmrdHdf5ReplayIterationResult::stopped) {
     return callback_status.ok() ? Status::Unavailable("Cartesian RSS HDF5 preflight stopped before EndOfInput")
                                 : callback_status;
   }
   if (!callback_status.ok())
     return callback_status;
-  if (!physical_channels.has_value() || std::find(seen_lines.begin(), seen_lines.end(), false) != seen_lines.end()) {
+  if (!physical_channels.has_value() || !expected_context.has_value() || !image_source_acquisition.has_value() ||
+      std::find(seen_lines.begin(), seen_lines.end(), false) != seen_lines.end()) {
     return Status::ValidationError("Cartesian RSS HDF5 requires every ky line exactly once in one full frame");
   }
   if (config.noise_prewhiten.has_value() && noise_lines == 0U) {
@@ -1427,32 +1417,23 @@ enum class AcquisitionLane : std::uint8_t {
   if (!coil.ok())
     return coil.status();
 
-  const auto xml_document = "{\"ismrmrd_xml\":" + json_string(reader.metadata().xml_header) + "}";
-  auto xml_digest = canonical_digest("kspacejet:artifact:cartesian-rss-hdf5-source-xml", xml_document,
-                                     "Cartesian RSS HDF5 source XML input");
-  if (!xml_digest.ok())
-    return xml_digest.status();
-  const auto facts_document =
-    "{\"acquisitions\":" + std::to_string(acquisitions) + ",\"coil_calibration_lines\":" + std::to_string(coil_lines) +
-    ",\"final_channels\":" + std::to_string(shape.value().channels) +
-    ",\"input_cols\":" + std::to_string(shape.value().input_cols) + ",\"noise_lines\":" + std::to_string(noise_lines) +
-    ",\"phase_lines\":" + std::to_string(phase_lines) +
-    ",\"physical_channels\":" + std::to_string(shape.value().physical_channels) +
-    ",\"reconstruction_cols\":" + std::to_string(shape.value().cols) +
-    ",\"rows\":" + std::to_string(shape.value().rows) +
-    ",\"source_xml_digest\":" + json_string(xml_digest.value().value()) + "}";
-  auto facts_digest = canonical_digest("kspacejet:artifact:cartesian-rss-hdf5-normalized-scan-facts", facts_document,
-                                       "Cartesian RSS HDF5 normalized scan facts");
-  if (!facts_digest.ok())
-    return facts_digest.status();
-  return Preflight{.scan_descriptor = std::move(scan).value(),
+  auto scan_facts = ScanFacts::create({.descriptor = std::move(scan).value(),
+                                       .source_xml = session.metadata().xml_header,
+                                       .acquisition_count = acquisitions,
+                                       .physical_channel_count = shape.value().physical_channels,
+                                       .maximum_samples_per_acquisition = shape.value().input_cols,
+                                       .trajectory_dimensions = 0U});
+  if (!scan_facts.ok())
+    return scan_facts.status();
+  return Preflight{.scan_facts = std::move(scan_facts).value(),
                    .shape = std::move(shape).value(),
+                   .frame_context = *expected_context,
+                   .source_xml = session.metadata().xml_header,
+                   .image_source_acquisition = *image_source_acquisition,
                    .acquisitions_read = acquisitions,
                    .noise = std::move(noise).value(),
                    .phase = std::move(phase).value(),
-                   .coil = std::move(coil).value(),
-                   .source_xml_digest = std::move(xml_digest).value(),
-                   .normalized_scan_facts_digest = std::move(facts_digest).value()};
+                   .coil = std::move(coil).value()};
 }
 
 [[nodiscard]] Result<HostFrameAssemblerConfig> make_host_config(const Shape& shape, const std::uint32_t line_count,
@@ -1571,8 +1552,8 @@ void abort_replay_lanes(ReplayLanes& lanes) noexcept {
 }
 
 [[nodiscard]] Status replay_into_hosts(const CartesianRssHdf5ReconstructionConfig& config, const Preflight& preflight,
-                                       ReplayLanes& lanes) {
-  const FrameSlotContext context{};
+                                       ReplayLanes& lanes, const AcquisitionClassifier& classifier) {
+  const FrameSlotContext context = preflight.frame_context;
   for (ReplayLane* lane : {&lanes.imaging, lanes.noise ? &*lanes.noise : nullptr, lanes.phase ? &*lanes.phase : nullptr,
                            lanes.coil ? &*lanes.coil : nullptr}) {
     if (lane == nullptr)
@@ -1584,20 +1565,20 @@ void abort_replay_lanes(ReplayLanes& lanes) noexcept {
     }
   }
 
-  ksj::ismrmrd::DatasetReader reader;
-  std::string reader_error;
-  if (!reader.open(config.input_file, config.dataset_group, reader_error)) {
+  const IsmrmrdHdf5ReplaySource source({.input_file = config.input_file, .dataset_group = config.dataset_group});
+  auto opened = source.open();
+  if (!opened.ok()) {
     abort_replay_lanes(lanes);
-    return hdf5_io_error(reader_error);
+    return hdf5_source_error(opened.status());
   }
-  const auto replay_xml_document = "{\"ismrmrd_xml\":" + json_string(reader.metadata().xml_header) + "}";
-  auto replay_xml_digest = canonical_digest("kspacejet:artifact:cartesian-rss-hdf5-source-xml", replay_xml_document,
-                                            "Cartesian RSS HDF5 replay XML input");
+  auto session = std::move(opened).value();
+  auto replay_xml_digest =
+    derive_ismrmrd_source_xml_artifact_digest(session.metadata().xml_header, "ISMRMRD replay XML input");
   if (!replay_xml_digest.ok()) {
     abort_replay_lanes(lanes);
     return replay_xml_digest.status();
   }
-  if (replay_xml_digest.value() != preflight.source_xml_digest) {
+  if (replay_xml_digest.value() != preflight.scan_facts.source_xml_digest()) {
     abort_replay_lanes(lanes);
     return Status::ValidationError("Cartesian RSS HDF5 XML changed between preflight and replay");
   }
@@ -1606,60 +1587,62 @@ void abort_replay_lanes(ReplayLanes& lanes) noexcept {
   const DeclaredCartesianGeometry declared_geometry{
     .rows = preflight.shape.rows, .input_cols = preflight.shape.input_cols, .cols = preflight.shape.cols};
   std::optional<std::uint32_t> expected_channels{preflight.shape.physical_channels};
+  std::optional<FrameSlotContext> expected_context{preflight.frame_context};
   std::vector<bool> replay_coverage(preflight.shape.rows, false);
-  const auto iteration = reader.for_each_acquisition(
-    [&](const ksj::ismrmrd::AcquisitionView& acquisition) {
-      const auto lane = validate_acquisition(acquisition, declared_geometry, config, expected_channels);
-      if (!lane.ok()) {
-        callback_status = lane.status();
-        return false;
+  const auto iteration = session.for_each_acquisition([&](const ksj::ismrmrd::AcquisitionView& acquisition) {
+    const auto normalized = validate_acquisition(acquisition, declared_geometry, config, classifier, expected_channels);
+    if (!normalized.ok()) {
+      callback_status = normalized.status();
+      return false;
+    }
+    const auto context_status = observe_single_frame_context(normalized.value(), expected_context);
+    if (!context_status.ok()) {
+      callback_status = context_status;
+      return false;
+    }
+    const auto lane = normalized.value().classification.lane;
+    const auto payload = normalized.value().sample_bytes;
+    const auto scatter_imaging = [&]() -> Status {
+      if (normalized.value().cartesian_coordinate.phase_encode_1 >= preflight.shape.rows) {
+        return Status::ValidationError("Cartesian RSS HDF5 replay imaging ky is outside the frozen matrix");
       }
-      const auto sample_bytes = std::as_bytes(acquisition.samples);
-      const auto payload = ksj::base::ConstByteSpan{sample_bytes.data(), sample_bytes.size()};
-      const auto scatter_imaging = [&]() -> Status {
-        if (acquisition.header.index.kspace_encode_step_1 >= preflight.shape.rows) {
-          return Status::ValidationError("Cartesian RSS HDF5 replay imaging ky is outside the frozen matrix");
-        }
-        const auto ky = static_cast<std::size_t>(acquisition.header.index.kspace_encode_step_1);
-        if (replay_coverage[ky]) {
-          return Status::ValidationError("Cartesian RSS HDF5 replay received a duplicate imaging ky acquisition");
-        }
-        replay_coverage[ky] = true;
-        return scatter_imaging_replay_lane(lanes.imaging, static_cast<std::uint32_t>(ky), payload);
-      };
-      Status scatter = Status::Ok();
-      if (lane.value() == AcquisitionLane::imaging || lane.value() == AcquisitionLane::coil_calibration_and_imaging) {
-        scatter = scatter_imaging();
+      const auto ky = static_cast<std::size_t>(normalized.value().cartesian_coordinate.phase_encode_1);
+      if (replay_coverage[ky]) {
+        return Status::ValidationError("Cartesian RSS HDF5 replay received a duplicate imaging ky acquisition");
       }
-      if (scatter.ok() && lane.value() == AcquisitionLane::noise && lanes.noise.has_value()) {
-        scatter = scatter_replay_lane(*lanes.noise, payload, "noise calibration");
-      }
-      if (scatter.ok() && lane.value() == AcquisitionLane::phase_reference && lanes.phase.has_value()) {
-        scatter = scatter_replay_lane(*lanes.phase, payload, "phase reference");
-      }
-      if (scatter.ok() &&
-          (lane.value() == AcquisitionLane::coil_calibration ||
-           lane.value() == AcquisitionLane::coil_calibration_and_imaging) &&
-          lanes.coil.has_value()) {
-        scatter = scatter_replay_lane(*lanes.coil, payload, "coil calibration");
-      }
-      if (!scatter.ok()) {
-        callback_status = scatter;
-        return false;
-      }
-      if (acquisitions == std::numeric_limits<std::uint32_t>::max()) {
-        callback_status = Status::ValidationError("Cartesian RSS HDF5 replay acquisition count overflows uint32");
-        return false;
-      }
-      ++acquisitions;
-      return true;
-    },
-    reader_error);
-  if (iteration == ksj::ismrmrd::AcquisitionIterationResult::failed) {
+      replay_coverage[ky] = true;
+      return scatter_imaging_replay_lane(lanes.imaging, static_cast<std::uint32_t>(ky), payload);
+    };
+    Status scatter = Status::Ok();
+    if (is_imaging_lane(lane)) {
+      scatter = scatter_imaging();
+    }
+    if (scatter.ok() && lane == AcquisitionLane::noise && lanes.noise.has_value()) {
+      scatter = scatter_replay_lane(*lanes.noise, payload, "noise calibration");
+    }
+    if (scatter.ok() && lane == AcquisitionLane::phase_correction && lanes.phase.has_value()) {
+      scatter = scatter_replay_lane(*lanes.phase, payload, "phase reference");
+    }
+    if (scatter.ok() && (lane == AcquisitionLane::calibration || lane == AcquisitionLane::calibration_and_imaging) &&
+        lanes.coil.has_value()) {
+      scatter = scatter_replay_lane(*lanes.coil, payload, "coil calibration");
+    }
+    if (!scatter.ok()) {
+      callback_status = scatter;
+      return false;
+    }
+    if (acquisitions == std::numeric_limits<std::uint32_t>::max()) {
+      callback_status = Status::ValidationError("Cartesian RSS HDF5 replay acquisition count overflows uint32");
+      return false;
+    }
+    ++acquisitions;
+    return true;
+  });
+  if (!iteration.ok()) {
     abort_replay_lanes(lanes);
-    return hdf5_io_error(reader_error);
+    return hdf5_source_error(iteration.status());
   }
-  if (iteration == ksj::ismrmrd::AcquisitionIterationResult::stopped || !callback_status.ok()) {
+  if (iteration.value() == IsmrmrdHdf5ReplayIterationResult::stopped || !callback_status.ok()) {
     abort_replay_lanes(lanes);
     return callback_status.ok() ? Status::Unavailable("Cartesian RSS HDF5 replay stopped before EndOfInput")
                                 : callback_status;
@@ -1683,11 +1666,11 @@ void abort_replay_lanes(ReplayLanes& lanes) noexcept {
 }
 
 [[nodiscard]] std::vector<ksj::base::byte> semantic_key_bytes(const FrameSlotContext& context) {
-  std::vector<ksj::base::byte> result(sizeof(std::uint16_t) * 7U);
+  std::vector<ksj::base::byte> result(sizeof(std::uint16_t) * 8U);
   const std::array values{
-    context.semantic_key.encoding_space, context.semantic_key.slice, context.semantic_key.contrast,
-    context.semantic_key.repetition,     context.semantic_key.set,   context.semantic_key.phase,
-    context.semantic_key.average};
+    context.semantic_key.encoding_space, context.semantic_key.slice,  context.semantic_key.contrast,
+    context.semantic_key.repetition,     context.semantic_key.set,    context.semantic_key.phase,
+    context.semantic_key.average,        context.semantic_key.segment};
   for (std::size_t index = 0U; index < values.size(); ++index) {
     result[index * 2U] = static_cast<ksj::base::byte>(values[index] & 0xFFU);
     result[index * 2U + 1U] = static_cast<ksj::base::byte>((values[index] >> 8U) & 0xFFU);
@@ -1695,42 +1678,31 @@ void abort_replay_lanes(ReplayLanes& lanes) noexcept {
   return result;
 }
 
-[[nodiscard]] const graph::PipelineNode* find_pipeline_node(const graph::ResolvedPipeline& pipeline,
-                                                            const std::string_view node_id) noexcept {
-  const auto found = std::find_if(pipeline.definition().nodes().begin(), pipeline.definition().nodes().end(),
-                                  [node_id](const graph::PipelineNode& node) {
-                                    return node.id == node_id;
-                                  });
-  return found == pipeline.definition().nodes().end() ? nullptr : &*found;
-}
-
 [[nodiscard]] Result<std::unique_ptr<ProviderNodeInstance>>
-make_provider_node(const ExecutionPlan& plan, const graph::ResolvedPipeline& pipeline,
+make_provider_node(const ExecutionPlan& plan, const graph::EffectivePipelineBinding& effective_pipeline_binding,
                    const std::filesystem::path& module_path, const std::string_view node_id,
-                   const ArtifactDigest& normalized_scan_facts_digest, const std::uint64_t execution_context_id) {
-  const auto* node = find_pipeline_node(pipeline, node_id);
-  if (node == nullptr || node->canonical_config.empty()) {
-    return Status::InternalError("Cartesian RSS HDF5 resolved pipeline omitted a required canonical Provider config");
-  }
-  const FrameSlotContext context{};
-  return ProviderNodeInstance::create(plan,
-                                      {.module_path = module_path,
-                                       .node_id = std::string(node_id),
-                                       .canonical_config = node->canonical_config,
-                                       .start_facts = {.normalized_scan_facts_digest = normalized_scan_facts_digest,
-                                                       .execution_plan_digest = plan.digest(),
-                                                       .run_id = "cartesian-rss-hdf5",
-                                                       .scan_instance_id = "cartesian-rss-hdf5",
-                                                       .terminal_epoch = kTerminalEpoch},
-                                       .execution_context_id = execution_context_id,
-                                       .resource_domain_id = 1U,
-                                       .max_backend_concurrency = 1U,
-                                       .numa_node = 0U,
-                                       .device_ordinal = 0U,
-                                       .key_state = {.semantic_key = semantic_key_bytes(context),
-                                                     .placement_key = context.placement_key,
-                                                     .generation = 1U,
-                                                     .home_shard = 0U}});
+                   const ScanFacts& scan_facts, const FrameSlotContext& frame_context,
+                   const std::uint64_t execution_context_id) {
+  auto canonical_config = effective_pipeline_binding.config_for(node_id);
+  if (!canonical_config.ok())
+    return canonical_config.status();
+  return ProviderNodeInstance::create(plan, {.module_path = module_path,
+                                             .node_id = std::string(node_id),
+                                             .canonical_config = std::string(canonical_config.value()),
+                                             .start_facts = {.normalized_scan_facts_digest = scan_facts.digest(),
+                                                             .execution_plan_digest = plan.digest(),
+                                                             .run_id = "cartesian-rss-hdf5",
+                                                             .scan_instance_id = "cartesian-rss-hdf5",
+                                                             .terminal_epoch = kTerminalEpoch},
+                                             .execution_context_id = execution_context_id,
+                                             .resource_domain_id = 1U,
+                                             .max_backend_concurrency = 1U,
+                                             .numa_node = 0U,
+                                             .device_ordinal = 0U,
+                                             .key_state = {.semantic_key = semantic_key_bytes(frame_context),
+                                                           .placement_key = frame_context.placement_key,
+                                                           .generation = 1U,
+                                                           .home_shard = 0U}});
 }
 
 [[nodiscard]] Result<SynchronousFiringResult> fire_node(SynchronousGraphExecutor& executor,
@@ -1759,50 +1731,36 @@ make_provider_node(const ExecutionPlan& plan, const graph::ResolvedPipeline& pip
   return provider.complete_normal_terminal(terminal.value());
 }
 
-[[nodiscard]] Status write_binary_file(const std::filesystem::path& path, const ksj::base::ConstByteSpan bytes) {
-  std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-  if (!stream.is_open())
-    return Status::IoError("unable to open Cartesian RSS output image: " + path.string());
-  stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-  stream.flush();
-  if (!stream)
-    return Status::IoError("unable to write Cartesian RSS output image: " + path.string());
-  return Status::Ok();
-}
-
-[[nodiscard]] Status write_metadata_file(const std::filesystem::path& path,
-                                         const CartesianRssHdf5ReconstructionReport& report,
-                                         const std::span<const RuntimeNode> nodes) {
-  if (path.empty())
-    return Status::Ok();
+[[nodiscard]] Status commit_ismrmrd_image_artifact(const CartesianRssHdf5ReconstructionConfig& config,
+                                                   const Preflight& preflight,
+                                                   const CartesianRssHdf5ReconstructionReport& report,
+                                                   const std::span<const RuntimeNode> nodes, EgressInputLease& image) {
   if (nodes.empty()) {
-    return Status::InternalError("Cartesian RSS HDF5 metadata requires the resolved graph nodes");
+    return Status::InternalError("Cartesian RSS HDF5 ISMRMRD provenance requires resolved graph nodes");
   }
-  std::string operators;
+  if (preflight.scan_facts.descriptor().encodings().empty()) {
+    return Status::InternalError("Cartesian RSS HDF5 ISMRMRD output requires one validated encoding");
+  }
+  std::vector<std::pair<std::string, std::string>> provenance;
+  provenance.reserve(8U + nodes.size());
+  provenance.emplace_back("KSpaceJet.Route", "cartesian-rss");
+  provenance.emplace_back("KSpaceJet.AcquisitionsRead", std::to_string(report.acquisitions_read));
+  provenance.emplace_back("KSpaceJet.InputChannels", std::to_string(report.channels));
+  provenance.emplace_back("KSpaceJet.ExecutionPlanDigest", report.execution_plan_digest);
+  provenance.emplace_back("KSpaceJet.VerificationRecordDigest", report.verification_record_digest);
+  provenance.emplace_back("KSpaceJet.SourceXmlDigest", preflight.scan_facts.source_xml_digest().value());
   for (const auto& node : nodes) {
-    if (!operators.empty())
-      operators.push_back(',');
-    operators += json_string(node.contract.operator_id());
+    provenance.emplace_back("KSpaceJet.Operator", node.contract.operator_id());
   }
-  const auto document =
-    "{\"acquisitions_read\":" + std::to_string(report.acquisitions_read) +
-    ",\"channels\":" + std::to_string(report.channels) + ",\"cols\":" + std::to_string(report.cols) +
-    ",\"execution_plan_digest\":" + json_string(report.execution_plan_digest) +
-    ",\"image_layout\":\"row_major_contiguous\",\"image_payload_bytes\":" + std::to_string(report.image_payload_bytes) +
-    ",\"operators\":[" + operators + "],\"rows\":" + std::to_string(report.rows) +
-    ",\"verification_record_digest\":" + json_string(report.verification_record_digest) + "}";
-  auto canonical = graph::canonicalize_json(document);
-  if (!canonical.ok())
-    return canonical.status();
-  std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-  if (!stream.is_open())
-    return Status::IoError("unable to open Cartesian RSS metadata output: " + path.string());
-  stream.write(canonical.value().data(), static_cast<std::streamsize>(canonical.value().size()));
-  stream.put('\n');
-  stream.flush();
-  if (!stream)
-    return Status::IoError("unable to write Cartesian RSS metadata output: " + path.string());
-  return Status::Ok();
+  IsmrmrdImageArtifactSink sink{
+    config.output_image_file,
+    {.source_xml = preflight.source_xml,
+     .source_acquisition = preflight.image_source_acquisition,
+     .field_of_view_mm = preflight.scan_facts.descriptor().encodings().front().recon_field_of_view_mm(),
+     .rows = report.rows,
+     .cols = report.cols,
+     .provenance_attributes = std::move(provenance)}};
+  return sink.commit(image);
 }
 
 } // namespace
@@ -1814,12 +1772,20 @@ reconstruct_cartesian_rss_hdf5(const CartesianRssHdf5ReconstructionConfig& confi
     if (!config_status.ok())
       return config_status;
 
-    auto preflight = preflight_input(config);
+    auto classifier = AcquisitionClassifier::create({});
+    if (!classifier.ok())
+      return classifier.status();
+    auto preflight = preflight_input(config, classifier.value());
     if (!preflight.ok())
       return preflight.status();
     auto graph_inputs = make_graph_inputs(config, preflight.value().shape);
     if (!graph_inputs.ok())
       return graph_inputs.status();
+    auto effective_pipeline_binding = graph::EffectivePipelineBinding::create_from_host_derived_configs(
+      graph_inputs.value().pipeline, preflight.value().scan_facts,
+      std::move(graph_inputs.value().effective_node_configs));
+    if (!effective_pipeline_binding.ok())
+      return effective_pipeline_binding.status();
     auto planning_bindings = make_cartesian_planning_bindings(graph_inputs.value(), preflight.value());
     if (!planning_bindings.ok())
       return planning_bindings.status();
@@ -1833,10 +1799,10 @@ reconstruct_cartesian_rss_hdf5(const CartesianRssHdf5ReconstructionConfig& confi
     const graph::PlanBuildRequest request{
       .resolved_pipeline = graph_inputs.value().pipeline,
       .requested_profile = ExecutionProfile::offline_reference,
-      .scan_descriptor = preflight.value().scan_descriptor,
+      .scan_facts = preflight.value().scan_facts,
+      .effective_pipeline_binding = effective_pipeline_binding.value(),
       .target_envelope = planning.value().target_envelope,
       .machine_policy = planning.value().machine_policy,
-      .artifact_digests = planning.value().digests,
       .operator_contract_bindings = std::move(frozen_bindings.contracts),
       .node_planning_requirements = std::move(frozen_bindings.requirements),
     };
@@ -1865,9 +1831,9 @@ reconstruct_cartesian_rss_hdf5(const CartesianRssHdf5ReconstructionConfig& confi
     providers.reserve(graph_inputs.value().nodes.size());
     std::uint64_t execution_context_id = 1U;
     for (const auto& node : graph_inputs.value().nodes) {
-      auto provider =
-        make_provider_node(compiled.value().plan, graph_inputs.value().pipeline, node.provider_module, node.node_id,
-                           preflight.value().normalized_scan_facts_digest, execution_context_id);
+      auto provider = make_provider_node(compiled.value().plan, effective_pipeline_binding.value(),
+                                         node.provider_module, node.node_id, preflight.value().scan_facts,
+                                         preflight.value().frame_context, execution_context_id);
       if (!provider.ok())
         return provider.status();
       providers.push_back({.node_id = node.node_id, .instance = std::move(provider).value()});
@@ -1958,7 +1924,7 @@ reconstruct_cartesian_rss_hdf5(const CartesianRssHdf5ReconstructionConfig& confi
       replay_lanes.coil.emplace(ReplayLane{
         .host = coil_host.get(), .bridge = &*coil_bridge, .expected_lines = preflight.value().coil.line_count});
     }
-    const auto replay = replay_into_hosts(config, preflight.value(), replay_lanes);
+    const auto replay = replay_into_hosts(config, preflight.value(), replay_lanes, classifier.value());
     if (!replay.ok()) {
       static_cast<void>(executor_instance->abort());
       return replay;
@@ -2023,25 +1989,6 @@ reconstruct_cartesian_rss_hdf5(const CartesianRssHdf5ReconstructionConfig& confi
     auto image = executor_instance->try_acquire_egress(kImageEgressId);
     if (!image.ok())
       return image.status();
-    auto expected_type = types::image_frame();
-    if (!expected_type.ok())
-      return expected_type.status();
-    auto payload = image.value().payload();
-    if (!payload.ok())
-      return payload.status();
-    if (image.value().type_descriptor() == nullptr ||
-        !image.value().type_descriptor()->exactly_matches(expected_type.value()) ||
-        payload.value().size() != preflight.value().shape.image_bytes) {
-      return Status::ValidationError("Cartesian RSS HDF5 egress did not contain one exact ksj.image-frame payload");
-    }
-    std::vector<ksj::base::byte> output(payload.value().begin(), payload.value().end());
-    const auto acknowledged = image.value().acknowledge_consumed();
-    if (!acknowledged.ok())
-      return acknowledged;
-    if (executor_instance->egress_poll_kind(kImageEgressId) != FixedBufferEdgePollKind::completed) {
-      return Status::StateError("Cartesian RSS HDF5 egress did not close after its one expected image");
-    }
-
     CartesianRssHdf5ReconstructionReport report{
       .rows = preflight.value().shape.rows,
       .cols = preflight.value().shape.cols,
@@ -2051,12 +1998,17 @@ reconstruct_cartesian_rss_hdf5(const CartesianRssHdf5ReconstructionConfig& confi
       .execution_plan_digest = compiled.value().plan.digest().value(),
       .verification_record_digest = verification.value().digest().value(),
     };
-    const auto image_write = write_binary_file(config.output_image_file, output);
-    if (!image_write.ok())
+    const auto image_write = commit_ismrmrd_image_artifact(
+      config, preflight.value(), report,
+      std::span<const RuntimeNode>{graph_inputs.value().nodes.data(), graph_inputs.value().nodes.size()},
+      image.value());
+    if (!image_write.ok()) {
+      static_cast<void>(executor_instance->abort());
       return image_write;
-    const auto metadata_write = write_metadata_file(config.output_metadata_file, report, graph_inputs.value().nodes);
-    if (!metadata_write.ok())
-      return metadata_write;
+    }
+    if (executor_instance->egress_poll_kind(kImageEgressId) != FixedBufferEdgePollKind::completed) {
+      return Status::StateError("Cartesian RSS HDF5 egress did not close after its one expected image");
+    }
     return report;
   } catch (const std::bad_alloc&) {
     return Status::OutOfMemory("Cartesian RSS HDF5 reconstruction exhausted host memory");

@@ -15,8 +15,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\boots
 ```
 
 bootstrap 会在当前仓库配置 Git/Git-LFS 并安装 `.githooks/commit-msg`；锁定的项目级
-`uv` 环境提供 Python 开发工具，独立的 checksum-pinned project-local `just` 提供共享命令入口。
-Git、Git LFS 和编译器/SDK 仍是宿主前置条件。完整环境说明见
+`uv` 环境提供 Python 开发工具，宿主机 `just` 提供共享命令入口。
+Git、Git LFS 和编译器/SDK 均是宿主前置条件；Linux bootstrap 直接使用 `apt` 确保安装 `just`，
+Windows bootstrap 则在缺少时使用 `winget`。完整环境说明见
 [tools/devenv/README.md](../../tools/devenv/README.md)。
 
 ## 格式

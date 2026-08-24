@@ -3,6 +3,7 @@
 #include "kspacejet/recon/execution_plan.hpp"
 #include "kspacejet/recon/result.hpp"
 #include "kspacejet/recon/run_record.hpp"
+#include "kspacejet/recon/scan_facts.hpp"
 
 #include <string>
 #include <string_view>
@@ -14,6 +15,21 @@ namespace ksj::recon {
 // omitted by the canonical serializers: it is not part of either record's
 // semantic payload.
 inline constexpr std::string_view kJsonSchemaDraft202012 = "https://json-schema.org/draft/2020-12/schema";
+
+// Serialize the immutable runtime-owned ScanFacts artifact.  Its digest is
+// detached and is deliberately omitted from the canonical preimage.
+[[nodiscard]] Result<std::string> serialize_scan_facts_canonical_json(const ScanFacts& facts);
+
+// Strictly parse one canonical ScanFacts artifact against the runtime-owned
+// descriptor and raw ISMRMRD XML that it is meant to describe.  The expected
+// detached digest is mandatory: this rejects a syntactically valid but
+// substituted/tampered artifact.  Duplicate keys, unknown fields, noncanonical
+// JSON, and identity mismatches are rejected before a ScanFacts value returns.
+// The optional Draft 2020-12 `$schema` decoration is accepted but never enters
+// the canonical payload or detached identity.
+[[nodiscard]] Result<ScanFacts> parse_scan_facts_json(std::string_view document, ScanDescriptor descriptor,
+                                                      std::string_view source_xml,
+                                                      const ArtifactDigest& expected_digest);
 
 // Serialize the complete immutable AdmissionRecord payload in the current
 // canonical JSON domain.  The record has no self-digest field; its plan and

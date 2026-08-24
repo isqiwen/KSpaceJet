@@ -25,10 +25,9 @@
     },
     {
       "label": "KSJ: prepare Linux Debug environment",
-      "type": "process",
-      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "just",
         "prepare-debug"
       ],
       "options": {
@@ -38,10 +37,9 @@
     },
     {
       "label": "KSJ: build Linux Debug applications",
-      "type": "process",
-      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "just",
         "build-debug-applications"
       ],
       "options": {
@@ -53,10 +51,9 @@
     },
     {
       "label": "KSJ: install Linux Debug applications",
-      "type": "process",
-      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "just",
         "install-debug-applications"
       ],
       "options": {
@@ -69,10 +66,9 @@
     },
     {
       "label": "KSJ: prepare Linux Release environment",
-      "type": "process",
-      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "just",
         "prepare-release"
       ],
       "options": {
@@ -82,10 +78,9 @@
     },
     {
       "label": "KSJ: build Linux Release applications",
-      "type": "process",
-      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "just",
         "build-release-applications"
       ],
       "options": {
@@ -97,10 +92,9 @@
     },
     {
       "label": "KSJ: install Linux Release applications",
-      "type": "process",
-      "command": "${workspaceFolder}/tools/devenv/linux/run.sh",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "just",
         "install-release-applications"
       ],
       "options": {
@@ -113,15 +107,9 @@
     },
     {
       "label": "KSJ: prepare Windows Debug environment",
-      "type": "process",
-      "command": "powershell",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "just",
         "prepare-debug"
       ],
       "options": {
@@ -131,15 +119,9 @@
     },
     {
       "label": "KSJ: build Windows Debug applications",
-      "type": "process",
-      "command": "powershell",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "just",
         "build-debug-applications"
       ],
       "options": {
@@ -151,15 +133,9 @@
     },
     {
       "label": "KSJ: install Windows Debug applications",
-      "type": "process",
-      "command": "powershell",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "just",
         "install-debug-applications"
       ],
       "options": {
@@ -172,15 +148,9 @@
     },
     {
       "label": "KSJ: prepare Windows Release environment",
-      "type": "process",
-      "command": "powershell",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "just",
         "prepare-release"
       ],
       "options": {
@@ -190,15 +160,9 @@
     },
     {
       "label": "KSJ: build Windows Release applications",
-      "type": "process",
-      "command": "powershell",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "just",
         "build-release-applications"
       ],
       "options": {
@@ -210,15 +174,9 @@
     },
     {
       "label": "KSJ: install Windows Release applications",
-      "type": "process",
-      "command": "powershell",
+      "type": "shell",
+      "command": "just",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\tools\\devenv\\windows\\run.ps1",
-        "just",
         "install-release-applications"
       ],
       "options": {

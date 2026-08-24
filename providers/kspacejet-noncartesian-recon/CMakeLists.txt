@@ -2,12 +2,14 @@ ksj_include_project_bootstrap()
 
 set(PROJ_NAME ksj_noncartesian_recon_provider)
 
-# The direct-adjoint reference kernel remains inside this independently loaded Provider.  It receives only firing-lease
-# inputs, output grants, and caller-provided scratch; it never links the host reconstruction runtime.
+# The direct-adjoint oracle and radial linear-gridding kernel remain inside this independently loaded Provider. They
+# receive only firing-lease inputs, output grants, and caller-provided scratch; they never link the host reconstruction
+# runtime.
 add_library(
   ${PROJ_NAME} SHARED
   "${CMAKE_CURRENT_LIST_DIR}/src/provider_entry.cpp" "${CMAKE_CURRENT_LIST_DIR}/src/provider_api.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/src/operators/noncartesian_adjoint_reconstruct.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/src/operators/noncartesian_adjoint_reconstruct.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/operators/radial_gridding_reconstruct.cpp")
 
 target_compile_features(${PROJ_NAME} PRIVATE cxx_std_20)
 target_compile_definitions(${PROJ_NAME} PRIVATE KSJ_PROVIDER_BUILDING_PLUGIN=1)
@@ -41,5 +43,6 @@ if(KSJ_ENABLE_INSTALL_RULES)
     "${CMAKE_INSTALL_LIBDIR}/kspacejet/providers")
 
   install(FILES "${CMAKE_CURRENT_LIST_DIR}/contracts/noncartesian_adjoint_reconstruct.json"
+                "${CMAKE_CURRENT_LIST_DIR}/contracts/radial_gridding_reconstruct.json"
           DESTINATION "${CMAKE_INSTALL_DATADIR}/kspacejet/providers/kspacejet-noncartesian-recon/contracts")
 endif()

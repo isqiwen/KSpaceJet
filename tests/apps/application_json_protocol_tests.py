@@ -32,7 +32,9 @@ def run_json_failure(
     arguments: list[str],
     expected_code: str | None = None,
 ) -> None:
-    result = subprocess.run([str(executable), *arguments], check=False, capture_output=True, text=True)
+    result = subprocess.run(
+        [str(executable), *arguments], check=False, capture_output=True, text=True, encoding="utf-8"
+    )
     require(result.returncode != 0, f"{name} unexpectedly succeeded")
     report = parse_json_stdout(name, result)
     if expected_code is not None:
@@ -42,7 +44,7 @@ def run_json_failure(
 
 def run_scaffold_help(name: str, executable: pathlib.Path) -> None:
     json_result = subprocess.run(
-        [str(executable), "--help", "--format", "json"], check=False, capture_output=True, text=True
+        [str(executable), "--help", "--format", "json"], check=False, capture_output=True, text=True, encoding="utf-8"
     )
     require(json_result.returncode == 0, f"{name} JSON help failed: {json_result.stderr}")
     report = parse_json_stdout(name, json_result)
@@ -51,7 +53,9 @@ def run_scaffold_help(name: str, executable: pathlib.Path) -> None:
     require(report.get("availability") == "reserved", f"{name} did not identify its commands as reserved")
     require(report.get("operations") == "unimplemented", f"{name} did not identify operations as unimplemented")
 
-    text_result = subprocess.run([str(executable), "--help"], check=False, capture_output=True, text=True)
+    text_result = subprocess.run(
+        [str(executable), "--help"], check=False, capture_output=True, text=True, encoding="utf-8"
+    )
     require(text_result.returncode == 0, f"{name} text help failed: {text_result.stderr}")
     require(text_result.stderr, f"{name} did not initialize the core diagnostic logger on stderr")
     text_help = text_result.stdout.lower()
@@ -63,13 +67,120 @@ def run_scaffold_help(name: str, executable: pathlib.Path) -> None:
         require(prohibited not in help_text, f"{name} help still claims {prohibited!r} capability")
 
 
+def run_recon_image_help(recon: pathlib.Path, command: str) -> None:
+    result = subprocess.run(
+        [str(recon), command, "--format", "json", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    require(result.returncode == 0, f"ksj-recon {command} JSON help failed: {result.stderr}")
+    report = parse_json_stdout(f"ksj-recon {command} help", result)
+    require(report.get("schema") == f"kspacejet.{command}-help", f"ksj-recon {command} help schema drifted")
+    usage = report.get("usage")
+    require(isinstance(usage, str) and "<image.mrd>" in usage, f"{command} help omits the MRD output")
+    require("--metadata" not in usage, f"{command} help still exposes a JSON image sidecar")
+    if command == "radial-rss":
+        require("encoded-matrix-index" in usage, "radial help omits an explicit unit")
+
+
+def run_recon_removed_metadata_failure(recon: pathlib.Path) -> None:
+    result = subprocess.run(
+        [str(recon), "cartesian-rss", "--format", "json", "--metadata", "legacy.json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    require(result.returncode == 2, f"ksj-recon legacy metadata option returned {result.returncode}, expected 2")
+    report = parse_json_stdout("ksj-recon legacy metadata option", result)
+    require(
+        report.get("schema") == "kspacejet.cartesian-rss-result",
+        f"ksj-recon legacy metadata option schema drifted: {report!r}",
+    )
+    require(report.get("ok") is False, f"ksj-recon legacy metadata option did not report failure: {report!r}")
+    require(
+        report.get("code") == "invalid_argument",
+        f"ksj-recon legacy metadata option wrote the wrong code: {report!r}",
+    )
+    message = report.get("message")
+    require(isinstance(message, str) and "metadata" in message, f"ksj-recon error omits the rejected option: {report!r}")
+
+
+def run_viewer_protocol(viewer: pathlib.Path) -> None:
+    # The real QApplication smoke belongs to the Windows install check, where
+    # qwindows.dll is part of the product contract. This generic protocol
+    # test intentionally remains display-server independent.
+    json_result = subprocess.run(
+        [str(viewer), "--help", "--format", "json"], check=False, capture_output=True, text=True, encoding="utf-8"
+    )
+    require(json_result.returncode == 0, f"ksj-viewer JSON help failed: {json_result.stderr}")
+    report = parse_json_stdout("ksj-viewer help", json_result)
+    require(report.get("schema") == "ksj.program-help", f"ksj-viewer help schema drifted: {report!r}")
+    require(report.get("program") == "ksj-viewer", f"ksj-viewer help program drifted: {report!r}")
+    require(report.get("status") == "inspection", f"ksj-viewer did not disclose its inspection status: {report!r}")
+    require(report.get("availability") == "desktop", f"ksj-viewer availability drifted: {report!r}")
+    require(
+        report.get("operations") == "metadata,k-space,image,pipeline,visualization-derivative-export",
+        f"ksj-viewer operation surface drifted: {report!r}",
+    )
+
+
+def run_pipeline_validation_protocol(ksj: pathlib.Path) -> None:
+    project_root = pathlib.Path(__file__).resolve().parents[2]
+    valid_pipeline = project_root / "tests" / "unit" / "libs" / "recon" / "fixtures" / "valid" / "pipeline-minimal.json"
+    invalid_pipeline = (
+        project_root / "tests" / "unit" / "libs" / "recon" / "fixtures" / "invalid" / "pipeline-input-path.json"
+    )
+    require(valid_pipeline.is_file(), f"pipeline validation fixture is missing: {valid_pipeline}")
+    require(invalid_pipeline.is_file(), f"pipeline validation fixture is missing: {invalid_pipeline}")
+
+    valid_result = subprocess.run(
+        [str(ksj), "pipeline", "validate", str(valid_pipeline), "--format", "json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    require(valid_result.returncode == 0, f"ksj pipeline validate rejected a valid pipeline: {valid_result.stderr}")
+    valid_report = parse_json_stdout("ksj pipeline validate valid", valid_result)
+    require(valid_report.get("schema") == "kspacejet.pipeline-validation-report", "pipeline validation schema drifted")
+    require(valid_report.get("valid") is True, f"valid pipeline did not report success: {valid_report!r}")
+    profile = valid_report.get("input_profile")
+    require(
+        profile == {"kind": "ismrmrd-hdf5", "dataset_group": "dataset"},
+        f"pipeline validation omitted the ISMRMRD input profile: {valid_report!r}",
+    )
+    counts = valid_report.get("counts")
+    require(isinstance(counts, dict) and counts.get("parameters") == 0, f"pipeline parameter count drifted: {valid_report!r}")
+
+    invalid_result = subprocess.run(
+        [str(ksj), "pipeline", "validate", str(invalid_pipeline), "--format", "json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    require(invalid_result.returncode == 3, f"invalid pipeline returned {invalid_result.returncode}, expected 3")
+    invalid_report = parse_json_stdout("ksj pipeline validate invalid", invalid_result)
+    require(invalid_report.get("schema") == "kspacejet.pipeline-validation-report", "invalid pipeline schema drifted")
+    require(invalid_report.get("valid") is False, f"invalid pipeline unexpectedly reported success: {invalid_report!r}")
+    diagnostics = invalid_report.get("diagnostics")
+    require(isinstance(diagnostics, list) and diagnostics, f"invalid pipeline omitted diagnostics: {invalid_report!r}")
+    require(diagnostics[0].get("code") == "validation_error", f"invalid pipeline used the wrong diagnostic: {invalid_report!r}")
+
+
 def main() -> int:
-    if len(sys.argv) != 5:
-        print("usage: application_json_protocol_tests.py <ksj> <ksj-gateway> <ksj-recon> <ksj-research>", file=sys.stderr)
+    if len(sys.argv) != 6:
+        print(
+            "usage: application_json_protocol_tests.py <ksj> <ksj-gateway> <ksj-recon> <ksj-research> <ksj-viewer>",
+            file=sys.stderr,
+        )
         return 2
 
-    ksj, gateway, recon, research = (pathlib.Path(argument) for argument in sys.argv[1:])
-    for executable in (ksj, gateway, recon, research):
+    ksj, gateway, recon, research, viewer = (pathlib.Path(argument) for argument in sys.argv[1:])
+    for executable in (ksj, gateway, recon, research, viewer):
         require(executable.is_file(), f"application executable does not exist: {executable}")
 
     run_json_failure(
@@ -77,13 +188,19 @@ def main() -> int:
         ksj,
         ["provider", "init", "bad--slug", "image_filter", "--output", ".", "--format", "json"],
     )
+    run_pipeline_validation_protocol(ksj)
     run_scaffold_help("ksj-gateway", gateway)
     run_json_failure(
         "ksj-gateway", gateway, ["--config", "reserved.json", "--format", "json"], "unimplemented"
     )
     run_json_failure("ksj-recon", recon, ["cartesian-rss", "--format", "json"])
+    run_json_failure("ksj-recon", recon, ["radial-rss", "--format", "json"])
+    for command in ("cartesian-rss", "noncartesian-rss", "radial-rss"):
+        run_recon_image_help(recon, command)
+    run_recon_removed_metadata_failure(recon)
     run_scaffold_help("ksj-research", research)
     run_json_failure("ksj-research", research, ["run", "--format", "json"], "unimplemented")
+    run_viewer_protocol(viewer)
     return 0
 
 

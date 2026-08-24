@@ -149,49 +149,68 @@ function(ksj_install_thirdparty_runtime_dependencies dependency_set_name)
     return()
   endif()
 
+  if(WIN32)
+    # Build targets stage DLLs next to their executables for local runs.  CMake's runtime-dependency resolver then sees
+    # both those staged copies and the original Conan package files, which makes a same-named DLL ambiguous.  Install
+    # the package DLLs directly instead.  The collision check covers Conan bin/ and Intel lib/ sources together.
+    ksj_collect_conan_runtime_dirs(_ksj_conan_runtime_dirs)
+    ksj_get_intel_runtime_dirs(_ksj_intel_runtime_dirs)
+    set(_ksj_windows_runtime_dirs ${_ksj_conan_runtime_dirs} ${_ksj_intel_runtime_dirs})
+    foreach(_ksj_windows_runtime_dir IN LISTS _ksj_windows_runtime_dirs)
+      if(IS_DIRECTORY "${_ksj_windows_runtime_dir}")
+        file(
+          GLOB _ksj_conan_runtime_dlls
+          LIST_DIRECTORIES false
+          "${_ksj_windows_runtime_dir}/*.dll")
+        list(APPEND _ksj_windows_runtime_dlls ${_ksj_conan_runtime_dlls})
+      endif()
+    endforeach()
+    if(_ksj_windows_runtime_dlls)
+      list(REMOVE_DUPLICATES _ksj_windows_runtime_dlls)
+      foreach(_ksj_windows_runtime_dll IN LISTS _ksj_windows_runtime_dlls)
+        get_filename_component(_ksj_windows_runtime_name "${_ksj_windows_runtime_dll}" NAME)
+        string(TOLOWER "${_ksj_windows_runtime_name}" _ksj_windows_runtime_name_lower)
+        string(SHA256 _ksj_windows_runtime_name_hash "${_ksj_windows_runtime_name_lower}")
+        set(_ksj_windows_runtime_source_variable "_ksj_windows_runtime_source_${_ksj_windows_runtime_name_hash}")
+        if(DEFINED ${_ksj_windows_runtime_source_variable})
+          file(SHA256 "${${_ksj_windows_runtime_source_variable}}" _ksj_windows_runtime_existing_hash)
+          file(SHA256 "${_ksj_windows_runtime_dll}" _ksj_windows_runtime_candidate_hash)
+          if(NOT _ksj_windows_runtime_existing_hash STREQUAL _ksj_windows_runtime_candidate_hash)
+            message(FATAL_ERROR "Conflicting Conan runtime DLL sources for ${_ksj_windows_runtime_name}: "
+                                "${${_ksj_windows_runtime_source_variable}} and ${_ksj_windows_runtime_dll}")
+          endif()
+        else()
+          set(${_ksj_windows_runtime_source_variable} "${_ksj_windows_runtime_dll}")
+          list(APPEND _ksj_windows_runtime_dlls_unique "${_ksj_windows_runtime_dll}")
+        endif()
+      endforeach()
+      install(FILES ${_ksj_windows_runtime_dlls_unique} DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    endif()
+    return()
+  endif()
+
   ksj_get_intel_runtime_dirs(_ksj_intel_runtime_dirs)
   set(_ksj_runtime_dirs ${_ksj_intel_runtime_dirs})
-  if(WIN32)
-    # CMake's install(RUNTIME_DEPENDENCY_SET) scans the installed KSpaceJet binaries, but it needs Conan package bin
-    # directories to resolve their transitive DLLs.  Keep the Intel-specific paths above for its dispatch DLLs and add
-    # every CMakeDeps package bindir as a general mechanism.
-    ksj_collect_conan_runtime_dirs(_ksj_conan_runtime_dirs)
-    list(APPEND _ksj_runtime_dirs ${_ksj_conan_runtime_dirs})
-  endif()
   foreach(_ksj_runtime_dir IN LISTS _ksj_runtime_dirs)
     if(IS_DIRECTORY "${_ksj_runtime_dir}")
       list(APPEND _ksj_existing_runtime_dirs "${_ksj_runtime_dir}")
     endif()
   endforeach()
-  # TARGET_RUNTIME_DLLS in the generated staging script remains a direct-DLL fallback for imported targets that do not
-  # publish a CMakeDeps bindir.
   if(_ksj_existing_runtime_dirs)
     list(REMOVE_DUPLICATES _ksj_existing_runtime_dirs)
   endif()
 
   set(_ksj_install_dependency_args RUNTIME_DEPENDENCY_SET ${dependency_set_name})
-  if(WIN32)
-    list(
-      APPEND
-      _ksj_install_dependency_args
-      PRE_EXCLUDE_REGEXES
-      "api-ms-.*"
-      "ext-ms-.*"
-      POST_EXCLUDE_REGEXES
-      ".*[Ww]indows[\\\\/].*"
-      ".*[Ss]ystem32[\\\\/].*")
-  else()
-    list(
-      APPEND
-      _ksj_install_dependency_args
-      PRE_EXCLUDE_REGEXES
-      "linux-vdso\\.so.*"
-      POST_EXCLUDE_REGEXES
-      "^/lib/.*"
-      "^/lib64/.*"
-      "^/usr/lib/.*"
-      "^/usr/lib64/.*")
-  endif()
+  list(
+    APPEND
+    _ksj_install_dependency_args
+    PRE_EXCLUDE_REGEXES
+    "linux-vdso\\.so.*"
+    POST_EXCLUDE_REGEXES
+    "^/lib/.*"
+    "^/lib64/.*"
+    "^/usr/lib/.*"
+    "^/usr/lib64/.*")
   if(_ksj_existing_runtime_dirs)
     list(APPEND _ksj_install_dependency_args DIRECTORIES ${_ksj_existing_runtime_dirs})
   endif()
@@ -210,6 +229,11 @@ endfunction()
 
 function(ksj_install_intel_runtime_libraries)
   if(NOT KSJ_ENABLE_INSTALL_RULES)
+    return()
+  endif()
+  if(WIN32)
+    # Windows installs Intel DLLs through ksj_install_thirdparty_runtime_dependencies(), which verifies that their
+    # basenames do not conflict with any Conan bin/ DLL before adding them to the install surface.
     return()
   endif()
 
@@ -569,6 +593,19 @@ function(ksj_stage_thirdparty_runtime_dlls target_name)
     GENERATE
     OUTPUT "${_ksj_stage_script}"
     CONTENT "${_ksj_stage_script_content}")
+  # Consumers that must launch immediately after their target-only build (for example a test executable or a Qt
+  # deployment post-build action) reuse this scanner without duplicating the runtime dependency policy.
+  set_property(TARGET ${target_name} PROPERTY KSJ_RUNTIME_STAGE_SCRIPT "${_ksj_stage_script}")
+
+  # A normal ALL build also reaches the refresh target below, but a developer commonly builds one test target before
+  # launching it directly or through CTest.  Attach the same scanner to the target so that target-only builds produce a
+  # self-contained Windows runtime directory as well.
+  add_custom_command(
+    TARGET ${target_name}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} "-DKSJ_RUNTIME_OUTPUT_DIR=$<TARGET_FILE_DIR:${target_name}>" -P "${_ksj_stage_script}"
+    VERBATIM)
+  set_property(TARGET ${target_name} PROPERTY KSJ_RUNTIME_STAGE_POST_BUILD TRUE)
 
   set(_ksj_runtime_destinations "$<TARGET_FILE_DIR:${target_name}>")
   foreach(_ksj_extra_destination IN LISTS ARGN)
@@ -594,6 +631,107 @@ function(ksj_stage_thirdparty_runtime_dlls target_name)
     ${_ksj_stage_commands}
     DEPENDS ${_ksj_stage_dependencies}
     VERBATIM)
+endfunction()
+
+# Qt platform plugins are loaded dynamically and therefore do not appear in CMake's normal DLL dependency scan. Keep the
+# deployment policy in one project helper: the viewer calls Qt's official windeployqt tool after each build and during
+# installation, while all other applications remain unaware of Qt.
+function(ksj_deploy_qt_widgets_runtime target_name)
+  if(NOT WIN32)
+    return()
+  endif()
+  if(NOT TARGET ${target_name})
+    message(FATAL_ERROR "ksj_deploy_qt_widgets_runtime() requires an existing target: ${target_name}")
+  endif()
+  if(NOT TARGET Qt6::windeployqt)
+    message(FATAL_ERROR "ksj_deploy_qt_widgets_runtime() requires Qt6::windeployqt from the Qt package")
+  endif()
+  get_property(
+    _ksj_qt_runtime_stage_script
+    TARGET ${target_name}
+    PROPERTY KSJ_RUNTIME_STAGE_SCRIPT)
+  if(NOT _ksj_qt_runtime_stage_script)
+    message(
+      FATAL_ERROR "ksj_deploy_qt_widgets_runtime() requires ksj_stage_thirdparty_runtime_dlls() for ${target_name}")
+  endif()
+  set(_ksj_qt_conan_run_script "${CMAKE_BINARY_DIR}/conanrun.bat")
+  if(NOT EXISTS "${_ksj_qt_conan_run_script}")
+    message(
+      FATAL_ERROR
+        "ksj_deploy_qt_widgets_runtime() requires the generated Conan run environment: ${_ksj_qt_conan_run_script}")
+  endif()
+  string(CONCAT _ksj_qt_deploy_arguments "--force --no-compiler-runtime --no-translations --no-network "
+                "--skip-plugin-types generic,imageformats,networkinformation,tls "
+                "--no-system-d3d-compiler --no-system-dxc-compiler --no-opengl-sw")
+  # windeployqt is itself a shared executable supplied by Conan. Generate a tiny batch wrapper so it can first activate
+  # the Conan run environment without relying on fragile nested cmd.exe quoting in a post-build rule.
+  set(_ksj_qt_deploy_script "${CMAKE_CURRENT_BINARY_DIR}/ksj_deploy_${target_name}_qt_runtime-$<CONFIG>.bat")
+  string(
+    CONCAT
+      _ksj_qt_deploy_script_content
+      "@echo off\r\n"
+      "call \"${_ksj_qt_conan_run_script}\"\r\n"
+      "if errorlevel 1 exit /b %errorlevel%\r\n"
+      "\"$<TARGET_FILE:Qt6::windeployqt>\" ${_ksj_qt_deploy_arguments} --dir \"%~1\" \"%~1\\$<TARGET_FILE_NAME:${target_name}>\"\r\n"
+      "exit /b %errorlevel%\r\n")
+  file(
+    GENERATE
+    OUTPUT "${_ksj_qt_deploy_script}"
+    CONTENT "${_ksj_qt_deploy_script_content}")
+
+  # This runs against the executable itself, so Qt deploys the minimum plugin closure required by the linked Widgets
+  # application (including qwindows).  The generic runtime staging helper owns the ordinary DLL scanner; avoid running
+  # it twice when this target was already registered through that helper.
+  get_property(
+    _ksj_runtime_stage_post_build
+    TARGET ${target_name}
+    PROPERTY KSJ_RUNTIME_STAGE_POST_BUILD)
+
+  set(_ksj_qt_deploy_post_build_commands)
+  if(NOT _ksj_runtime_stage_post_build)
+    list(
+      APPEND
+      _ksj_qt_deploy_post_build_commands
+      COMMAND
+      ${CMAKE_COMMAND}
+      "-DKSJ_RUNTIME_OUTPUT_DIR=$<TARGET_FILE_DIR:${target_name}>"
+      -P
+      "${_ksj_qt_runtime_stage_script}")
+    set_property(TARGET ${target_name} PROPERTY KSJ_RUNTIME_STAGE_POST_BUILD TRUE)
+  endif()
+  list(
+    APPEND
+    _ksj_qt_deploy_post_build_commands
+    COMMAND
+    cmd.exe
+    /d
+    /c
+    call
+    "${_ksj_qt_deploy_script}"
+    "$<TARGET_FILE_DIR:${target_name}>")
+
+  add_custom_command(TARGET ${target_name} POST_BUILD ${_ksj_qt_deploy_post_build_commands} VERBATIM)
+
+  if(NOT KSJ_ENABLE_INSTALL_RULES)
+    return()
+  endif()
+
+  # ksj_install_target() has already installed the executable when this helper is called. Preserve CMAKE_INSTALL_PREFIX
+  # for install time so an explicit --prefix continues to produce a runnable viewer installation.
+  string(
+    CONCAT
+      _ksj_qt_deploy_install_code
+      "execute_process(\n"
+      "  COMMAND \"cmd.exe\" /d /c call\n"
+      "          \"${CMAKE_CURRENT_BINARY_DIR}/ksj_deploy_${target_name}_qt_runtime-\${CMAKE_INSTALL_CONFIG_NAME}.bat\"\n"
+      "          \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\"\n"
+      "  RESULT_VARIABLE _ksj_qt_deploy_result\n"
+      "  OUTPUT_VARIABLE _ksj_qt_deploy_output\n"
+      "  ERROR_VARIABLE _ksj_qt_deploy_error)\n"
+      "if(NOT _ksj_qt_deploy_result EQUAL 0)\n"
+      "  message(FATAL_ERROR \"Qt deployment for ${target_name} failed: \${_ksj_qt_deploy_error}\")\n"
+      "endif()\n")
+  install(CODE "${_ksj_qt_deploy_install_code}")
 endfunction()
 
 function(ksj_target_enable_defaults target_name)

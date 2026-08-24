@@ -150,7 +150,7 @@
       "provider_slug": "noncartesian-recon",
       "availability": "implemented-development",
       "responsibility": "Perform bounded non-Cartesian k-space-to-complex-coil-image reconstruction without defining a scanner protocol, coil combination, or hidden calibration state.",
-      "lifecycle_boundary": "Trajectory-bearing frame reconstruction. The implemented direct adjoint is synchronous, frame-local, unweighted, and bounded; trajectory correction and sensitivity-encoded reconstruction remain separate planned boundaries.",
+      "lifecycle_boundary": "Trajectory-bearing frame reconstruction. The implemented direct adjoint and explicit 2-D radial linear-gridding paths are synchronous and frame-local; trajectory correction and sensitivity-encoded reconstruction remain separate planned boundaries.",
       "implementation": {
         "source_directory": "providers/kspacejet-noncartesian-recon",
         "artifact_basename": "ksj-noncartesian-recon"
@@ -167,6 +167,12 @@
           "availability": "implemented-development",
           "summary": "Apply an unweighted bounded direct non-Cartesian adjoint and produce complex coil images.",
           "contract_path": "providers/kspacejet-noncartesian-recon/contracts/noncartesian_adjoint_reconstruct.json"
+        },
+        {
+          "operator_id": "radial_gridding_reconstruct",
+          "availability": "implemented-development",
+          "summary": "Apply bounded 2-D radial linear gridding with explicit analytic-ramp density compensation and produce complex coil images.",
+          "contract_path": "providers/kspacejet-noncartesian-recon/contracts/radial_gridding_reconstruct.json"
         },
         {
           "operator_id": "noncartesian_sense_reconstruct",

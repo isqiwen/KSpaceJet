@@ -410,20 +410,6 @@ Result<ArtifactDigest> sha256_digest(const std::string_view canonical_document, 
   return ArtifactDigest::parse("sha256:" + hex_digest(sha256_bytes(canonical_document)), field_name);
 }
 
-Result<ArtifactDigest> domain_separated_sha256_digest(const std::string_view domain,
-                                                      const std::string_view canonical_document,
-                                                      const std::string_view field_name) {
-  if (domain.empty()) {
-    return ksj::base::Status::InvalidArgument("digest domain must not be empty");
-  }
-  std::string input;
-  input.reserve(domain.size() + 1U + canonical_document.size());
-  input.append(domain);
-  input.push_back('\0');
-  input.append(canonical_document);
-  return sha256_digest(input, field_name);
-}
-
 Result<ArtifactDigest> canonical_json_digest(const std::string_view document, const std::string_view field_name) {
   auto canonical = canonicalize_json(document);
   if (!canonical.ok()) {

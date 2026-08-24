@@ -4,9 +4,11 @@ ksj_add_gtest(
   io.kspacejet-ismrmrd
   SOURCES
   dataset_reader_tests.cpp
+  inspection_reader_tests.cpp
   LINK_LIBS
   KSpaceJet::ismrmrd
   ISMRMRD::ISMRMRD
+  hdf5::hdf5
   LABELS
   io
   kspacejet-ismrmrd)

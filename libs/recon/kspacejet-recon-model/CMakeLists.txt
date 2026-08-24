@@ -11,10 +11,14 @@ add_library(
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/artifact_json.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/model.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/node_planning_requirements.hpp"
+  "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/planning_input_artifacts.hpp"
+  "${CMAKE_CURRENT_LIST_DIR}/include/kspacejet/recon/scan_facts.hpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/artifact_json.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/model.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/planning_input_artifacts.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/run_record.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/resource_vector.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/src/scan_facts.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/src/type_descriptor.cpp")
 add_library(KSpaceJet::recon_model ALIAS ${PROJ_NAME})
 add_dependencies(${PROJ_NAME} ksj_type_registry_check)

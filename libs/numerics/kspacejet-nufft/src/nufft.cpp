@@ -3,6 +3,7 @@
 
 #include "kspacejet/nufft/detail/bart/bart_nufft2.hpp"
 #include "kspacejet/nufft/detail/eigen/eigen_nufft_direct_nudft.hpp"
+#include "kspacejet/nufft/detail/eigen/eigen_radial_gridding.hpp"
 #include "kspacejet/nufft/detail/nufft_policy.hpp"
 
 #include <stdexcept>
@@ -95,6 +96,34 @@ void direct_nudft2_adjoint(const Grid2D grid, ksj::array::VectorView<const ksj::
                            ksj::array::MatrixView<const double> trajectory,
                            ksj::array::MatrixView<ksj::base::cf64> image) {
   detail::eigen::direct_nudft2_adjoint(grid, samples, trajectory, image);
+}
+
+void radial_analytic_ramp_dcf2(const ksj::array::MatrixView<const float> trajectory_radians_per_pixel,
+                               const ksj::array::VectorView<float> density_compensation) {
+  detail::eigen::radial_analytic_ramp_dcf2(trajectory_radians_per_pixel, density_compensation);
+}
+
+void radial_analytic_ramp_dcf2(const ksj::array::MatrixView<const double> trajectory_radians_per_pixel,
+                               const ksj::array::VectorView<double> density_compensation) {
+  detail::eigen::radial_analytic_ramp_dcf2(trajectory_radians_per_pixel, density_compensation);
+}
+
+void radial_linear_gridding2_adjoint(const Grid2D grid, const ksj::array::VectorView<const ksj::base::cf32> samples,
+                                     const ksj::array::MatrixView<const float> trajectory_radians_per_pixel,
+                                     const ksj::array::VectorView<const float> density_compensation,
+                                     const ksj::array::MatrixView<ksj::base::cf32> image,
+                                     const RadialGridding2Workspace<float> workspace) {
+  detail::eigen::radial_linear_gridding2_adjoint(grid, samples, trajectory_radians_per_pixel, density_compensation,
+                                                 image, workspace);
+}
+
+void radial_linear_gridding2_adjoint(const Grid2D grid, const ksj::array::VectorView<const ksj::base::cf64> samples,
+                                     const ksj::array::MatrixView<const double> trajectory_radians_per_pixel,
+                                     const ksj::array::VectorView<const double> density_compensation,
+                                     const ksj::array::MatrixView<ksj::base::cf64> image,
+                                     const RadialGridding2Workspace<double> workspace) {
+  detail::eigen::radial_linear_gridding2_adjoint(grid, samples, trajectory_radians_per_pixel, density_compensation,
+                                                 image, workspace);
 }
 
 void nufft2_forward(const Grid2D grid, ksj::array::MatrixView<const ksj::base::cf32> image,

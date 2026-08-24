@@ -269,23 +269,32 @@ void sha256_transform(std::array<std::uint32_t, 8>& state, const std::uint8_t* b
     {"strides", to_string(strides)},
     {"type_ref", type_ref.value()},
   };
-  std::string preimage(kTypeIdentityDomain);
-  preimage.push_back('\0');
-  preimage += structural.dump(-1, ' ', false, Json::error_handler_t::strict);
-  return ArtifactDigest::parse("sha256:" + hex_digest(sha256_bytes(preimage)), field_name);
+  return derive_domain_separated_sha256_digest(
+    kTypeIdentityDomain, structural.dump(-1, ' ', false, Json::error_handler_t::strict), field_name);
 }
 
 } // namespace
+
+Result<ArtifactDigest> derive_domain_separated_sha256_digest(const std::string_view domain,
+                                                             const std::string_view canonical_document,
+                                                             const std::string_view field_name) {
+  if (domain.empty()) {
+    return Status::InvalidArgument("digest domain must not be empty");
+  }
+  std::string preimage;
+  preimage.reserve(domain.size() + 1U + canonical_document.size());
+  preimage.append(domain);
+  preimage.push_back('\0');
+  preimage.append(canonical_document);
+  return ArtifactDigest::parse("sha256:" + hex_digest(sha256_bytes(preimage)), field_name);
+}
 
 Result<ArtifactDigest> derive_canonical_config_digest(const std::string_view canonical_config,
                                                       const std::string_view field_name) {
   if (canonical_config.empty()) {
     return validation(std::string(field_name) + " must contain canonical JSON bytes.");
   }
-  std::string preimage(kOperatorConfigDigestDomain);
-  preimage.push_back('\0');
-  preimage.append(canonical_config);
-  return ArtifactDigest::parse("sha256:" + hex_digest(sha256_bytes(preimage)), field_name);
+  return derive_domain_separated_sha256_digest(kOperatorConfigDigestDomain, canonical_config, field_name);
 }
 
 std::string_view to_string(const PayloadKind value) noexcept {

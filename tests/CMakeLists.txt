@@ -316,6 +316,9 @@ if(KSJ_BUILD_UNIT_TESTS)
     target_include_directories(${target_name} PRIVATE ${KSJ_TEST_INCLUDE_DIRS})
     target_link_libraries(${target_name} PRIVATE GTest::gtest_main ${KSJ_TEST_LINK_LIBS})
     ksj_set_executable_runtime_path(${target_name})
+    # Windows test executables must launch directly from the build tree.  Do not make CTest or developers activate
+    # conanrun.bat just to locate the runtime DLL closure.
+    ksj_stage_thirdparty_runtime_dlls(${target_name})
     ksj_install_target(${target_name})
     ksj_register_test_suite_executable(UNIT_TESTS ${target_name})
 

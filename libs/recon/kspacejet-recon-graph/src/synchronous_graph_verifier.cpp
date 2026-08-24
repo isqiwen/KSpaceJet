@@ -2,6 +2,7 @@
 
 #include "kspacejet/recon/graph/artifact_json.hpp"
 #include "kspacejet/recon/graph/canonical_json.hpp"
+#include "kspacejet/recon/planning_input_artifacts.hpp"
 #include "kspacejet/recon/type_registry.hpp"
 
 #include <algorithm>
@@ -210,10 +211,23 @@ struct PortEnvelope final {
 }
 
 [[nodiscard]] Status compare_input_digests(const ExecutionPlan& plan, const PlanBuildRequest& request) {
+  if (request.effective_pipeline_binding.resolved_pipeline_digest() != request.resolved_pipeline.digest() ||
+      request.effective_pipeline_binding.scan_facts_digest() != request.scan_facts.digest()) {
+    return validation("EffectivePipelineBinding does not attest the verifier's ResolvedPipeline and ScanFacts.");
+  }
+  auto target_envelope = derive_target_envelope_artifact_digest(request.target_envelope);
+  if (!target_envelope.ok()) {
+    return target_envelope.status();
+  }
+  auto machine_policy = derive_machine_policy_artifact_digest(request.machine_policy);
+  if (!machine_policy.ok()) {
+    return machine_policy.status();
+  }
   if (plan.inputs().resolved_pipeline() != request.resolved_pipeline.digest() ||
-      plan.inputs().scan_descriptor() != request.artifact_digests.scan_descriptor ||
-      plan.inputs().target_envelope() != request.artifact_digests.target_envelope ||
-      plan.inputs().machine_policy() != request.artifact_digests.machine_policy) {
+      plan.inputs().scan_facts() != request.scan_facts.digest() ||
+      plan.inputs().effective_pipeline_binding() != request.effective_pipeline_binding.digest() ||
+      plan.inputs().target_envelope() != target_envelope.value() ||
+      plan.inputs().machine_policy() != machine_policy.value()) {
     return validation("ExecutionPlan input digests do not exactly attest PlanBuildRequest artifacts.");
   }
   return Status::Ok();
@@ -224,7 +238,11 @@ struct PortEnvelope final {
     return validation("ExecutionPlan operator binding count does not cover pipeline nodes.");
   }
   for (const auto& node : request.resolved_pipeline.definition().nodes()) {
-    auto digest = derive_canonical_config_digest(node.canonical_config, "independent node canonical config digest");
+    auto config = request.effective_pipeline_binding.config_for(node.id);
+    if (!config.ok()) {
+      return config.status();
+    }
+    auto digest = derive_canonical_config_digest(config.value(), "independent node effective canonical config digest");
     if (!digest.ok())
       return digest.status();
     const auto found = std::find_if(plan.operator_plan_bindings().begin(), plan.operator_plan_bindings().end(),
@@ -232,7 +250,8 @@ struct PortEnvelope final {
                                       return value.node_id() == node.id;
                                     });
     if (found == plan.operator_plan_bindings().end() || found->canonical_config_digest() != digest.value()) {
-      return validation("ExecutionPlan operator config binding does not exactly match a pipeline node.");
+      return validation(
+        "ExecutionPlan operator config binding does not exactly match an effective node configuration.");
     }
   }
   return Status::Ok();
@@ -519,6 +538,7 @@ struct PortEnvelope final {
     const auto node_it = planned_nodes.find(node.id);
     if (contract == nullptr || requirements == nullptr || resolved_provider == nullptr || resolved == nullptr ||
         node_it == planned_nodes.end() || contract->contract.operator_id() != node.operator_id ||
+        contract->contract.artifact_digest() != resolved->contract_digest ||
         !requirements->requirements.validate_against(contract->contract).ok()) {
       return validation("ExecutionPlan node has incomplete or mismatched resolved inputs.");
     }
@@ -731,8 +751,8 @@ struct PortEnvelope final {
   auto canonical = serialize_verification_record_canonical_json(serializable.value());
   if (!canonical.ok())
     return canonical.status();
-  auto digest = domain_separated_sha256_digest("kspacejet:artifact:verification-record", canonical.value(),
-                                               "synchronous graph verifier output");
+  auto digest = derive_domain_separated_sha256_digest("kspacejet:artifact:verification-record", canonical.value(),
+                                                      "synchronous graph verifier output");
   if (!digest.ok())
     return digest.status();
   return VerificationRecord::create(std::move(digest).value(), specification);
@@ -756,8 +776,8 @@ Result<VerificationRecord> verify_synchronous_graph_plan(const ExecutionPlan& pl
   auto canonical = serialize_execution_plan_canonical_json(plan);
   if (!canonical.ok())
     return canonical.status();
-  auto expected_digest = domain_separated_sha256_digest("kspacejet:artifact:execution-plan", canonical.value(),
-                                                        "independent synchronous plan digest");
+  auto expected_digest = derive_domain_separated_sha256_digest("kspacejet:artifact:execution-plan", canonical.value(),
+                                                               "independent synchronous plan digest");
   if (!expected_digest.ok())
     return expected_digest.status();
   if (plan.digest() != expected_digest.value()) {

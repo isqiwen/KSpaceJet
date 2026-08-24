@@ -1,0 +1,20 @@
+{
+  "kind": "EffectivePipelineBinding",
+  "resolved_pipeline_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "scan_facts_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "node_configs": [
+    {
+      "node_id": "combine",
+      "canonical_config": {
+        "method": "rss"
+      }
+    },
+    {
+      "node_id": "reconstruct",
+      "canonical_config": {
+        "columns": 64,
+        "rows": 64
+      }
+    }
+  ]
+}

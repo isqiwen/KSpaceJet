@@ -1,6 +1,6 @@
 # KSpaceJet agent guide
 
-KSpaceJet is a C++20 open-source MRI reconstruction framework. ISMRMRD is its only input-data semantics: current reference routes use standard ISMRMRD HDF5, and any future incremental input must be submitted in-process by a host that has already normalized it to ISMRMRD. KSpaceJet does not implement scanner, acquisition, gateway, Connector, MRD session, network relay, or transport functionality, and it does not define a private wire protocol.
+KSpaceJet is a C++20 open-source MRI reconstruction framework. ISMRMRD is its only MRI data-exchange semantic and persistent image-artifact format: current reference routes use standard ISMRMRD HDF5 input and emit standard ISMRMRD HDF5 images, and any future incremental input or image delivery must preserve the same ISMRMRD semantics. CLI JSON stdout is a command-control result, not an image artifact. ksj-gateway is the only planned external-integration boundary; its candidate-stable architecture is docs/architecture/KSpaceJet_gateway_architecture.md, while its current executable remains a scaffold. KSpaceJet does not implement scanner/acquisition hardware, vendor Connector SDKs, device MRD sessions, private wire protocols, or vendor transport control.
 
 This repository is pre-release. It has substantial offline/synchronous development foundations, but a directory, CMake target, schema, README claim, partial test, or scaffold does not by itself prove a feature is accepted, online-capable, isolated, or production-ready.
 
@@ -18,7 +18,7 @@ This repository is pre-release. It has substantial offline/synchronous developme
 - libs/recon/kspacejet-provider-loader: explicit dynamic Provider loader; it is in-process unless a separately verified isolation mode is active.
 - providers: independently shipped Provider plugins, catalog, contracts and planned interfaces.
 - apps/kspacejet-cli: public ksj command-line interface.
-- apps/kspacejet-gateway: installed application scaffold; it is not an external-system integration capability.
+- apps/kspacejet-gateway: planned sole external-integration application; the currently installed binary is a scaffold and is not an accepted service.
 - apps/kspacejet-recon: offline reference reconstruction today; service/online claims require dedicated acceptance evidence.
 - apps/kspacejet-research: installed research application scaffold; planned evidence-freezing and paper-artifact workflows are currently unimplemented. It must not become a runtime/data-plane dependency.
 - sdk/templates/provider: starting point for a third-party Provider.
@@ -37,7 +37,7 @@ This repository is pre-release. It has substantial offline/synchronous developme
 - Public include root: kspacejet/.
 - Directories: kspacejet-*; executable names: ksj or ksj-*.
 
-Do not reintroduce legacy DPC applications, proprietary queue tables, private protocols, BRF/ComQ compatibility, old replay formats, or proprietary reconstruction algorithms. Providers own substantive reconstruction algorithms. Host ingress, buffering, ordering, admission, egress and sink delivery are runtime facilities, not Provider Operators.
+Do not reintroduce legacy DPC applications, proprietary queue tables, private protocols, BRF/ComQ compatibility, old replay formats, or proprietary reconstruction algorithms. Providers own substantive reconstruction algorithms. Gateway-owned external connection, authentication, protocol decoding and egress are separate from runtime-owned normalized ingress, ordering, admission and artifact execution; neither belongs in Provider Operators.
 
 Do not claim the following without an ACCEPTED work item in the canonical plan: public online service, gateway relay, Provider isolation, strict-online, deadline-qualified behavior, GPU scheduling, 256-channel capacity, clinical/diagnostic use, or throughput/latency guarantees.
 
@@ -104,19 +104,19 @@ Inspect CMakePresets.json before configuring. Bootstrap the repository-local dev
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 
-Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. UV, managed Python, `just` and project tools are repository-local. Compilers, Git and Git LFS are host tools.
+Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. Linux bootstrap uses apt to ensure host `just` is installed; Windows bootstrap installs it with winget when absent. UV, managed Python and project tools are repository-local. Compilers, Git and Git LFS are host tools.
 
 On minimal Linux, bootstrap also needs curl or wget, tar and sha256sum or shasum. Linux VS Code debugging needs host gdb. The optional linux-release-static-analysis preset needs host clang++.
 
-The first bootstrap is the only direct platform-script entry point because it installs the pinned project-local `just` binary. After bootstrap, use the platform runner plus the root `justfile`; do not use a system `just` or duplicate the platform/preset mapping outside that file:
+Bootstrap provisions the repository-local Python tool environment. Afterwards invoke the root `justfile` directly with the host `just`; do not duplicate the platform/preset mapping outside that file:
 
-    tools/devenv/linux/run.sh just prepare-release
-    tools/devenv/linux/run.sh just build-release-applications
-    tools/devenv/linux/run.sh just check
+    just prepare-release
+    just build-release-applications
+    just check
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just prepare-release
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just build-release-applications
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 just check
+    just prepare-release
+    just build-release-applications
+    just check
 
 `prepare-debug` / `prepare-release`, `build-*-applications`, `install-*-applications`, `format-*`, `check`, `pre-commit`, `pre-push`, `workspace-check` and `plan-check` have the same names on Linux and Windows. The recipes select the platform-specific bootstrap script, Conan profile and CMake preset. For focused diagnostics that have no recipe, call the platform runner explicitly with a locked managed tool; do not select a system Conan/CMake/Ninja/formatter by PATH order.
 
@@ -167,7 +167,10 @@ KSJ_BUILD_RESEARCH controls tests/research only; it does not control the install
 
 - Keep raw acquisition handling streaming. An AcquisitionView or span is valid only inside its callback; do not retain it across an asynchronous boundary.
 - Runtime materializes host-owned data before an async Provider call. Providers must not open sources, retain borrowed reader views or create unaccounted pools.
+- Standard ISMRMRD HDF5 input enters reference routes through the runtime-owned `IsmrmrdHdf5ReplaySource`; terminal `ksj.image-frame` output reaches disk through the runtime-owned `IsmrmrdImageArtifactSink`. Formal results use only standard ISMRMRD `image_x` series; do not add `/ksj_recon`, `/ksj_debug`, or `/ksj_meta` result groups. `PipelineDefinition` remains a separate required JSON input; a future optional `/ksj_pipeline` extension requires its own accepted work item and must never be required to read a standard file. Neither Source nor Sink is a Provider Operator or CLI-owned file implementation. The Sink acknowledges its graph egress only after its standard HDF5 temporary-file readback and atomic publication succeed; this does not claim power-loss durability, retry or exactly-once delivery.
 - HDF5 replay and any future host-submitted normalized ISMRMRD input must be semantically equivalent at the runtime-frame boundary. Process-internal backpressure accounting must not create a private wire message.
+- A future Gateway Profile decoder must complete size validation and host-owned materialization before GatewayRunHost/runtime handoff. Socket buffers, parser scratch and Connector-owned memory cannot cross that asynchronous boundary.
+- Gateway connection, decoder, scan and egress resources require separate item/charged-byte bounds and an atomic admission relationship with the runtime ledger. A selected public profile may define standard flow behavior; KSpaceJet must not invent private ACK/credit/retry semantics.
 - Every queue, pool, frame slot, batch, spool and device buffer needs item and charged-byte bounds. No unbounded queue, hidden buffer or silent raw acquisition drop.
 - Maximum acquisition count is a resource bound, not a frame completion predicate. Completion must be scan/plan-specific and explicit.
 - A Provider cannot bypass host output grants, resource ledger, plan or lifecycle. All fan-out, merge, reorder, partial output and terminal behavior must be explicit and verified.
@@ -219,15 +222,16 @@ Choose the smallest relevant test first and then the complete acceptance gates f
 | CMake, Conan or install | formatter, relevant preset configure and Linux/Windows installation/dynamic-dependency evidence where applicable. |
 | Runtime/concurrency | resource bounds, normal/cancel/error terminal tests, serial oracle and sanitizer/TSAN when required by the work item. |
 | Host-submitted incremental input | normalized in-process ISMRMRD vectors, admission/cancel/callback and bounded-backpressure tests. No socket, session, relay or private wire message. |
+| External gateway | P5-009 public-profile conformance, TLS/auth and route tests, bounded fake-peer/slow-peer/fuzz/disconnect tests, owned-buffer/runtime-equivalence evidence and clean-install qualification. No vendor raw protocol or private wire. |
 | Performance | correctness first; record hardware, preset, threads, input, baseline, raw samples and statistics. |
 
 Useful standard checks:
 
     git diff --check
-    tools/devenv/linux/run.sh just format-all
-    tools/devenv/linux/run.sh just unit
-    tools/devenv/linux/run.sh just check
-    tools/devenv/linux/run.sh just full
+    just format-all
+    just unit
+    just check
+    just full
 
 Do not commit out/, generated reports, cache files, benchmark output or reconstruction output.
 

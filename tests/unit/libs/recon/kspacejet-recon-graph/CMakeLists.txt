@@ -4,6 +4,8 @@ ksj_add_gtest(
   recon.kspacejet-recon-graph
   SOURCES
   artifact_json_tests.cpp
+  controlled_pipeline_resolver_tests.cpp
+  effective_pipeline_binding_tests.cpp
   operator_contract_json_tests.cpp
   pipeline_definition_tests.cpp
   synchronous_graph_plan_tests.cpp

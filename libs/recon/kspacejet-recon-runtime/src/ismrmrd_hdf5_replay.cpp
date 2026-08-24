@@ -1,87 +1,32 @@
 #include "kspacejet/recon/runtime/ismrmrd_hdf5_replay.hpp"
 
 #include "kspacejet/ismrmrd/dataset_reader.hpp"
-
-#include <ismrmrd/ismrmrd.h>
+#include "kspacejet/recon/runtime/ismrmrd_semantic_ingress.hpp"
 
 #include <exception>
-#include <limits>
-#include <span>
+#include <memory>
 #include <string>
 #include <utility>
 
 namespace ksj::recon::runtime {
+struct IsmrmrdHdf5ReplaySession::State {
+  State(ksj::ismrmrd::DatasetReader source_reader, const std::stop_token source_stop_token)
+      : reader(std::move(source_reader)), stop_token(source_stop_token) {
+    const auto& source_metadata = reader.metadata();
+    metadata = {
+      .dataset_group = source_metadata.group,
+      .xml_header = source_metadata.xml_header,
+      .declared_acquisitions = source_metadata.acquisition_count,
+    };
+  }
+
+  ksj::ismrmrd::DatasetReader reader;
+  IsmrmrdHdf5ReplaySourceMetadata metadata;
+  std::stop_token stop_token{};
+  bool iterated{false};
+};
+
 namespace {
-
-[[nodiscard]] bool is_set(const std::uint64_t flags, const ISMRMRD::ISMRMRD_AcquisitionFlags flag) noexcept {
-  return ISMRMRD::FlagBit{static_cast<unsigned short>(flag)}.isSet(flags);
-}
-
-[[nodiscard]] AcquisitionClassificationInput
-normalize_classification_input(const ksj::ismrmrd::AcquisitionHeader& header) noexcept {
-  return {
-    .message_kind = IsmrmrdMessageKind::acquisition,
-    .flags =
-      {
-        .noise_measurement = is_set(header.flags, ISMRMRD::ISMRMRD_ACQ_IS_NOISE_MEASUREMENT),
-        .parallel_calibration = is_set(header.flags, ISMRMRD::ISMRMRD_ACQ_IS_PARALLEL_CALIBRATION),
-        .parallel_calibration_and_imaging =
-          is_set(header.flags, ISMRMRD::ISMRMRD_ACQ_IS_PARALLEL_CALIBRATION_AND_IMAGING),
-        .phase_correction = is_set(header.flags, ISMRMRD::ISMRMRD_ACQ_IS_PHASECORR_DATA),
-        .navigation = is_set(header.flags, ISMRMRD::ISMRMRD_ACQ_IS_NAVIGATION_DATA),
-        .dummy_scan = is_set(header.flags, ISMRMRD::ISMRMRD_ACQ_IS_DUMMYSCAN_DATA),
-        .explicitly_ignored = false,
-      },
-    .index =
-      {
-        .encoding_space = header.encoding_space_ref,
-        .kspace_encode_step_1 = header.index.kspace_encode_step_1,
-        .kspace_encode_step_2 = header.index.kspace_encode_step_2,
-        .average = header.index.average,
-        .slice = header.index.slice,
-        .contrast = header.index.contrast,
-        .phase = header.index.phase,
-        .repetition = header.index.repetition,
-        .set = header.index.set,
-        .segment = header.index.segment,
-      },
-  };
-}
-
-[[nodiscard]] CartesianLineCoordinate
-normalize_cartesian_coordinate(const ksj::ismrmrd::AcquisitionHeader& header) noexcept {
-  return {
-    .phase_encode_1 = header.index.kspace_encode_step_1,
-    .phase_encode_2 = header.index.kspace_encode_step_2,
-  };
-}
-
-[[nodiscard]] bool product_matches_size(const std::uint64_t lhs, const std::uint64_t rhs,
-                                        const std::size_t observed_size) noexcept {
-  if (lhs != 0U && rhs > std::numeric_limits<std::uint64_t>::max() / lhs) {
-    return false;
-  }
-  const auto expected = lhs * rhs;
-  if constexpr (sizeof(std::size_t) < sizeof(std::uint64_t)) {
-    if (expected > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
-      return false;
-    }
-  }
-  return static_cast<std::size_t>(expected) == observed_size;
-}
-
-[[nodiscard]] ksj::base::Status validate_public_acquisition_layout(const ksj::ismrmrd::AcquisitionView& acquisition) {
-  const auto& header = acquisition.header;
-  if (!product_matches_size(header.number_of_samples, header.active_channels, acquisition.samples.size())) {
-    return ksj::base::Status::ValidationError(
-      "ISMRMRD HDF5 acquisition samples do not match header number_of_samples * active_channels");
-  }
-  if (!product_matches_size(header.number_of_samples, header.trajectory_dimensions, acquisition.trajectory.size())) {
-    return ksj::base::Status::ValidationError(
-      "ISMRMRD HDF5 acquisition trajectory does not match header number_of_samples * trajectory_dimensions");
-  }
-  return ksj::base::Status::Ok();
-}
 
 [[nodiscard]] ksj::base::Status replay_io_error(const std::string& message) {
   return ksj::base::Status::IoError("ISMRMRD HDF5 replay failed: " + message);
@@ -113,25 +58,110 @@ void fail_pipeline(SerialCartesianPipeline& pipeline, const ksj::base::Status& c
 
 } // namespace
 
-ksj::base::Result<IsmrmrdHdf5ReplayReport> replay_ismrmrd_hdf5(const IsmrmrdHdf5ReplayConfig& config,
-                                                               SerialCartesianPipeline& pipeline) {
-  if (config.input_file.empty()) {
-    return ksj::base::Status::InvalidArgument("ISMRMRD HDF5 replay input_file must not be empty");
+IsmrmrdHdf5ReplaySource::IsmrmrdHdf5ReplaySource(IsmrmrdHdf5ReplaySourceConfig config) : config_(std::move(config)) {}
+
+IsmrmrdHdf5ReplaySession::IsmrmrdHdf5ReplaySession(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
+
+IsmrmrdHdf5ReplaySession::IsmrmrdHdf5ReplaySession(IsmrmrdHdf5ReplaySession&&) noexcept = default;
+IsmrmrdHdf5ReplaySession& IsmrmrdHdf5ReplaySession::operator=(IsmrmrdHdf5ReplaySession&&) noexcept = default;
+IsmrmrdHdf5ReplaySession::~IsmrmrdHdf5ReplaySession() = default;
+
+const IsmrmrdHdf5ReplaySourceMetadata& IsmrmrdHdf5ReplaySession::metadata() const noexcept {
+  static const IsmrmrdHdf5ReplaySourceMetadata empty_metadata{};
+  return state_ == nullptr ? empty_metadata : state_->metadata;
+}
+
+ksj::base::Result<IsmrmrdHdf5ReplayIterationResult>
+IsmrmrdHdf5ReplaySession::for_each_acquisition(const IsmrmrdHdf5ReplayAcquisitionConsumer& consumer) {
+  if (state_ == nullptr) {
+    return ksj::base::Status::StateError("ISMRMRD HDF5 replay session is not open");
   }
-  if (config.dataset_group.empty()) {
-    return ksj::base::Status::InvalidArgument("ISMRMRD HDF5 replay dataset_group must not be empty");
+  if (!consumer) {
+    return ksj::base::Status::InvalidArgument("ISMRMRD HDF5 replay acquisition consumer must not be empty");
   }
-  if (!config.resolve_frame_context) {
-    return ksj::base::Status::InvalidArgument(
-      "ISMRMRD HDF5 replay requires a deterministic FrameSlotContext resolver from the compiled plan or caller");
+  if (state_->iterated) {
+    return ksj::base::Status::StateError("ISMRMRD HDF5 replay session supports one acquisition pass");
+  }
+  state_->iterated = true;
+  if (state_->stop_token.stop_requested()) {
+    return IsmrmrdHdf5ReplayIterationResult::stopped;
   }
 
+  ksj::base::Status callback_error = ksj::base::Status::Ok();
+  std::string reader_error;
+  const auto iteration = state_->reader.for_each_acquisition(
+    [&](const ksj::ismrmrd::AcquisitionView& acquisition) {
+      if (state_->stop_token.stop_requested()) {
+        return false;
+      }
+      try {
+        return consumer(acquisition);
+      } catch (const std::exception& exception) {
+        callback_error = ksj::base::Status::InternalError(
+          std::string("ISMRMRD HDF5 replay acquisition consumer threw: ") + exception.what());
+      } catch (...) {
+        callback_error = ksj::base::Status::InternalError("ISMRMRD HDF5 replay acquisition consumer threw");
+      }
+      return false;
+    },
+    reader_error);
+  if (!callback_error.ok()) {
+    return callback_error;
+  }
+
+  switch (iteration) {
+    case ksj::ismrmrd::AcquisitionIterationResult::completed:
+      return IsmrmrdHdf5ReplayIterationResult::completed;
+    case ksj::ismrmrd::AcquisitionIterationResult::stopped:
+      return IsmrmrdHdf5ReplayIterationResult::stopped;
+    case ksj::ismrmrd::AcquisitionIterationResult::failed:
+      return ksj::base::Status::IoError(reader_error);
+  }
+  return ksj::base::Status::InternalError("ISMRMRD reader returned an unknown iteration result");
+}
+
+ksj::base::Result<IsmrmrdHdf5ReplaySession> IsmrmrdHdf5ReplaySource::open() const {
+  if (config_.input_file.empty()) {
+    return ksj::base::Status::InvalidArgument("ISMRMRD HDF5 replay input_file must not be empty");
+  }
+  if (config_.dataset_group.empty()) {
+    return ksj::base::Status::InvalidArgument("ISMRMRD HDF5 replay dataset_group must not be empty");
+  }
   ksj::ismrmrd::DatasetReader reader;
   std::string reader_error;
-  if (!reader.open(config.input_file, config.dataset_group, reader_error)) {
-    return replay_io_error(reader_error);
+  if (!reader.open(config_.input_file, config_.dataset_group, reader_error)) {
+    return ksj::base::Status::IoError(reader_error);
   }
-  if (config.stop_token.stop_requested()) {
+  try {
+    return IsmrmrdHdf5ReplaySession{
+      std::make_unique<IsmrmrdHdf5ReplaySession::State>(std::move(reader), config_.stop_token)};
+  } catch (const std::exception& exception) {
+    return ksj::base::Status::InternalError(std::string("Unable to create ISMRMRD HDF5 replay session: ") +
+                                            exception.what());
+  } catch (...) {
+    return ksj::base::Status::InternalError("Unable to create ISMRMRD HDF5 replay session");
+  }
+}
+
+ksj::base::Result<IsmrmrdHdf5ReplaySourceReport>
+IsmrmrdHdf5ReplaySource::replay_into(SerialCartesianPipeline& pipeline) const {
+  if (config_.input_file.empty()) {
+    return ksj::base::Status::InvalidArgument("ISMRMRD HDF5 replay input_file must not be empty");
+  }
+  if (config_.dataset_group.empty()) {
+    return ksj::base::Status::InvalidArgument("ISMRMRD HDF5 replay dataset_group must not be empty");
+  }
+  if (!config_.resolve_frame_slot_binding) {
+    return ksj::base::Status::InvalidArgument("ISMRMRD HDF5 replay requires a deterministic FrameSlotContext binding "
+                                              "resolver from the compiled plan or caller");
+  }
+
+  auto opened = open();
+  if (!opened.ok()) {
+    return replay_io_error(opened.status().message());
+  }
+  auto session = std::move(opened).value();
+  if (config_.stop_token.stop_requested()) {
     return cancel_pipeline_after_reader_stop(pipeline);
   }
 
@@ -140,99 +170,104 @@ ksj::base::Result<IsmrmrdHdf5ReplayReport> replay_ismrmrd_hdf5(const IsmrmrdHdf5
     return start_status;
   }
 
-  IsmrmrdHdf5ReplayReport report{.declared_acquisitions = reader.metadata().acquisition_count};
+  IsmrmrdHdf5ReplaySourceReport report{.declared_acquisitions = session.metadata().declared_acquisitions};
   ksj::base::Status callback_error = ksj::base::Status::Ok();
 
-  const auto iteration = reader.for_each_acquisition(
-    [&](const ksj::ismrmrd::AcquisitionView& acquisition) {
-      try {
-        if (config.stop_token.stop_requested()) {
-          return false;
-        }
-        const auto classification_input = normalize_classification_input(acquisition.header);
-        const auto layout_status = validate_public_acquisition_layout(acquisition);
-        if (!layout_status.ok()) {
-          callback_error = layout_status;
-          fail_pipeline(pipeline, callback_error);
-          return false;
-        }
-
-        // `std::as_bytes` creates a non-owning view over DatasetReader's
-        // borrowed complex<float> samples.  The envelope validation below
-        // occurs before the resolver can create per-frame runtime state, and
-        // submit() validates it again before classification or a payload copy.
-        const auto sample_bytes = std::as_bytes(acquisition.samples);
-        const NormalizedAcquisitionIngressFacts ingress_facts{
-          .samples_per_acquisition = acquisition.header.number_of_samples,
-          .active_channels = acquisition.header.active_channels,
-          .trajectory_dimensions = acquisition.header.trajectory_dimensions,
-          .complete = true,
-        };
-        const auto envelope_status = pipeline.validate_ingress(ingress_facts, sample_bytes.size());
-        if (!envelope_status.ok()) {
-          callback_error = envelope_status;
-          fail_pipeline(pipeline, callback_error);
-          return false;
-        }
-
-        const IsmrmrdHdf5ReplayAcquisitionDescriptor descriptor{
-          .acquisition_ordinal = report.acquisitions_read,
-          .classification_input = classification_input,
-          .coordinate = normalize_cartesian_coordinate(acquisition.header),
-          .number_of_samples = acquisition.header.number_of_samples,
-          .active_channels = acquisition.header.active_channels,
-          .trajectory_dimensions = acquisition.header.trajectory_dimensions,
-        };
-
-        auto context = config.resolve_frame_context(descriptor);
-        if (!context.ok()) {
-          callback_error = context.status();
-          fail_pipeline(pipeline, callback_error);
-          return false;
-        }
-
-        // submit() copies the byte view before this callback returns; neither
-        // the byte view nor AcquisitionView escapes.
-        const NormalizedCartesianAcquisitionFrame frame{
-          .classification_input = classification_input,
-          .frame_context = context.value(),
-          .coordinate = descriptor.coordinate,
-          .ingress_facts = ingress_facts,
-          .payload = ksj::base::ConstByteSpan{sample_bytes.data(), sample_bytes.size()},
-        };
-        auto receipt = pipeline.submit(frame);
-        if (!receipt.ok()) {
-          callback_error = receipt.status();
-          fail_pipeline(pipeline, callback_error);
-          return false;
-        }
-
-        ++report.acquisitions_read;
-        switch (receipt.value().disposition) {
-          case SerialIngressDisposition::routed_to_frame_slot:
-            ++report.routed_to_frame_slots;
-            break;
-          case SerialIngressDisposition::classified_non_imaging:
-            ++report.classified_non_imaging;
-            break;
-          case SerialIngressDisposition::recorded_explicitly_ignored:
-            ++report.explicitly_ignored;
-            break;
-        }
-        return true;
-      } catch (const std::exception& exception) {
-        callback_error =
-          ksj::base::Status::InternalError(std::string("ISMRMRD HDF5 replay callback threw: ") + exception.what());
-      } catch (...) {
-        callback_error = ksj::base::Status::InternalError("ISMRMRD HDF5 replay callback threw");
+  const auto iteration = session.for_each_acquisition([&](const ksj::ismrmrd::AcquisitionView& acquisition) {
+    try {
+      if (config_.stop_token.stop_requested()) {
+        return false;
       }
-      fail_pipeline(pipeline, callback_error);
-      return false;
-    },
-    reader_error);
+      const auto normalized = normalize_ismrmrd_acquisition(acquisition, pipeline.acquisition_classifier());
+      if (!normalized.ok()) {
+        callback_error = normalized.status();
+        fail_pipeline(pipeline, callback_error);
+        return false;
+      }
+      const auto& normalized_acquisition = normalized.value();
 
-  switch (iteration) {
-    case ksj::ismrmrd::AcquisitionIterationResult::completed:
+      // The shared normalizer creates a non-owning byte view over
+      // DatasetReader's borrowed samples. Validation occurs before the
+      // resolver can create per-frame state, and submit() copies the view
+      // synchronously before this callback returns.
+      const auto envelope_status =
+        pipeline.validate_ingress(normalized_acquisition.ingress_facts, normalized_acquisition.sample_bytes.size());
+      if (!envelope_status.ok()) {
+        callback_error = envelope_status;
+        fail_pipeline(pipeline, callback_error);
+        return false;
+      }
+
+      const IsmrmrdHdf5ReplayAcquisitionDescriptor descriptor{
+        .acquisition_ordinal = report.acquisitions_read,
+        .classification_input = normalized_acquisition.classification_input,
+        .classification = normalized_acquisition.classification,
+        .frame_key = normalized_acquisition.frame_key,
+        .coordinate = normalized_acquisition.cartesian_coordinate,
+        .number_of_samples = acquisition.header.number_of_samples,
+        .active_channels = acquisition.header.active_channels,
+        .trajectory_dimensions = acquisition.header.trajectory_dimensions,
+        .control_flags = normalized_acquisition.control_flags,
+        .ingress_facts = normalized_acquisition.ingress_facts,
+      };
+
+      auto binding = config_.resolve_frame_slot_binding(descriptor);
+      if (!binding.ok()) {
+        callback_error = binding.status();
+        fail_pipeline(pipeline, callback_error);
+        return false;
+      }
+      const auto context = make_ismrmrd_frame_slot_context(normalized_acquisition, binding.value());
+
+      // submit() copies the byte view before this callback returns; neither
+      // the byte view nor AcquisitionView escapes.
+      const NormalizedCartesianAcquisitionFrame frame{
+        .classification_input = normalized_acquisition.classification_input,
+        .frame_context = context,
+        .coordinate = descriptor.coordinate,
+        .ingress_facts = normalized_acquisition.ingress_facts,
+        .payload = normalized_acquisition.sample_bytes,
+      };
+      auto receipt = pipeline.submit(frame);
+      if (!receipt.ok()) {
+        callback_error = receipt.status();
+        fail_pipeline(pipeline, callback_error);
+        return false;
+      }
+
+      ++report.acquisitions_read;
+      switch (receipt.value().disposition) {
+        case SerialIngressDisposition::routed_to_frame_slot:
+          ++report.routed_to_frame_slots;
+          break;
+        case SerialIngressDisposition::classified_non_imaging:
+          ++report.classified_non_imaging;
+          break;
+        case SerialIngressDisposition::recorded_explicitly_ignored:
+          ++report.explicitly_ignored;
+          break;
+      }
+      return true;
+    } catch (const std::exception& exception) {
+      callback_error =
+        ksj::base::Status::InternalError(std::string("ISMRMRD HDF5 replay callback threw: ") + exception.what());
+    } catch (...) {
+      callback_error = ksj::base::Status::InternalError("ISMRMRD HDF5 replay callback threw");
+    }
+    fail_pipeline(pipeline, callback_error);
+    return false;
+  });
+
+  if (!iteration.ok()) {
+    const auto status = iteration.status().code() == ksj::base::StatusCode::io_error
+                          ? replay_io_error(iteration.status().message())
+                          : iteration.status();
+    fail_pipeline(pipeline, status);
+    return status;
+  }
+
+  switch (iteration.value()) {
+    case IsmrmrdHdf5ReplayIterationResult::completed:
       {
         const auto end_status = pipeline.end_of_input();
         if (!end_status.ok()) {
@@ -240,17 +275,11 @@ ksj::base::Result<IsmrmrdHdf5ReplayReport> replay_ismrmrd_hdf5(const IsmrmrdHdf5
         }
         return report;
       }
-    case ksj::ismrmrd::AcquisitionIterationResult::stopped:
+    case IsmrmrdHdf5ReplayIterationResult::stopped:
       if (!callback_error.ok()) {
         return callback_error;
       }
       return cancel_pipeline_after_reader_stop(pipeline);
-    case ksj::ismrmrd::AcquisitionIterationResult::failed:
-      {
-        const auto status = replay_io_error(reader_error);
-        fail_pipeline(pipeline, status);
-        return status;
-      }
   }
 
   const auto status = ksj::base::Status::InternalError("ISMRMRD reader returned an unknown iteration result");
