@@ -19,11 +19,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\boots
 ```
 
 Linux hosts must already have Git, Git LFS, and default GCC/G++ 14; bootstrap uses apt to ensure
-`just` is installed. Windows hosts must
+`just` is installed and each Linux `prepare` installs the project-curated Qt/X11 development prerequisites. Windows hosts must
 already have Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools, a Windows SDK, and winget;
 bootstrap installs `just` when it is absent.
 These system-integrated tools stay on the host. The bootstrap creates a repository-local
-`uv` environment and uses apt on Linux to ensure `just` is installed; Windows uses winget only when absent. It does not install every tool into a
+`uv` environment and uses apt on Linux to ensure `just` is installed; Linux `prepare` additionally installs its curated Qt/X11 development prerequisites, while Windows uses winget only when `just` is absent. It does not install every tool into a
 virtual environment or alter a global Python environment. See
 [the developer-environment guide](../devenv/README.md) for the complete policy.
 

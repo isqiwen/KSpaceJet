@@ -63,7 +63,7 @@ just workspace-check
 ### 首次准备开发工具
 
 先准备项目级开发工具环境，再使用 VS Code 或命令行构建。Linux x86_64 的宿主机需要
-Git、Git LFS，以及默认的 GCC/G++ 14；Linux bootstrap 会通过 `apt` 确保安装 `just`。Windows x86_64
+Git、Git LFS，以及默认的 GCC/G++ 14；Linux bootstrap 会通过 `apt` 确保安装 `just`，并在 `prepare` 时安装项目明确列出的 Qt/X11 开发依赖。Windows x86_64
 的宿主机需要 Git、Git LFS、Visual Studio 2022 的 v143 C++ 工具和 Windows SDK；若未安装 `just`，Windows
 bootstrap 会通过 `winget` 安装它。这些与操作系统/SDK 集成的工具保留在
 宿主机上；Conan、CMake、Ninja、`clang-format` 和 `cmake-format` 由固定版本的 `uv` 环境

@@ -13,7 +13,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\boots
 ```
 
 Linux hosts must provide Git, Git LFS, and default GCC/G++ 14; bootstrap uses apt to ensure `just`
-is installed. Windows hosts must provide Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools,
+is installed, and each Linux `prepare` installs the project-curated Qt/X11 development prerequisites. Windows hosts must provide Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools,
 a Windows SDK, and winget; bootstrap installs `just` when it is absent. Those host tools
 are deliberately not installed into a Python virtual environment. The pinned `uv` binary,
 managed Python, and the project tooling (Conan, CMake, Ninja, `clang-format`, and
@@ -69,7 +69,7 @@ then run the matching preparation task before the first build for each platform/
 | Windows Release | `KSJ: prepare Windows Release environment` | `KSJ: build Windows Release applications` | `KSJ: install Windows Release applications` | `windows-vs2022-release-install` | `out/install/windows-vs2022-release` |
 
 The initial bootstrap task calls the platform bootstrap directly to provision the repository-local
-Python tool environment and ensure `just` is installed (apt on Linux, winget on Windows when absent).
+Python tool environment and ensure `just` is installed (apt on Linux, winget on Windows when absent). Linux preparation also installs the curated Qt/X11 development prerequisites before Conan resolves the Qt graph.
 Each subsequent `prepare` task calls its shared `just` recipe, which verifies the complete Intel
 payload manifest, exports the local ISMRMRD and Intel Conan recipes, runs `conan install`, and
 configures CMake for its dedicated output directory. It produces the Conan toolchain and CMake

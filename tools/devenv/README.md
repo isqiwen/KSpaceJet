@@ -1,8 +1,9 @@
 # KSpaceJet developer environment
 
 This directory provisions the repository's development tools reproducibly on Linux x86_64 and
-Windows x86_64. Linux bootstrap uses `sudo apt-get` to ensure `just` is installed, while Windows
-bootstrap may use `winget` when it is absent. It does not use a machine-wide Python package manager.
+Windows x86_64. Linux bootstrap uses `sudo apt-get` to ensure `just` is installed and, during a
+`--prepare`, the project-curated Qt/X11 development prerequisites; Windows bootstrap may use
+`winget` when `just` is absent. It does not use a machine-wide Python package manager.
 
 ## Required paired data workspace
 
@@ -42,7 +43,8 @@ Windows PowerShell:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 ```
 
-Linux bootstrap uses apt to ensure `just` is installed; Windows bootstrap uses winget when it is
+Linux bootstrap uses apt to ensure `just` is installed; each Linux `prepare` also installs the
+project-curated Qt/X11 development prerequisites. Windows bootstrap uses winget when `just` is
 absent. Afterward, invoke shared recipes directly. The recipe
 name is identical on Linux and Windows; `justfile` owns the platform-specific bootstrap,
 Conan-profile and CMake-preset mapping:
@@ -82,7 +84,7 @@ Not every executable belongs in a Python virtual environment.
 
 | Layer | Location | Contents |
 | --- | --- | --- |
-| Host prerequisite | OS / SDK installation | Git, Git LFS and Linux default GCC/G++ 14; or Git, Git LFS, Visual Studio 2022 14.4x/v143 C++ Build Tools, Windows SDK and winget on Windows. Linux bootstrap uses apt to ensure `just` is installed; Windows uses winget only when absent. |
+| Host prerequisite | OS / SDK installation | Git, Git LFS and Linux default GCC/G++ 14; or Git, Git LFS, Visual Studio 2022 14.4x/v143 C++ Build Tools, Windows SDK and winget on Windows. Linux bootstrap uses apt to ensure `just` is installed and every Linux `prepare` installs curated Qt/X11 development prerequisites; Windows uses winget only when `just` is absent. |
 | Bootstrap runtime | `.kspacejet/bootstrap/uv/` | Checksum-verified, pinned `uv`; it does not alter the user's PATH or shell profile |
 | Managed Python and cache | `.kspacejet/python/`, `.kspacejet/uv-cache/` | CPython acquired by uv and its disposable package cache |
 | Project tool environment | `.venv/` | Conan, cmake-format, and the locked CMake, Ninja, and clang-format binary wheels |
@@ -96,7 +98,8 @@ project-local artifact; it must not be silently taken from the system PATH.
 The compiler toolchain, Git, and Git LFS remain host prerequisites because they integrate with the
 operating system and SDK. The scripts validate them rather than attempting privileged or
 distribution-specific installation. `just` is the deliberate exception: Linux bootstrap delegates
-idempotent installation to apt, while Windows uses winget only when missing. On Linux the default `gcc` and `g++` must both be major version
+idempotent installation to apt, and Linux `prepare` uses the same explicit policy for the curated
+Qt/X11 development package set; Windows uses winget only when `just` is missing. On Linux the default `gcc` and `g++` must both be major version
 14, matching the Conan profiles. On Windows the scripts require Visual Studio 2022 with the v143 C++
 tools (MSVC 19.4x / toolset 14.4x); install a Windows SDK with that workload.
 
@@ -130,9 +133,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\boots
 
 `--offline` prevents network access and succeeds only when the pinned `uv`, managed Python, and
 locked packages are already cached locally. With `--prepare` / `-Prepare`, it additionally
-requires a fully hydrated and verified Intel payload plus every required Conan package in the local
-cache. In that mode the bootstrap passes Conan `--no-remote`; `--offline` cannot be combined with an
-explicit Git-LFS pull.
+requires a fully hydrated and verified Intel payload, the curated Linux Qt/X11 packages already on
+the host, and every required Conan package in the local cache. In that mode the bootstrap passes
+Conan `--no-remote`; `--offline` cannot be combined with an explicit Git-LFS pull.
 
 Before a prepare, the bootstrap hashes every entry in the selected Intel payload manifest. This
 distinguishes real Git-LFS content from a checkout containing only LFS pointers. The quick sentinel
@@ -177,4 +180,6 @@ tools/devenv/linux/run.sh clang-format --version
 ```
 
 Do not activate `.venv` or install managed project tools into the environment manually. Install
-`just` through the bootstrap: Linux uses apt, while Windows uses winget only when it is absent.
+`just` through the bootstrap: Linux uses apt, while Windows uses winget only when it is absent. A
+Linux `prepare` likewise uses apt for the explicit Qt/X11 development package set before Conan
+checks the system dependencies.

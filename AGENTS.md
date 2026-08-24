@@ -104,7 +104,7 @@ Inspect CMakePresets.json before configuring. Bootstrap the repository-local dev
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\bootstrap.ps1
 
-Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. Linux bootstrap uses apt to ensure host `just` is installed; Windows bootstrap installs it with winget when absent. UV, managed Python and project tools are repository-local. Compilers, Git and Git LFS are host tools.
+Hosts require Git, Git LFS and default GCC/G++ 14 on Linux, or Git, Git LFS, Visual Studio 2022 v143 C++ Build Tools and a Windows SDK on Windows. Linux bootstrap uses apt to ensure host `just` is installed and, during `--prepare`, the project-curated Qt/X11 development prerequisites; Windows bootstrap installs `just` with winget when absent. UV, managed Python and project tools are repository-local. Compilers, Git and Git LFS are host tools.
 
 On minimal Linux, bootstrap also needs curl or wget, tar and sha256sum or shasum. Linux VS Code debugging needs host gdb. The optional linux-release-static-analysis preset needs host clang++.
 

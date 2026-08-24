@@ -85,15 +85,16 @@ Codex 可自行完成明确属于当前工作项的代码、测试、文档、�
 ```yaml
 source: "docs/architecture/KSpaceJet_project_plan_and_acceptance.md#12-唯一执行台账"
 ledger_date: 2026-08-24
-execution_state: IN_PROGRESS
-active_phase: P8
-active_work_item: P8-004
-next_task: P8-004
+execution_state: BLOCKED
+active_phase: null
+active_work_item: null
+next_task: null
 ready_items: []
 blocked_items:
   - P0-006
   - P0-007
   - P0-010
+  - P8-004
 accepted: 15
 applicable: 68
 coverage: 22.1%
@@ -109,7 +110,7 @@ coverage: 22.1%
 | P5 | 外部集成网关与可选嵌入 ISMRMRD ingress | 1 | 12 | 8.3% | ACCEPTED: 1 · PLANNED: 11 · SUPERSEDED: 1 |
 | P6 | 并行、NUMA、GPU 与性能 | 0 | 7 | 0% | PLANNED: 7 |
 | P7 | Qualification、CI、安装、供应链和发布 | 0 | 7 | 0% | PLANNED: 7 |
-| P8 | 离线可视化与检查工具 | 3 | 4 | 75% | ACCEPTED: 3 · IN_PROGRESS: 1 |
+| P8 | 离线可视化与检查工具 | 3 | 4 | 75% | ACCEPTED: 3 · BLOCKED: 1 |
 
 #### 最近验收证据（自动生成）
 
@@ -127,7 +128,8 @@ coverage: 22.1%
 | --- | --- |
 | P0-006 | 收集第 6.3.1 所列 case、deployment、performance、data-governance、output、security/release、architecture 及 GWY-DEC-001 至 007 owner/source/scop… |
 | P0-007 | 等待用户明确恢复 GitHub CI 工作；恢复后先只读复核 remote branch、PR、workflow run 与 `main` protection 的实际状态，再决定是否继续 P0-007。 |
-| P0-010 | 等待用户明确恢复 Linux 验证；恢复后仅在 `kspacejet-linux-test` 中继续，先确认 LFS payload，再执行 `just prepare-release` 与 `just check`，不得写入当前 Windows worktre… |
+| P0-010 | 在当前 Linux terminal 先执行 `sudo -v`（不要提供或记录密码），再执行 `just prepare-release` 和 `just check`；将实际结果记录后重新打开本项并决定 VERIFYING/ACCEPTED 或继续 BLOC… |
+| P8-004 | 等待用户以真实 `E:\KSpaceJet-ismrmrd-data\datasets\zen-2d-cartesian-2025\cart_t1.mrd` 完成 build/install Viewer 的视觉复核；收到结果后重新打开 P8-004，并只根据实… |
 
 <!-- KSJ-PLAN-DASHBOARD:END -->
 
@@ -446,7 +448,7 @@ PipelineDefinition 绝不是 ExecutionPlan；最大 acquisition 数、队列容�
 
 ### 7.2 固定验证入口
 
-Linux bootstrap 直接通过 apt 确保安装 `just`，由 apt 的幂等性处理已安装 package；Windows bootstrap 会在缺少时通过 `winget` 安装 `Casey.Just`。两端均不下载项目私有副本、锁定版本或校验版本。bootstrap 仍直接调用平台脚本以 provision 仓库内 Python 工具；之后的日常开发命令直接使用根 `justfile` 的同名 recipe。对无 recipe 的聚焦诊断，使用 platform runner 调用锁定的 Conan、CMake、Ninja 或 formatter，不得依赖它们的系统 PATH。
+Linux bootstrap 直接通过 apt 确保安装 `just`，由 apt 的幂等性处理已安装 package；每个 Linux `--prepare` 还在 Conan 检查前显式安装项目维护的 Qt/X11 开发包集。Windows bootstrap 会在缺少时通过 `winget` 安装 `Casey.Just`。两端均不下载项目私有副本、锁定版本或校验版本。bootstrap 仍直接调用平台脚本以 provision 仓库内 Python 工具；之后的日常开发命令直接使用根 `justfile` 的同名 recipe。对无 recipe 的聚焦诊断，使用 platform runner 调用锁定的 Conan、CMake、Ninja 或 formatter，不得依赖它们的系统 PATH。
 
 Linux 首次准备：
 
@@ -748,7 +750,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P0-007 | 建立远程 CI 和分支保护计划；若用户授权，实际创建 CI workflow/现有 runner pipeline 和 required checks。 | .github 或现有 CI 目录、tools/checks、GitHub settings。 | P0-002。 | AC-REL-001、002；无远程写入授权时只产出设计和 BLOCKED 证据。 |
 | P0-008 | 将本文件升级为可快速查看的 Master Plan：从唯一台账派生阶段完成度、当前项、READY/阻塞项和最近证据，并以离线检查器阻止其与台账漂移。 | 本文件、README、docs/README、tools/checks。 | P0-001。 | 总览只读派生自第 12 节，不复制单项状态；检查器验证第 10/12 节 ID 集合、状态、唯一 READY/活动项、READY 依赖、入口链接和总览一致性。 |
 | P0-009 | 固化双仓库数据边界：KSpaceJet 不保存 MRI 原始重建数据；开发工作区必须与同级 `KSpaceJet-ismrmrd-data` 仓库配套，后者是唯一 raw ISMRMRD dataset 归属。删除旧 project-internal research raw-data 目录及专用 downloader/test，不迁入数据仓库。 | AGENTS、README、tools/devenv、tools/checks、research/benchmarks、canonical plan。 | P0-003。 | 离线检查必须拒绝 KSpaceJet 已跟踪或物理存在的 `.mrd`、`.h5`、`.hdf5`、`.ismrmrd` payload，并验证同级数据仓库、origin 与 manifest 结构；Linux/Windows pre-commit 都必须执行该检查，所有旧 local-data 引用必须清除，文档给出可复制布局。 |
-| P0-010 | 将宿主机 `just` 与根 `justfile` 定义为 Linux/Windows 共享的 prepare、incremental build、install、format 和 check 入口；Linux bootstrap 直接用 apt 确保安装，Windows bootstrap 在缺少时用 winget 安装。 | `justfile`、`tools/devenv`、`.vscode/tasks.json`、`.githooks`、README、docs/conventions、tools/checks。 | P0-003。 | 不得下载项目私有 `just`、校验、缓存或版本锁定 `just`；Linux bootstrap 必须直接使用 `sudo apt-get update` 和 `sudo apt-get install --yes --no-install-recommends just`，由 apt 的幂等性处理已安装 package；Windows bootstrap 必须只在缺少时以 `winget install --id Casey.Just --exact` 安装；VS Code 与 Git hook 均须选择同一 `justfile` recipe；Linux 必须以宿主机 `just` 实际 bootstrap、解析/格式化 justfile 并运行代表性 recipes。Windows 接线须静态检查，真实 Windows 运行证据纳入 P0-002。 |
+| P0-010 | 将宿主机 `just` 与根 `justfile` 定义为 Linux/Windows 共享的 prepare、incremental build、install、format 和 check 入口；Linux bootstrap 直接用 apt 确保安装，并在 `--prepare` 中显式安装项目维护的 Qt/X11 开发包集；Windows bootstrap 在缺少时用 winget 安装。 | `justfile`、`tools/devenv`、`.vscode/tasks.json`、`.githooks`、README、docs/conventions、tools/checks。 | P0-003。 | 不得下载项目私有 `just`、校验、缓存或版本锁定 `just`；Linux bootstrap 必须直接使用 `sudo apt-get update` 和 `sudo apt-get install --yes --no-install-recommends just`，由 apt 的幂等性处理已安装 package；`--prepare` 必须在 Conan 的 `tools.system.package_manager:mode=check` 之前以受控、项目维护的 apt package list 满足 Qt/X11 的 system requirements，不得把 host package 安装权委托给任意 Conan recipe；Windows bootstrap 必须只在缺少时以 `winget install --id Casey.Just --exact` 安装；VS Code 与 Git hook 均须选择同一 `justfile` recipe；Linux 必须以宿主机 `just` 实际 bootstrap、解析/格式化 justfile 并运行代表性 recipes。Windows 接线须静态检查，真实 Windows 运行证据纳入 P0-002。 |
 
 ### P1：可信离线 reference 基线
 
@@ -891,8 +893,8 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 
 ## 12. 唯一执行台账
 
-**更新时间**：2026-08-24，`P0-002` 已以用户指定的 Windows Release 路径完成 bootstrap、Conan/CMake configure、四个 application build/install、installed-help/version 和 DLL closure；`P0-007` 因用户要求暂缓 GitHub CI 而 BLOCKED，`P0-010` 因用户暂停 Linux 验证而 BLOCKED，二者均不在当前范围。`P1-002` 的 runtime-owned 标准 ISMRMRD source/sink 边界已通过 focused Windows Release 验证并 ACCEPTED；`P1-008` 的统一 ISMRMRD semantic-frame ingress 与 `P1-009` 的 development-only 2-D radial gridding/analytic DCF Provider 也均已 ACCEPTED。用户已冻结 `ksj-recon --input <scan.mrd> --pipeline <pipeline.json> --output <image.mrd>` 为唯一未来重建入口，并进一步冻结标准-first MRD container 原则：不假设 `/dataset`，任何 private `ksj_*` group 均不得成为查看或重建的前提。`P2-002` 的固定 `dataset` profile 因此 REOPENED，待 P8 的 shared discovery evidence 后改为 auto-or-explicit container selection。用户已明确授权 Qt 6 desktop `ksj-viewer` 作为不阻塞 v1 的附加范围；P8-004 已按 `E:\hdfview` / HDFView 的 UI 与操作原则完成 native C++/Qt shell 重构，并依用户视觉反馈将对象检查器收口为 HDFView 式紧凑双页。Windows unit-test target-only build 现在会部署其运行时 DLL 闭包和 Qt platform plugin，直接启动与裸 CTest 已验证；P8-004 仍待用户视觉复核。
-**当前执行任务**：`P8-004`（IN_PROGRESS）。基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`；P8-003 保持 ACCEPTED，其数据读取、parse-only pipeline、display-derivative export 和依赖边界不可回退。当前工作树已提供有界 recursive standard container discovery 与 HDFView-inspired File/Window/Tools/Help、toolbar/file bar、semantic tree、`Object Attribute Info`/`General Object Info` inspector、typed Inspect/Open As 和 Info/status shell；focused Windows tests、Release build、install 和 UI/export smoke 均已有 evidence。下一精确行动是使用真实 sibling-data `cart_t1.mrd` 完成用户视觉复核，然后再决定是否转 VERIFYING。
+**更新时间**：2026-08-24，`P0-002` 已以用户指定的 Windows Release 路径完成 bootstrap、Conan/CMake configure、四个 application build/install、installed-help/version 和 DLL closure；`P0-007` 继续因用户要求暂缓 GitHub CI 而 BLOCKED。用户已授权修复 Linux `just prepare-release` 在 Qt/X11 宿主开发包检查处失败的问题；`P0-010` 已完成脚本/文档和非提权验证，但当前会话没有 sudo 认证，故在实际 apt/Conan 回归前 BLOCKED。它保留 Conan 的只读系统包检查，改由 project-owned Linux bootstrap 显式处理受控 apt 依赖。`P8-004` 的代码和 Windows 验证已具备，唯一剩余的真实 sibling-data 用户视觉复核尚未提供，故保持 BLOCKED。`P1-002` 的 runtime-owned 标准 ISMRMRD source/sink 边界已通过 focused Windows Release 验证并 ACCEPTED；`P1-008` 的统一 ISMRMRD semantic-frame ingress 与 `P1-009` 的 development-only 2-D radial gridding/analytic DCF Provider 也均已 ACCEPTED。用户已冻结 `ksj-recon --input <scan.mrd> --pipeline <pipeline.json> --output <image.mrd>` 为唯一未来重建入口，并进一步冻结标准-first MRD container 原则：不假设 `/dataset`，任何 private `ksj_*` group 均不得成为查看或重建的前提。`P2-002` 的固定 `dataset` profile 因此 REOPENED，待 P8 的 shared discovery evidence 后改为 auto-or-explicit container selection。
+**当前执行任务**：无。`P0-010` 等待在当前 Linux host 获得 sudo 认证后实际运行 `just prepare-release` 与 `just check`；`P8-004` 等待用户以真实 sibling data 完成视觉复核。不写入 raw-data sibling 或任何 GitHub CI 资源。
 **状态权威**：本节是本文件中唯一允许修改任务状态的位置。任务目录第 10 节不维护重复状态。
 
 ### 12.1 P0 台账
@@ -908,7 +910,7 @@ P0-004 通过前，任何文档链接不得假定存在。当前已观察到 doc
 | P0-007 | BLOCKED | P0-002 | 2026-08-22：已在隔离 branch `codex/p0-007-release-ci` 创建并推送 Release-only workflow，PR `#1` 曾产生实际 `linux-release-quality` 与 `windows-release-build-install` contexts；历史实现/失败记录保留在第 13.13 节。2026-08-23 用户明确要求“现在先跳过所有 GitHub CI 相关的内容”，因此停止把任何 run、PR、workflow 或 protection 状态当作当前工作。 | 等待用户明确恢复 GitHub CI 工作；恢复后先只读复核 remote branch、PR、workflow run 与 `main` protection 的实际状态，再决定是否继续 P0-007。 | 暂不监控、取消、触发或修改远端 workflow/run/PR/branch protection，也不推送任何与 GitHub CI 有关的本地改动；既有远端状态不是 ACCEPTED 证据。 |
 | P0-008 | ACCEPTED | P0-001 | 用户要求的 Master Plan 视图已在第 0.4 节作为受控派生总览落地：显示阶段覆盖度、当前/READY/阻塞项、最近验收证据和阻塞恢复动作；完整证据见第 13.9 节。第 12 节仍是唯一状态权威。 | 后续状态变更只改第 12 节，然后运行 `python3 tools/checks/check_execution_plan.py --write` 和 `--check`；无 READY 时保持无下一项。 | 总览不能直接改变状态；P0-002 已有 Windows Release evidence，但 P0-006 的参数 authority 仍 BLOCKED，且当前 Linux 主机无法执行 Windows hook。 |
 | P0-009 | ACCEPTED | P0-003 | 已确立并验证双仓库 raw-data contract：KSpaceJet 无原始 MRI payload，唯一外部数据归属为同级 `KSpaceJet-ismrmrd-data`。旧 `research/benchmarks/datasets/`、专用 downloader/test 已按用户授权删除（先移入 Trash）；完整证据见第 13.11 节。 | 无 READY 项；后续开发保持 sibling workspace，预提交自动检查 `check_workspace_layout.py`，数据仓库完整性在 sibling 中运行 `tools/verify-data.sh`。 | Windows PowerShell hook 未在本 Linux host 执行；其静态接线已与 Linux 同步，实际 Windows toolchain/host 证据仍只属于 P0-002。 |
-| P0-010 | BLOCKED | P0-003 | 基线 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`，开始时有 26 个用户/先前工作树条目，均须保留。2026-08-23 已确认 Docker `29.7.2` 的 Linux/amd64 backend 可用，并已保留命名、非自动删除的 `kspacejet-linux-test`；它以 `/source:ro` 挂载仓库，在容器自己的工作副本中运行。缺失 `just` 的首次 apt bootstrap、第二次 apt 幂等 bootstrap 与 direct host `just --unstable --fmt --check` 已实际通过；后续 Linux Intel Git-LFS 传输在用户指示“不用处理 Linux”后停止，容器保留且未删除。 | 等待用户明确恢复 Linux 验证；恢复后仅在 `kspacejet-linux-test` 中继续，先确认 LFS payload，再执行 `just prepare-release` 与 `just check`，不得写入当前 Windows worktree、raw-data sibling 或任何 GitHub CI 资源。 | 用户当前明确暂缓 Linux；因此所需的 Linux `prepare-release`/`check` 全链路未完成，P0-010 不得 ACCEPTED。 |
+| P0-010 | BLOCKED | P0-003 | 基线 `bd3107a2f48e0b4fc402eb36abaf3f9b5941b9da` / tree `6bf2321797890d548fba118494deb8dc9ef06b04`；用户于 2026-08-24 明确授权修复 Linux `prepare-release` 的 Qt/X11 宿主依赖失败，并确认当前工作树就是 Linux 验证环境。`tools/devenv/linux/bootstrap.sh` 现仅在 `--prepare` 时以 project-owned apt list 安装 Qt/X11 prerequisites，保留 Conan `tools.system.package_manager:mode=check`；help、developer/build/check/commit docs 均已同步。`bash -n`、help、受控 apt-list primary/fallback shell tests、justfile format、plan/link/workspace/diff checks 均通过。 | 在当前 Linux terminal 先执行 `sudo -v`（不要提供或记录密码），再执行 `just prepare-release` 和 `just check`；将实际结果记录后重新打开本项并决定 VERIFYING/ACCEPTED 或继续 BLOCKED。 | `sudo -n true` 输出 `sudo: a password is required`，当前会话不能执行实际 apt 安装、Conan system-requirements check 或完整 prepare/check；仅补齐本地 Linux developer prerequisite，不改变 Qt feature、Conan dependency graph、全局 Conan 配置、GitHub CI、raw-data sibling 或任何产品/发布资格 claim；P8-004 等待用户视觉复核而暂时 BLOCKED。 |
 
 ### 12.1.1 P0-001 基线能力矩阵（2026-08-20，ACCEPTED）
 
@@ -1023,7 +1025,7 @@ scaffold/无测试/无系统证据的观察仍然有效，不能被新架构解�
 | P8-001 | ACCEPTED | P0-002, P1-002, P2-002 | 已新增 `qt/6.8.3`、第五个安装应用 `ksj-viewer`、CLI11 help/version、真实 QApplication 主窗口和 Qt 官方 `windeployqt` deployment helper；build/install tree 的 `platforms/qwindows.dll`、直接 UI smoke 与 install JSON protocol 均已实测通过。viewer 仅链接 `KSpaceJet::ismrmrd`、`KSpaceJet::recon_graph`、Qt Core/Gui/Widgets；其 executable/platform plugin import closure 不含 Qt Network/OpenGL/Quick/QML/WebEngine。完整证据见 13.20。 | `P8-002` 已启动：定义 inspection reader read model、API ownership、synthetic fixture 和 focused tests。 | `ksj-viewer` 仍只是 deployable UI shell，不读取 `.mrd` 或 pipeline、没有 image/k-space/metadata 真实视图或 export；Windows global install surface 可能包含其他应用的未使用 Qt package DLL，但 viewer import closure 已独立核验。 |
 | P8-002 | ACCEPTED | P8-001, P1-002 | `InspectionReader` 已作为 `KSpaceJet::ismrmrd` 的标准 HDF5、只读、有界 inspection public read model 交付：XML/header/acquisition/image/MetaAttributes、callback-scoped payload、axis/type contract、per-reader limits、named-field HDF5 header mapping、deterministic malformed diagnostics 和 normal/malformed/oversize/axis/meta synthetic corpus 均有 focused Windows Release evidence；public header 已安装。完整证据见 13.21。 | 已完成；由 `P8-003` 消费该 reader 完成 Qt presentation/export。 | 不复制 HDF5 或在 KSpaceJet 保存 raw data；无界 full-file load 不可接受；本项不接入 Qt UI、Pipeline parser 或 export。 |
 | P8-003 | ACCEPTED | P8-002, P2-002 | `ksj-viewer` 已交付共享 `InspectionReader` 与唯一 `PipelineDefinition::parse_json()` 的 app-local Qt presentation/export 层：metadata/k-space/image/pipeline 视图、PNG/SVG/CSV/JSON labelled display-derivative export、synthetic focused corpus、Windows build/install UI/export smoke 和 import-closure audit 均已通过。完整证据见 13.22。 | 无 READY 项；保持 P8 结果，等待用户解除现有 P0 policy / GitHub CI / Linux 阻塞或授权新的独立工作项。 | k-space 只为 acquisition magnitude projection，绝非 reconstructed image；export 不是第二种 MRI image artifact；仅有 Windows Release developer evidence，不构成 Linux、临床、service、性能或 release qualification claim。 |
-| P8-004 | IN_PROGRESS | P8-003 | 用户指定本地源码 `E:\hdfview`、安装目录 `D:\HDFView` 与 `HDFGroup/hdfview` 为 UI/操作参考；`InspectionReader` 递归、有界发现 standard raw/image/waveform container，`ViewerWindow` 提供浅色紧凑的 HDFView-inspired File/Window/Tools/Help shell、semantic tree、`Object Attribute Info`/`General Object Info` inspector 和 Info/status。打开 standard MRD 默认只显示 tree 与 inspector，typed-data 区域隐藏；不再显示固定 `Dataset overview` 或 `Image series` dashboard。选择 Header/XML 后必须显式 `Inspect`/`Open As…` 才打开 XML typed view；`Images` 是独立语义对象，raw acquisition source 的零 image series 是正常状态。2026-08-24 已重跑 focused reader/viewer CTest 2/2、Release `ksj_viewer` build、build-tree UI smoke、install 与 installed UI/export smoke，均通过；完整进行中证据见 13.23。基线仍为 `978215ef9915550bfc3897bb5fe7d4b7ab403ec4` / tree `dce7cc56c199c4c8fa33b3aa7bcee11f589197d0`。 | 先修复 Windows unit-test executable target-only build 后未部署 Conan/Qt runtime DLL 的问题：将 runtime staging 绑定到 test target post-build，并验证不调用 `conanrun.bat` 的直接 executable/CTest 启动；随后以真实 `E:\KSpaceJet-ismrmrd-data\datasets\zen-2d-cartesian-2025\cart_t1.mrd` 在 build/install Viewer 完成用户视觉复核。 | 不复制/链接 HDFView Java/SWT code；不新增 QML/Quick/WebEngine、Python、Matplotlib、外部图标包、reconstruction、Provider/gateway 或新的 MRI artifact；不变成 generic HDF4/HDF5/NetCDF/FITS browser/editor，不支持 generic object/attribute edit/save、URL loading 或无界 hyperslab；正式 reconstructed image 只使用标准 ISMRMRD `image_x`，不创建 `/ksj_recon`、`/ksj_debug` 或 `/ksj_meta`；不将 `ksj_*` group 设为 input prerequisite；真实 raw data 只读且不进入 KSpaceJet。 |
+| P8-004 | BLOCKED | P8-003 | 用户指定本地源码 `E:\hdfview`、安装目录 `D:\HDFView` 与 `HDFGroup/hdfview` 为 UI/操作参考；`InspectionReader` 递归、有界发现 standard raw/image/waveform container，`ViewerWindow` 提供浅色紧凑的 HDFView-inspired File/Window/Tools/Help shell、semantic tree、`Object Attribute Info`/`General Object Info` inspector 和 Info/status。打开 standard MRD 默认只显示 tree 与 inspector，typed-data 区域隐藏；不再显示固定 `Dataset overview` 或 `Image series` dashboard。选择 Header/XML 后必须显式 `Inspect`/`Open As…` 才打开 XML typed view；`Images` 是独立语义对象，raw acquisition source 的零 image series 是正常状态。2026-08-24 已重跑 focused reader/viewer CTest 2/2、Release `ksj_viewer` build、build-tree UI smoke、install 与 installed UI/export smoke，均通过；完整进行中证据见 13.23。 | 等待用户以真实 `E:\KSpaceJet-ismrmrd-data\datasets\zen-2d-cartesian-2025\cart_t1.mrd` 完成 build/install Viewer 的视觉复核；收到结果后重新打开 P8-004，并只根据实际观察决定 VERIFYING 或后续修复。 | 缺少用户视觉复核这一外部输入，故不能 ACCEPTED；不复制/链接 HDFView Java/SWT code；不新增 QML/Quick/WebEngine、Python、Matplotlib、外部图标包、reconstruction、Provider/gateway 或新的 MRI artifact；不变成 generic HDF4/HDF5/NetCDF/FITS browser/editor，不支持 generic object/attribute edit/save、URL loading 或无界 hyperslab；正式 reconstructed image 只使用标准 ISMRMRD `image_x`，不创建 `/ksj_recon`、`/ksj_debug` 或 `/ksj_meta`；不将 `ksj_*` group 设为 input prerequisite；真实 raw data 只读且不进入 KSpaceJet。 |
 
 ---
 
@@ -1230,6 +1232,8 @@ scaffold/无测试/无系统证据的观察仍然有效，不能被新架构解�
 
 - 2026-08-23 host-just formatter compatibility: Debian 13 apt 的 `just 1.40.0` 在真实容器中拒绝裸 `just --fmt --check`，并明确要求启用 unstable feature；该命令 exit 1 后停止了首次全链路。`just --unstable --fmt --check` 已在该 Debian host 与当前 Windows host 的 `just` 上成功，仍是直接使用宿主 `just`，不下载、不缓存也不锁定仓库版本。后续 Linux validation 改用显式 `--unstable` formatter mode；其余 recipe 均保持裸 `just <recipe>`。
 
+- 2026-08-24 Qt/X11 host-prerequisite repair: 用户报告 `just prepare-release` 在 `xorg/system` 失败，错误明确说明缺少 X11/XCB development packages，且 Conan 的 `tools.system.package_manager:mode=check` 不能自行安装。根 recipe 的 `qt/6.8.3` 默认启用 X11，因而经 `xorg/system`、`opengl/system` 和 `xkeyboard-config/system` 产生该宿主依赖。用户明确授权将受控 apt 安装纳入 Linux bootstrap，并确认当前工作树就是 Linux 验证环境；不使用先前历史容器。`tools/devenv/linux/bootstrap.sh` 新增仅在非 offline `--prepare` 路径调用的 `ensure_linux_qt_x11_system_requirements()`：它安装 project-owned 的完整 Qt/X11 package set，并按 `xorg/system` 的 substitute 规则选择 `libxcb-util-dev` 或 `libxcb-util0-dev`；Conan profile/global configuration 未改变，仍由 `check` mode 验证。AGENTS、README、developer/build/check/commit docs 与 P0-010 contract 已同步。`bash -n tools/devenv/linux/bootstrap.sh`、bootstrap help、mocked apt primary/fallback package-list tests、`just --unstable --fmt --check`、`just plan-check`、`just link-check`（76 files / 172 local links）、`just workspace-check`、`git diff --check` 和 execution-plan write/check 均 exit 0。实际 `sudo -n true` 输出 `sudo: a password is required`，因此没有执行 apt、`just prepare-release` 或 `just check`；状态历史为 `BLOCKED → READY → IN_PROGRESS → VERIFYING → BLOCKED`。解阻条件：用户在自己的 Linux terminal 运行 `sudo -v && just prepare-release && just check`，不得提供或记录 sudo password；收到实际输出后再恢复本项。
+
 ### 13.13 P0-007 BLOCKED 证据（含历史记录）
 
 - Work item: `P0-007`; requirements/acceptance: `FUN-035`, `AC-REL-001`、`AC-REL-002`。用户已明确本轮 Windows 只使用 Release 路径；本设计不把 Debug 作为 P0-007 的 gate。
@@ -1361,6 +1365,8 @@ scaffold/无测试/无系统证据的观察仍然有效，不能被新架构解�
 - Windows unit-test runtime deployment remediation (2026-08-24): 根因是 `ksj_add_gtest()` 在 Windows 只注册 test executable，未调用既有 runtime-DLL scanner；直接 `ksj_viewer_presentation_tests.exe` 因缺少 Conan/Qt DLL 返回 `0xc0000135`，而手工 `call conanrun.bat` 只是临时补充 `PATH`。现在每个 Windows gtest target 都在 target post-build 与常规 ALL refresh 中复用 `ksj_stage_thirdparty_runtime_dlls()`，因此 target-only build 会把其 transitive Conan/Intel DLL 闭包部署到 build `bin`；Viewer focused test 同时用官方 `windeployqt` 部署 `platforms/qwindows.dll`。`powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\devenv\windows\run.ps1 -Command @('cmake','-S','.','-B','out\\build\\windows-vs2022-release-unit-tests')`、分别构建 `ksj_viewer_presentation_tests` 与 `ksj_ismrmrd_tests` 均 exit 0（分别报告 staged 92 / 69 DLL）；未调用 `conanrun.bat` 的两个直接 executable 分别通过 7/7 和 21/21，裸 `ctest --test-dir out\\build\\windows-vs2022-release-unit-tests -C Release -R "ksj_(ismrmrd|viewer_presentation)_tests" --output-on-failure` exit 0（2/2）。共享 Qt deployment branch 亦以 `ksj_viewer` Release target build 与直接 `ksj-viewer.exe --ui-smoke` exit 0 复核。runtime scanner 仍会报告 Windows system component candidate unresolved、`windeployqt` 仍会报告缺少可选 translations catalog；实际直接启动成功，二者均非 failure。
 - Out-of-scope full-tree observation: 随后 Windows Release unit-tree default build 在未涉及本项的 `ksj_logging_tests` 编译阶段失败：`logging_tests.cpp:112` 将 `std::filesystem::path::value_type *` 传给只接受 `const char *` 的 `ksj::logging::Configure`。这不是 runtime loader failure，未在 P8-004 中修改 logging API/test；本项的两个 direct-launch 和裸 CTest evidence 保持有效。
 - Remaining acceptance evidence: 仅剩 Windows-only 用户视觉复核，使用真实 sibling-data `E:\KSpaceJet-ismrmrd-data\datasets\zen-2d-cartesian-2025\cart_t1.mrd` 检查默认 inspector、container tree 和显式 typed views。P8-004 因此保持 IN_PROGRESS；未运行 Linux 或 GitHub CI，且不对 service、clinical、performance 或 release qualification 作任何声明。
+
+- 2026-08-24 status update: Windows unit-test runtime deployment remediation 已完成；剩余的真实 sibling-data 用户视觉复核属于外部输入。为维持唯一活动工作项，P8-004 从 `IN_PROGRESS` 变为 `BLOCKED`，等待用户反馈后才可恢复，不影响已记录的 Windows focused/deployment evidence。
 
 ## 14. 需求追踪矩阵
 

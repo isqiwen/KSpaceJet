@@ -22,11 +22,13 @@ Options:
   --smoke             Run the lightweight check scripts after provisioning.
   --help              Show this help.
 
-Bootstrap uses `sudo apt-get` to ensure `just` is installed; apt handles an
-already-installed package without reinstalling it. Git, Git LFS and the default
-GCC/G++ 14 toolchain are host prerequisites. It installs pinned uv under
-.kspacejet/, then uses uv to create .venv/ and sync the locked developer-tool
-set. Use just <recipe> for the shared development commands.
+Bootstrap uses `sudo apt-get` to ensure `just` is installed. During --prepare,
+it also installs the project-curated Qt/X11 development prerequisites that the
+selected Qt dependency graph requires. Apt handles already-installed packages
+without reinstalling them. Git, Git LFS and the default GCC/G++ 14 toolchain
+are host prerequisites. It installs pinned uv under .kspacejet/, then uses uv
+to create .venv/ and sync the locked developer-tool set. Use just <recipe> for
+the shared development commands.
 EOF
 }
 
@@ -142,6 +144,79 @@ ensure_host_just() {
   sudo apt-get update
   sudo apt-get install --yes --no-install-recommends just
   require_command just
+}
+
+ensure_linux_qt_x11_system_requirements() {
+  [[ "${offline}" -eq 0 ]] || return 0
+
+  require_command apt-cache
+  require_command apt-get
+  require_command sudo
+
+  # Qt's selected Linux graph uses the xorg/system, opengl/system and
+  # xkeyboard-config/system virtual packages. Keep this package set owned by
+  # KSpaceJet rather than allowing arbitrary Conan recipes to install host
+  # packages. xorg/system uses this same substitute pair across Debian releases.
+  local xcb_util_package="libxcb-util-dev"
+  if ! apt-cache show "${xcb_util_package}" >/dev/null 2>&1; then
+    xcb_util_package="libxcb-util0-dev"
+  fi
+
+  local -a qt_x11_packages=(
+    libgl-dev
+    xkb-data
+    libx11-dev
+    libx11-xcb-dev
+    libfontenc-dev
+    libice-dev
+    libsm-dev
+    libxau-dev
+    libxaw7-dev
+    libxcomposite-dev
+    libxcursor-dev
+    libxdamage-dev
+    libxdmcp-dev
+    libxext-dev
+    libxfixes-dev
+    libxi-dev
+    libxinerama-dev
+    libxkbfile-dev
+    libxmu-dev
+    libxmuu-dev
+    libxpm-dev
+    libxrandr-dev
+    libxrender-dev
+    libxres-dev
+    libxss-dev
+    libxt-dev
+    libxtst-dev
+    libxv-dev
+    libxxf86vm-dev
+    libxcb-glx0-dev
+    libxcb-render0-dev
+    libxcb-render-util0-dev
+    libxcb-xkb-dev
+    libxcb-icccm4-dev
+    libxcb-image0-dev
+    libxcb-keysyms1-dev
+    libxcb-randr0-dev
+    libxcb-shape0-dev
+    libxcb-sync-dev
+    libxcb-xfixes0-dev
+    libxcb-xinerama0-dev
+    libxcb-dri3-dev
+    uuid-dev
+    libxcb-cursor-dev
+    libxcb-dri2-0-dev
+    libxcb-present-dev
+    libxcb-composite0-dev
+    libxcb-ewmh-dev
+    libxcb-res0-dev
+    "${xcb_util_package}")
+
+  note "ensuring Linux Qt/X11 development prerequisites with apt"
+  sudo apt-get update
+  sudo apt-get install --yes --no-install-recommends "${qt_x11_packages[@]}"
 }
 
 uv_root="${repo_root}/.kspacejet/bootstrap/uv/${KSJ_UV_VERSION}/linux-x86_64"
@@ -266,6 +341,7 @@ ensure_intel_payload_for_prepare() {
 prepare_build() {
   [[ -n "${prepare_preset}" ]] || return 0
   [[ "${verify_only}" -eq 0 ]] || die "--verify cannot be combined with --prepare"
+  ensure_linux_qt_x11_system_requirements
   ensure_intel_payload_for_prepare
 
   local profile=""
