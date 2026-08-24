@@ -32,16 +32,15 @@ of the other applications. It remains separate from the existing `KSJ_BUILD_RESE
 test/research switch. In VS Code, first run the visible
 `KSJ: bootstrap developer environment` task; the matching platform bootstrap provisions repository-local
 Python tools and uses apt on Linux to ensure `just` is installed; each Linux `prepare` also installs the project-curated Qt/X11 development prerequisites (Windows uses winget when `just` is absent). Then, before the first build or F5 debug session for a
-platform/configuration, run its matching `KSJ: prepare <platform> <config> environment` task.
+configuration on the current platform, run `KSJ: prepare Debug environment` or
+`KSJ: prepare Release environment`.
 All post-bootstrap tasks invoke the shared root `justfile` recipes. The application build
 tasks are
-`KSJ: build Linux Debug applications`, `KSJ: build Linux Release applications`,
-`KSJ: build Windows Debug applications`, and `KSJ: build Windows Release applications`;
+`KSJ: build Debug applications` and `KSJ: build Release applications`;
 each builds all five executables incrementally and does not prepare the environment. See
 [Build](conventions/build.md) for the preparation triggers and exact task mapping. The
-matching visible install tasks are `KSJ: install Linux Debug applications`,
-`KSJ: install Linux Release applications`, `KSJ: install Windows Debug applications`, and
-`KSJ: install Windows Release applications`. Each install task depends only on its
+matching visible install tasks are `KSJ: install Debug applications` and
+`KSJ: install Release applications`. Each install task depends only on its
 matching incremental application build, not on preparation; it uses that preset's
 `CMAKE_INSTALL_PREFIX` under `out/install/`.
 No external session, Connector, transport, or gateway service is a **current** KSpaceJet product

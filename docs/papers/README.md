@@ -43,10 +43,9 @@ reconstruction 主比较默认由合规 client 直连 `ksj-recon`，避免把 Co
 serialization 和 copy。
 
 历史提案中的论文 runner `ksj-research` 与其余三个应用一样默认构建并安装；它只承担外层实验编排，
-绝不构成任何被测 runtime/data-plane 路径、Provider ABI 或私有 wire shortcut。VS Code 的
-`KSJ: build Linux Debug applications`、`KSJ: build Linux Release applications`、
-`KSJ: build Windows Debug applications` 和 `KSJ: build Windows Release applications`
-均构建四个可执行程序。它与 `KSJ_BUILD_RESEARCH` 的测试/实验开关独立。
+绝不构成任何被测 runtime/data-plane 路径、Provider ABI 或私有 wire shortcut。当前 VS Code 的
+`KSJ: build Debug applications` 和 `KSJ: build Release applications`
+均构建当前配置的全部应用可执行程序。它与 `KSJ_BUILD_RESEARCH` 的测试/实验开关独立。
 
 ## 稿件状态约定
 

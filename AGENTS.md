@@ -124,21 +124,17 @@ Product application builds and unit/benchmark/research test builds are separate 
 
 ## VS Code workflow
 
-First run KSJ: bootstrap developer environment. Before the first application build for a platform/configuration, run the matching preparation task:
+First run KSJ: bootstrap developer environment. Before the first application build for a configuration on the current platform, run the matching preparation task:
 
-- KSJ: prepare Linux Debug environment
-- KSJ: prepare Linux Release environment
-- KSJ: prepare Windows Debug environment
-- KSJ: prepare Windows Release environment
+- KSJ: prepare Debug environment
+- KSJ: prepare Release environment
 
-The initial bootstrap task invokes the platform bootstrap directly; every post-bootstrap VS Code prepare/build/install task invokes the matching shared `just` recipe. Preparation verifies Intel payload, exports recipes, runs Conan install and configures CMake. Re-run it only after deleting its build directory or changing dependencies, recipes, payload, CMake/preset or profile.
+The initial bootstrap task invokes the platform bootstrap directly; every post-bootstrap VS Code prepare/build/install task invokes the matching shared `just` recipe, which selects the current platform's bootstrap script, Conan profile and CMake preset. Preparation verifies Intel payload, exports recipes, runs Conan install and configures CMake. Re-run it only after deleting its build directory or changing dependencies, recipes, payload, CMake/preset or profile.
 
-Application build tasks build all four executables incrementally:
+Application build tasks build all five executables incrementally:
 
-- KSJ: build Linux Debug applications
-- KSJ: build Linux Release applications
-- KSJ: build Windows Debug applications
-- KSJ: build Windows Release applications
+- KSJ: build Debug applications
+- KSJ: build Release applications
 
 They must not implicitly run bootstrap, Conan export/install or configure. F5 uses the same incremental path. Application install tasks must depend only on their matching incremental application build task.
 

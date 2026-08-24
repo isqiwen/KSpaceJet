@@ -120,35 +120,36 @@ PIC。不要在 KSpaceJet 构建中以 `*:shared=False` 覆盖此策略。
 
 在 VS Code 中，也可以通过 **Tasks: Run Task** 先运行可见的
 `KSJ: bootstrap developer environment` 任务；它会按当前平台调用同一 bootstrap。完成 bootstrap
-后，首次使用某个“平台 + 配置”组合时，再运行对应的准备任务：
+后，首次使用某个配置时，再运行对应的准备任务：
 
-- `KSJ: prepare Linux Debug environment`
-- `KSJ: prepare Linux Release environment`
-- `KSJ: prepare Windows Debug environment`
-- `KSJ: prepare Windows Release environment`
+- `KSJ: prepare Debug environment`
+- `KSJ: prepare Release environment`
 
 准备任务调用与命令行相同的项目 bootstrap：它先确保 Intel Git-LFS payload 完整、全量校验 manifest，
 再导出仓库内的 Conan recipe、执行 `conan install`，并运行 CMake configure，从而生成该配置的
 `conan_toolchain.cmake` 和构建系统。仅在首次使用、对应 `out/build/`
 目录被删除，或依赖、本地 Conan recipe/Intel payload、CMake 配置或 Conan profile 发生变化时，
-才需要重新运行准备任务。
+才需要重新运行准备任务。任务标签不含平台；根 `justfile` 会按当前平台选择对应的 bootstrap、Conan
+profile 和 CMake preset。
 
-日常修改 C++ 源码后，运行对应的 `KSJ: build … applications` 任务即可。它只执行 CMake
+日常修改 C++ 源码后，运行对应配置的 `KSJ: build Debug applications` 或
+`KSJ: build Release applications` 任务即可。它只执行 CMake
 增量构建，并构建五个可执行程序：`ksj`、`ksj-gateway`、`ksj-recon`、`ksj-research` 和
 `ksj-viewer`；不会
 重新 export、下载/解析 Conan 依赖或 configure。F5 的调试前构建也遵循同一规则，不会自动准备
-环境。若尚未准备该配置，先运行匹配的 `KSJ: prepare … environment`。
+环境。若尚未准备该配置，先运行匹配的 `KSJ: prepare Debug environment` 或
+`KSJ: prepare Release environment`。
 
-要安装五个已构建的程序，运行对应的可见安装任务。每个安装任务只依赖同一平台和配置的
+要安装五个已构建的程序，运行对应配置的可见安装任务。每个安装任务只依赖同一配置的
 `KSJ: build … applications` 增量构建任务，不会运行 prepare、Conan export/install 或 CMake
 configure：
 
 | 平台与配置 | VS Code 安装任务 | CMake install preset | 安装目录 |
 | --- | --- | --- | --- |
-| Linux Debug | `KSJ: install Linux Debug applications` | `linux-debug-install` | `out/install/linux-debug` |
-| Linux Release | `KSJ: install Linux Release applications` | `linux-release-install` | `out/install/linux-release` |
-| Windows Debug | `KSJ: install Windows Debug applications` | `windows-vs2022-debug-install` | `out/install/windows-vs2022-debug` |
-| Windows Release | `KSJ: install Windows Release applications` | `windows-vs2022-release-install` | `out/install/windows-vs2022-release` |
+| Linux Debug | `KSJ: install Debug applications` | `linux-debug-install` | `out/install/linux-debug` |
+| Linux Release | `KSJ: install Release applications` | `linux-release-install` | `out/install/linux-release` |
+| Windows Debug | `KSJ: install Debug applications` | `windows-vs2022-debug-install` | `out/install/windows-vs2022-debug` |
+| Windows Release | `KSJ: install Release applications` | `windows-vs2022-release-install` | `out/install/windows-vs2022-release` |
 
 安装前缀由匹配的 CMake configure preset 的 `CMAKE_INSTALL_PREFIX` 决定；不要将安装任务
 用作环境准备的替代步骤。

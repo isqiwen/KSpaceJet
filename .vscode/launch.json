@@ -13,7 +13,7 @@
      "stopAtEntry": false,
      "externalConsole": false,
      "MIMode": "gdb",
-     "preLaunchTask": "KSJ: build Linux Debug applications"
+     "preLaunchTask": "KSJ: build Debug applications"
    },
     {
       "name": "KSJ: debug gateway (Linux)",
@@ -27,7 +27,7 @@
       "stopAtEntry": false,
       "externalConsole": false,
       "MIMode": "gdb",
-      "preLaunchTask": "KSJ: build Linux Debug applications"
+      "preLaunchTask": "KSJ: build Debug applications"
     },
    {
      "name": "KSJ: debug recon (Linux)",
@@ -41,7 +41,7 @@
       "stopAtEntry": false,
       "externalConsole": false,
       "MIMode": "gdb",
-      "preLaunchTask": "KSJ: build Linux Debug applications"
+      "preLaunchTask": "KSJ: build Debug applications"
     },
     {
       "name": "KSJ: debug ksj-research (Linux)",
@@ -55,7 +55,7 @@
       "stopAtEntry": false,
       "externalConsole": false,
       "MIMode": "gdb",
-      "preLaunchTask": "KSJ: build Linux Debug applications"
+      "preLaunchTask": "KSJ: build Debug applications"
     },
    {
      "name": "KSJ: debug ksj (Windows)",
@@ -67,7 +67,7 @@
      ],
      "cwd": "${workspaceFolder}",
      "console": "integratedTerminal",
-     "preLaunchTask": "KSJ: build Windows Debug applications"
+     "preLaunchTask": "KSJ: build Debug applications"
    },
     {
       "name": "KSJ: debug gateway (Windows)",
@@ -79,7 +79,7 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "preLaunchTask": "KSJ: build Windows Debug applications"
+      "preLaunchTask": "KSJ: build Debug applications"
     },
    {
      "name": "KSJ: debug recon (Windows)",
@@ -91,7 +91,7 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "preLaunchTask": "KSJ: build Windows Debug applications"
+      "preLaunchTask": "KSJ: build Debug applications"
     },
     {
       "name": "KSJ: debug ksj-research (Windows)",
@@ -103,7 +103,7 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "preLaunchTask": "KSJ: build Windows Debug applications"
+      "preLaunchTask": "KSJ: build Debug applications"
     }
   ]
 }

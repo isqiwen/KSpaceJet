@@ -75,8 +75,9 @@ If the Intel Git-LFS payload is absent, the prepare recipe obtains it before the
 `prepare-app-tests` and `app-tests` are Linux-only because there is no corresponding Windows
 application-test preset yet.
 
-The normal VS Code workflow remains: bootstrap once, run the matching `KSJ: prepare …
-environment` task once per build configuration, then use the incremental build and install tasks.
+The normal VS Code workflow remains: bootstrap once, run `KSJ: prepare Debug environment` or
+`KSJ: prepare Release environment` once per build configuration on the current platform, then use
+the matching incremental build and install tasks.
 
 ## Tool ownership
 

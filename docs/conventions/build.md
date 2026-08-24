@@ -59,14 +59,15 @@ build.
 
 The VS Code workflow deliberately separates environment preparation from ordinary
 incremental compilation. First run the visible `KSJ: bootstrap developer environment` task,
-then run the matching preparation task before the first build for each platform/configuration:
+then run the matching preparation task before the first build for each configuration on the
+current platform:
 
 | Platform and configuration | Prepare environment | Incremental application build | Application install | CMake install preset | Install prefix |
 | --- | --- | --- | --- | --- | --- |
-| Linux Debug | `KSJ: prepare Linux Debug environment` | `KSJ: build Linux Debug applications` | `KSJ: install Linux Debug applications` | `linux-debug-install` | `out/install/linux-debug` |
-| Linux Release | `KSJ: prepare Linux Release environment` | `KSJ: build Linux Release applications` | `KSJ: install Linux Release applications` | `linux-release-install` | `out/install/linux-release` |
-| Windows Debug | `KSJ: prepare Windows Debug environment` | `KSJ: build Windows Debug applications` | `KSJ: install Windows Debug applications` | `windows-vs2022-debug-install` | `out/install/windows-vs2022-debug` |
-| Windows Release | `KSJ: prepare Windows Release environment` | `KSJ: build Windows Release applications` | `KSJ: install Windows Release applications` | `windows-vs2022-release-install` | `out/install/windows-vs2022-release` |
+| Linux Debug | `KSJ: prepare Debug environment` | `KSJ: build Debug applications` | `KSJ: install Debug applications` | `linux-debug-install` | `out/install/linux-debug` |
+| Linux Release | `KSJ: prepare Release environment` | `KSJ: build Release applications` | `KSJ: install Release applications` | `linux-release-install` | `out/install/linux-release` |
+| Windows Debug | `KSJ: prepare Debug environment` | `KSJ: build Debug applications` | `KSJ: install Debug applications` | `windows-vs2022-debug-install` | `out/install/windows-vs2022-debug` |
+| Windows Release | `KSJ: prepare Release environment` | `KSJ: build Release applications` | `KSJ: install Release applications` | `windows-vs2022-release-install` | `out/install/windows-vs2022-release` |
 
 The initial bootstrap task calls the platform bootstrap directly to provision the repository-local
 Python tool environment and ensure `just` is installed (apt on Linux, winget on Windows when absent). Linux preparation also installs the curated Qt/X11 development prerequisites before Conan resolves the Qt graph.
@@ -100,20 +101,16 @@ respectively `ksj_cli`, `ksj_gateway`, `ksj_recon`, `ksj_research`, and `ksj_vie
 
 `ksj-research` is an installed research-application scaffold; its experiment operations are not
 implemented. It must not become a runtime or data-plane dependency of the other applications.
-The VS Code application build tasks each build all five executables:
+The VS Code application build tasks each build all five executables on the current platform:
 
-- `KSJ: build Linux Debug applications`
-- `KSJ: build Linux Release applications`
-- `KSJ: build Windows Debug applications`
-- `KSJ: build Windows Release applications`
+- `KSJ: build Debug applications`
+- `KSJ: build Release applications`
 
 The corresponding visible install tasks install those same five executables without
 preparing an environment:
 
-- `KSJ: install Linux Debug applications`
-- `KSJ: install Linux Release applications`
-- `KSJ: install Windows Debug applications`
-- `KSJ: install Windows Release applications`
+- `KSJ: install Debug applications`
+- `KSJ: install Release applications`
 
 Unit-test, benchmark, and `tests/research` presets intentionally set
 `KSJ_BUILD_APPLICATIONS=OFF`. They use a dedicated target graph and must be

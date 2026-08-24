@@ -91,7 +91,7 @@ flowchart LR
 | `apps/kspacejet-recon` / `ksj-recon` | 默认构建、安装 | 真正的在线重建服务：admission、`ExecutionPlan`、runtime、背压、内存/线程预算、动态加载的 Provider plugin 和标准 image delivery | 厂商 SDK、PACS/workflow 逻辑或任意私有采集格式 |
 | `apps/kspacejet-research` / `ksj-research` | 默认构建、安装 | 跨框架实验编排、证据冻结、统计和论文制品 | CLI、gateway、reconstruction service 的 runtime/data-plane 依赖、Provider ABI 或私有 wire shortcut |
 
-在 `KSJ_BUILD_APPLICATIONS=ON` 的应用配置中，四个工程均进入默认构建和安装。VS Code 的 `KSJ: build Linux Debug applications`、`KSJ: build Linux Release applications`、`KSJ: build Windows Debug applications` 和 `KSJ: build Windows Release applications` 均构建全部四个可执行程序。既有 `KSJ_BUILD_RESEARCH` 继续只控制 `tests/research` 中的研究测试/实验目标，不控制 `ksj-research`。Provider plugin 是单独构建、安装并由内容摘要标识的动态库，而不是应用进程。
+在 `KSJ_BUILD_APPLICATIONS=ON` 的应用配置中，四个工程均进入默认构建和安装。VS Code 的 `KSJ: build Debug applications` 和 `KSJ: build Release applications` 均构建当前应用配置中的全部可执行程序。既有 `KSJ_BUILD_RESEARCH` 继续只控制 `tests/research` 中的研究测试/实验目标，不控制 `ksj-research`。Provider plugin 是单独构建、安装并由内容摘要标识的动态库，而不是应用进程。
 
 `ksj-gateway` 与 `ksj-recon` 的边界是稳定的部署边界，而不是旧系统前/后端代码的迁移边界：独立部署的站点 Connector 先把外部系统差异收敛为冻结的**公开** MRD/ISMRMRD streaming session，gateway 只监管/转发该公开 session，reconstruction service 只消费/生成该公开 session。Connector 不属于四个 KSpaceJet 标准工程，也不能把专有 payload 转交给 gateway 或 reconstruction service。两者之间绝不引入 KSpaceJet 私有封包、credit、重试或数据格式。最小部署和公平 runtime benchmark 可以让合规 MRD client 直接连接 `ksj-recon`；真实 scanner/站点集成默认经过 Connector 与 `ksj-gateway`，其额外 hop、copy 和延迟必须独立计量。
 
@@ -872,7 +872,7 @@ CLI、gateway、reconstruction service、CI 和未来 Studio 必须复用同一 
 
 ### 8.10 论文证据工具链
 
-跨框架比较使用独立 `ksj-research` runner；它与其余三个应用一样默认构建并安装。VS Code 的 `KSJ: build Linux Debug applications`、`KSJ: build Linux Release applications`、`KSJ: build Windows Debug applications` 和 `KSJ: build Windows Release applications` 均构建全部四个可执行程序。它可以用 Python 做实验编排和统计，但不能成为 CLI、gateway 或 reconstruction service 的 runtime/data-plane 依赖，也不能和 `KSJ_BUILD_RESEARCH` 的 test/research targets 混为一个开关。建议布局：
+跨框架比较使用独立 `ksj-research` runner；它与其余三个应用一样默认构建并安装。VS Code 的 `KSJ: build Debug applications` 和 `KSJ: build Release applications` 均构建当前应用配置中的全部可执行程序。它可以用 Python 做实验编排和统计，但不能成为 CLI、gateway 或 reconstruction service 的 runtime/data-plane 依赖，也不能和 `KSJ_BUILD_RESEARCH` 的 test/research targets 混为一个开关。建议布局：
 
 ```text
 research/benchmarks/

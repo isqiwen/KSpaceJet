@@ -24,7 +24,7 @@
       "problemMatcher": []
     },
     {
-      "label": "KSJ: prepare Linux Debug environment",
+      "label": "KSJ: prepare Debug environment",
       "type": "shell",
       "command": "just",
       "args": [
@@ -36,7 +36,7 @@
       "problemMatcher": []
     },
     {
-      "label": "KSJ: build Linux Debug applications",
+      "label": "KSJ: build Debug applications",
       "type": "shell",
       "command": "just",
       "args": [
@@ -45,12 +45,20 @@
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "problemMatcher": [
-        "$gcc"
-      ]
+      "problemMatcher": [],
+      "linux": {
+        "problemMatcher": [
+          "$gcc"
+        ]
+      },
+      "windows": {
+        "problemMatcher": [
+          "$msCompile"
+        ]
+      }
     },
     {
-      "label": "KSJ: install Linux Debug applications",
+      "label": "KSJ: install Debug applications",
       "type": "shell",
       "command": "just",
       "args": [
@@ -59,13 +67,21 @@
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "dependsOn": "KSJ: build Linux Debug applications",
-      "problemMatcher": [
-        "$gcc"
-      ]
+      "dependsOn": "KSJ: build Debug applications",
+      "problemMatcher": [],
+      "linux": {
+        "problemMatcher": [
+          "$gcc"
+        ]
+      },
+      "windows": {
+        "problemMatcher": [
+          "$msCompile"
+        ]
+      }
     },
     {
-      "label": "KSJ: prepare Linux Release environment",
+      "label": "KSJ: prepare Release environment",
       "type": "shell",
       "command": "just",
       "args": [
@@ -77,7 +93,7 @@
       "problemMatcher": []
     },
     {
-      "label": "KSJ: build Linux Release applications",
+      "label": "KSJ: build Release applications",
       "type": "shell",
       "command": "just",
       "args": [
@@ -86,12 +102,20 @@
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "problemMatcher": [
-        "$gcc"
-      ]
+      "problemMatcher": [],
+      "linux": {
+        "problemMatcher": [
+          "$gcc"
+        ]
+      },
+      "windows": {
+        "problemMatcher": [
+          "$msCompile"
+        ]
+      }
     },
     {
-      "label": "KSJ: install Linux Release applications",
+      "label": "KSJ: install Release applications",
       "type": "shell",
       "command": "just",
       "args": [
@@ -100,92 +124,18 @@
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "dependsOn": "KSJ: build Linux Release applications",
-      "problemMatcher": [
-        "$gcc"
-      ]
-    },
-    {
-      "label": "KSJ: prepare Windows Debug environment",
-      "type": "shell",
-      "command": "just",
-      "args": [
-        "prepare-debug"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
+      "dependsOn": "KSJ: build Release applications",
+      "problemMatcher": [],
+      "linux": {
+        "problemMatcher": [
+          "$gcc"
+        ]
       },
-      "problemMatcher": []
-    },
-    {
-      "label": "KSJ: build Windows Debug applications",
-      "type": "shell",
-      "command": "just",
-      "args": [
-        "build-debug-applications"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [
-        "$msCompile"
-      ]
-    },
-    {
-      "label": "KSJ: install Windows Debug applications",
-      "type": "shell",
-      "command": "just",
-      "args": [
-        "install-debug-applications"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "dependsOn": "KSJ: build Windows Debug applications",
-      "problemMatcher": [
-        "$msCompile"
-      ]
-    },
-    {
-      "label": "KSJ: prepare Windows Release environment",
-      "type": "shell",
-      "command": "just",
-      "args": [
-        "prepare-release"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "KSJ: build Windows Release applications",
-      "type": "shell",
-      "command": "just",
-      "args": [
-        "build-release-applications"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [
-        "$msCompile"
-      ]
-    },
-    {
-      "label": "KSJ: install Windows Release applications",
-      "type": "shell",
-      "command": "just",
-      "args": [
-        "install-release-applications"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "dependsOn": "KSJ: build Windows Release applications",
-      "problemMatcher": [
-        "$msCompile"
-      ]
+      "windows": {
+        "problemMatcher": [
+          "$msCompile"
+        ]
+      }
     }
   ]
 }
