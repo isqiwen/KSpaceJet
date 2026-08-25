@@ -32,6 +32,16 @@ struct KspacePresentation {
   QJsonObject details;
 };
 
+// The selected acquisition supplies the non-planar ISMRMRD frame counters
+// (encoding, slice, contrast, phase, repetition, etc.) for a raw Cartesian
+// k-space plane. A negative coil channel requests RSS across every active
+// coil. This is a display request only: it neither edits nor retains source
+// acquisitions.
+struct CartesianKspaceRequest {
+  std::uint32_t reference_acquisition_ordinal{0U};
+  std::int32_t coil_channel{-1};
+};
+
 // Window/level is applied only while producing one bounded display derivative.
 // It does not retain source pixels or modify the standard ISMRMRD artifact.
 struct ImageDisplaySettings {
@@ -64,8 +74,12 @@ struct PipelinePresentation {
 
 [[nodiscard]] MetadataPresentation make_metadata_presentation(const InspectionSession& session);
 
-[[nodiscard]] bool make_kspace_presentation(InspectionSession& session, std::uint32_t ordinal,
-                                            KspacePresentation& presentation, QString& error);
+// Builds a bounded raw Cartesian ISMRMRD acquisition grid. The x axis is the
+// centered readout coordinate and y is kspace_encode_step_1. It deliberately
+// rejects non-Cartesian acquisitions rather than presenting their trajectory
+// samples as though they were a Cartesian matrix.
+[[nodiscard]] bool make_cartesian_kspace_presentation(InspectionSession& session, CartesianKspaceRequest request,
+                                                      KspacePresentation& presentation, QString& error);
 
 [[nodiscard]] bool make_image_presentation(InspectionSession& session, const QString& series_id, std::uint32_t ordinal,
                                            std::uint16_t z_index, std::uint16_t channel_index,

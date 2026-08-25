@@ -18,8 +18,6 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QHBoxLayout>
-#include <QJsonArray>
-#include <QJsonObject>
 #include <QLabel>
 #include <QKeySequence>
 #include <QLineEdit>
@@ -55,12 +53,14 @@
 #include <array>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
 
 const QSize kMaximumUiPixmapSize{1600, 1200};
 const QSize kMaximumZoomedPixmapSize{4096, 4096};
+constexpr int kMaximumAttributePreviewCharacters = 50;
 
 enum class SemanticObjectKind : int {
   source_file,
@@ -98,9 +98,69 @@ constexpr int kNavigationDefaultViewRole = Qt::UserRole + 2;
     case SemanticObjectKind::waveforms:
       return QStringLiteral("ISMRMRD waveforms");
     case SemanticObjectKind::pipeline:
-      return QStringLiteral("PipelineDefinition");
+      return QStringLiteral("Pipeline");
   }
   return QStringLiteral("object");
+}
+
+[[nodiscard]] bool inspection_object_locator(const SemanticObjectKind kind,
+                                             ksj::ismrmrd::InspectionObjectLocator& locator) {
+  switch (kind) {
+    case SemanticObjectKind::container:
+      locator = {.kind = ksj::ismrmrd::InspectionObjectKind::container};
+      return true;
+    case SemanticObjectKind::header:
+      locator = {.kind = ksj::ismrmrd::InspectionObjectKind::xml};
+      return true;
+    case SemanticObjectKind::acquisitions:
+      locator = {.kind = ksj::ismrmrd::InspectionObjectKind::acquisitions};
+      return true;
+    case SemanticObjectKind::waveforms:
+      locator = {.kind = ksj::ismrmrd::InspectionObjectKind::waveforms};
+      return true;
+    case SemanticObjectKind::source_file:
+    case SemanticObjectKind::images:
+    case SemanticObjectKind::pipeline:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] QString attribute_array_size(const ksj::ismrmrd::InspectionObjectAttributeDescriptor& attribute) {
+  if (attribute.dimensions.empty()) {
+    return QStringLiteral("1");
+  }
+  QStringList dimensions;
+  dimensions.reserve(static_cast<qsizetype>(attribute.dimensions.size()));
+  for (const auto dimension : attribute.dimensions) {
+    dimensions.append(QString::number(static_cast<qulonglong>(dimension)));
+  }
+  return dimensions.join(QStringLiteral(" × "));
+}
+
+[[nodiscard]] QString attribute_preview(const ksj::ismrmrd::InspectionObjectAttributeDescriptor& attribute) {
+  using State = ksj::ismrmrd::InspectionAttributeValuePreviewState;
+  QString preview;
+  switch (attribute.value_preview_state) {
+    case State::available:
+      preview =
+        attribute.value_preview.empty()
+          ? QObject::tr("(empty)")
+          : QString::fromUtf8(attribute.value_preview.data(), static_cast<qsizetype>(attribute.value_preview.size()));
+      break;
+    case State::truncated:
+      preview =
+        QString::fromUtf8(attribute.value_preview.data(), static_cast<qsizetype>(attribute.value_preview.size())) +
+        QStringLiteral("…");
+      break;
+    case State::unsupported:
+      preview = QObject::tr("(unsupported preview)");
+      break;
+  }
+  if (preview.size() > kMaximumAttributePreviewCharacters) {
+    preview = QStringLiteral("%1…").arg(preview.left(kMaximumAttributePreviewCharacters - 1));
+  }
+  return preview;
 }
 
 class OpenAsDialog final : public QDialog {
@@ -564,7 +624,8 @@ void ViewerWindow::create_workbench() {
   attributes_layout->setContentsMargins(6, 6, 6, 6);
   attributes_layout->setSpacing(4);
   object_attributes_status_ =
-    make_text(tr("Standard ISMRMRD image MetaAttributes only. Generic HDF5 attribute editing is unavailable."),
+    make_text(tr("Read-only, bounded native HDF5 attributes attached to the selected standard MRD object. "
+                 "ISMRMRD image MetaAttributes are shown only in Image details."),
               "inspectorHint", attributes_page);
   object_attributes_status_->setObjectName(QStringLiteral("objectAttributesStatus"));
   attributes_layout->addWidget(object_attributes_status_);
@@ -779,32 +840,43 @@ void ViewerWindow::create_metadata_page() {
 
 void ViewerWindow::create_kspace_page() {
   const auto page =
-    make_workspace_page(tabs_, QStringLiteral("kspacePage"), tr("ACQUISITION VIEW"), tr("K-space"),
-                        tr("Inspect a bounded acquisition magnitude projection. This is not a reconstructed image."));
+    make_workspace_page(tabs_, QStringLiteral("kspacePage"), tr("CARTESIAN K-SPACE"), tr("K-space"),
+                        tr("Render one bounded raw Cartesian ISMRMRD plane. This is not a reconstructed image."));
 
   auto* controls_card = make_surface(page.widget, QStringLiteral("kspaceControlsCard"), QStringLiteral("controls"));
   auto* controls = new QHBoxLayout(controls_card);
   controls->setContentsMargins(16, 12, 16, 12);
   controls->setSpacing(10);
-  controls->addWidget(make_text(tr("Acquisition ordinal"), "controlLabel", controls_card));
+  controls->addWidget(make_text(tr("Reference acquisition"), "controlLabel", controls_card));
   acquisition_ordinal_ = new QSpinBox(controls_card);
   acquisition_ordinal_->setObjectName(QStringLiteral("acquisitionOrdinal"));
   acquisition_ordinal_->setRange(0, 0);
   controls->addWidget(acquisition_ordinal_);
-  load_acquisition_button_ = new QToolButton(controls_card);
-  load_acquisition_button_->setObjectName(QStringLiteral("kspaceInspectButton"));
-  load_acquisition_button_->setText(tr("Inspect acquisition"));
-  load_acquisition_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-  load_acquisition_button_->setProperty("buttonRole", QStringLiteral("primary"));
-  load_acquisition_button_->setMinimumHeight(34);
-  controls->addWidget(load_acquisition_button_);
+  controls->addWidget(make_text(tr("Coil"), "controlLabel", controls_card));
+  kspace_coil_ = new QComboBox(controls_card);
+  kspace_coil_->setObjectName(QStringLiteral("kspaceCoilSelector"));
+  kspace_coil_->setMinimumContentsLength(20);
+  controls->addWidget(kspace_coil_);
+  render_kspace_button_ = new QToolButton(controls_card);
+  render_kspace_button_->setObjectName(QStringLiteral("renderKspaceButton"));
+  render_kspace_button_->setText(tr("Render Cartesian K-space"));
+  render_kspace_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+  render_kspace_button_->setProperty("buttonRole", QStringLiteral("primary"));
+  render_kspace_button_->setMinimumHeight(34);
+  controls->addWidget(render_kspace_button_);
   controls->addStretch(1);
   page.layout->addWidget(controls_card);
-  connect(load_acquisition_button_, &QToolButton::clicked, this, [this] {
-    load_acquisition();
+  connect(render_kspace_button_, &QToolButton::clicked, this, [this] {
+    load_kspace();
   });
   connect(acquisition_ordinal_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this] {
-    refresh_acquisition_header_table();
+    kspace_presentation_ = {};
+    refresh_kspace_controls();
+    refresh_kspace();
+  });
+  connect(kspace_coil_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this] {
+    kspace_presentation_ = {};
+    refresh_kspace();
   });
 
   auto* view_splitter = new QSplitter(Qt::Horizontal, page.widget);
@@ -814,8 +886,8 @@ void ViewerWindow::create_kspace_page() {
   auto* canvas_layout = new QVBoxLayout(canvas_card);
   canvas_layout->setContentsMargins(18, 16, 18, 18);
   canvas_layout->setSpacing(8);
-  add_card_heading(canvas_layout, canvas_card, tr("Magnitude projection"),
-                   tr("Bounded display derivative of one acquisition."));
+  add_card_heading(canvas_layout, canvas_card, tr("Cartesian K-space magnitude"),
+                   tr("x: centered readout; y: k-space encode step 1; log10(1 + RMS magnitude)."));
   kspace_image_ = new QLabel(canvas_card);
   kspace_image_->setObjectName(QStringLiteral("kspaceCanvas"));
   kspace_image_->setAlignment(Qt::AlignCenter);
@@ -829,14 +901,14 @@ void ViewerWindow::create_kspace_page() {
   auto* detail_layout = new QVBoxLayout(detail_card);
   detail_layout->setContentsMargins(18, 16, 18, 18);
   detail_layout->setSpacing(8);
-  add_card_heading(detail_layout, detail_card, tr("Acquisition details"),
-                   tr("Sampling facts for the displayed projection."));
+  add_card_heading(detail_layout, detail_card, tr("K-space plane details"),
+                   tr("Frame selection, aggregation and display bounds for the raw Cartesian plane."));
   kspace_summary_ = make_read_only_text(detail_card);
   kspace_summary_->setObjectName(QStringLiteral("kspaceSummary"));
-  kspace_summary_->setMinimumHeight(82);
-  kspace_summary_->setMaximumHeight(124);
+  kspace_summary_->setMinimumHeight(110);
+  kspace_summary_->setMaximumHeight(180);
   detail_layout->addWidget(kspace_summary_);
-  detail_layout->addWidget(make_text(tr("Header-only acquisition table"), "cardTitle", detail_card));
+  detail_layout->addWidget(make_text(tr("Reference acquisition header"), "cardTitle", detail_card));
   acquisition_header_table_ = new QTableWidget(detail_card);
   acquisition_header_table_->setObjectName(QStringLiteral("acquisitionHeaderTable"));
   acquisition_header_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -849,7 +921,7 @@ void ViewerWindow::create_kspace_page() {
   view_splitter->setStretchFactor(1, 2);
   view_splitter->setSizes({640, 360});
   page.layout->addWidget(view_splitter, 1);
-  tabs_->addTab(page.widget, tr("Acquisition"));
+  tabs_->addTab(page.widget, tr("K-space"));
 }
 
 void ViewerWindow::create_image_page() {
@@ -1102,7 +1174,9 @@ void ViewerWindow::inspect_selected_object() {
   }
   const auto view = static_cast<WorkspaceView>(view_data.toInt());
   activate_navigation_item(item, view);
-  if (kind == SemanticObjectKind::images && inspection_session_.is_open()) {
+  if (kind == SemanticObjectKind::acquisitions && inspection_session_.is_open()) {
+    load_kspace();
+  } else if (kind == SemanticObjectKind::images && inspection_session_.is_open()) {
     load_image();
   }
 }
@@ -1137,7 +1211,7 @@ void ViewerWindow::open_selected_object_as() {
       break;
     case SemanticObjectKind::acquisitions:
       targets.push_back({tr("Acquisition header table"), WorkspaceView::kspace, false});
-      targets.push_back({tr("K-space magnitude projection"), WorkspaceView::kspace, true});
+      targets.push_back({tr("Cartesian K-space viewer"), WorkspaceView::kspace, true});
       break;
     case SemanticObjectKind::images:
       targets.push_back({tr("Standard image_x image viewer"), WorkspaceView::image, true});
@@ -1163,7 +1237,7 @@ void ViewerWindow::open_selected_object_as() {
   activate_navigation_item(item, target.view);
   if (target.materializes_payload) {
     if (kind == SemanticObjectKind::acquisitions) {
-      load_acquisition();
+      load_kspace();
     } else if (kind == SemanticObjectKind::images) {
       load_image();
     }
@@ -1377,30 +1451,27 @@ void ViewerWindow::rebuild_dataset_navigation() {
                                        : tr("This container has no standard XML header."));
       make_child(container_item, tr("Acquisitions / K-space"), SemanticObjectKind::acquisitions, container_path,
                  WorkspaceView::kspace, descriptor.has_acquisitions && descriptor.acquisition_count > 0U,
-                 descriptor.has_acquisitions ? tr("Open a header-only table or a bounded k-space projection.")
+                 descriptor.has_acquisitions ? tr("Render a bounded raw Cartesian k-space plane or inspect its header.")
                                              : tr("This container has no standard acquisitions."));
-      make_child(container_item, descriptor.image_series_count > 0U ? tr("Images") : tr("Images (none)"),
-                 SemanticObjectKind::images, container_path, WorkspaceView::image,
-                 descriptor.has_images && descriptor.image_series_count > 0U,
-                 descriptor.has_images ? tr("Open a bounded standard ISMRMRD image_x view.")
-                                       : tr("This container has no standard ISMRMRD image series."));
-      make_child(container_item, descriptor.has_waveforms ? tr("Waveforms (discovered)") : tr("Waveforms (none)"),
-                 SemanticObjectKind::waveforms, container_path, WorkspaceView::metadata, false,
-                 descriptor.has_waveforms
-                   ? tr("Standard waveform storage is present, but sample inspection is unavailable.")
-                   : tr("This container has no standard ISMRMRD waveform storage."));
+      if (descriptor.has_images && descriptor.image_series_count > 0U) {
+        make_child(container_item, tr("Images"), SemanticObjectKind::images, container_path, WorkspaceView::image, true,
+                   tr("Open a bounded standard ISMRMRD image_x view."));
+      }
+      if (descriptor.has_waveforms) {
+        make_child(container_item, tr("Waveforms (discovered)"), SemanticObjectKind::waveforms, container_path,
+                   WorkspaceView::metadata, false,
+                   tr("Standard waveform storage is present, but sample inspection is unavailable."));
+      }
       container_item->setExpanded(true);
     }
   }
 
-  auto* pipeline_item = make_root(pipeline_presentation_.details.isEmpty() ? tr("PipelineDefinition (not open)")
-                                                                           : tr("PipelineDefinition (parsed)"),
-                                  SemanticObjectKind::pipeline, {}, WorkspaceView::pipeline, true,
-                                  pipeline_presentation_.details.isEmpty()
-                                    ? tr("Open a PipelineDefinition JSON document for parse-only inspection.")
-                                    : pipeline_presentation_.details.value(QStringLiteral("source")).toString());
-  if (selected_item == nullptr && previous_kind == SemanticObjectKind::pipeline) {
-    selected_item = pipeline_item;
+  if (!pipeline_presentation_.details.isEmpty()) {
+    auto* pipeline_item = make_root(tr("Pipeline"), SemanticObjectKind::pipeline, {}, WorkspaceView::pipeline, true,
+                                    pipeline_presentation_.details.value(QStringLiteral("source")).toString());
+    if (selected_item == nullptr && previous_kind == SemanticObjectKind::pipeline) {
+      selected_item = pipeline_item;
+    }
   }
   if (selected_item != nullptr) {
     dataset_navigation_->setCurrentItem(selected_item);
@@ -1420,9 +1491,12 @@ void ViewerWindow::update_object_inspector(QTreeWidgetItem* item) {
     set_table_contents(object_semantics_table_, {QString{}, QString{}}, rows);
     object_semantics_table_->horizontalHeader()->setVisible(false);
     object_semantics_table_->setColumnWidth(0, 180);
-    const auto visible_height = std::max(46, static_cast<int>(rows.size()) * 23 + 4);
-    object_semantics_table_->setMinimumHeight(visible_height);
-    object_semantics_table_->setMaximumHeight(visible_height);
+    object_semantics_table_->resizeRowsToContents();
+    auto visible_height = object_semantics_table_->frameWidth() * 2;
+    for (int row = 0; row < object_semantics_table_->rowCount(); ++row) {
+      visible_height += object_semantics_table_->rowHeight(row);
+    }
+    object_semantics_table_->setFixedHeight(std::max(46, visible_height));
   };
   const auto set_members_rows = [this](const QList<QStringList>& rows) {
     set_table_contents(object_members_table_, {tr("Name"), tr("Type"), tr("Array Size")}, rows);
@@ -1474,19 +1548,12 @@ void ViewerWindow::update_object_inspector(QTreeWidgetItem* item) {
       semantic_rows = {{tr("Status:"), tr("Open a local standard ISMRMRD file to inspect it.")}};
     }
   } else if (kind == SemanticObjectKind::pipeline) {
-    if (pipeline_presentation_.details.isEmpty()) {
-      name = tr("PipelineDefinition (not open)");
-      path.clear();
-      type = tr("PipelineDefinition JSON document");
-      semantic_rows = {{tr("Status:"), tr("Open a PipelineDefinition for parse-only inspection.")}};
-    } else {
-      path = pipeline_presentation_.details.value(QStringLiteral("source")).toString();
-      name = QFileInfo(path).fileName();
-      type = tr("PipelineDefinition JSON document");
-      semantic_rows = {{tr("Mode:"), tr("Parsed only")},
-                       {tr("Provider resolution:"), tr("Unavailable")},
-                       {tr("Compilation / execution:"), tr("Unavailable")}};
-    }
+    path = pipeline_presentation_.details.value(QStringLiteral("source")).toString();
+    name = QFileInfo(path).fileName();
+    type = tr("PipelineDefinition JSON document");
+    semantic_rows = {{tr("Mode:"), tr("Parsed only")},
+                     {tr("Provider resolution:"), tr("Unavailable")},
+                     {tr("Compilation / execution:"), tr("Unavailable")}};
   } else {
     const auto found =
       std::find_if(inspection_session_.available_containers().begin(), inspection_session_.available_containers().end(),
@@ -1564,37 +1631,46 @@ void ViewerWindow::update_object_inspector(QTreeWidgetItem* item) {
   set_semantics_rows(semantic_rows);
   set_members_rows(member_rows);
 
-  const bool active_container = inspection_session_.is_open() && container_path == inspection_session_.container_path();
-
-  if (kind == SemanticObjectKind::images && !image_presentation_.details.isEmpty() && active_container) {
-    QList<QStringList> rows;
-    const auto attributes = image_presentation_.details.value(QStringLiteral("meta_attributes")).toArray();
-    for (const auto& entry : attributes) {
-      const auto attribute = entry.toObject();
-      QStringList values;
-      for (const auto& value : attribute.value(QStringLiteral("values")).toArray()) {
-        values.append(value.toString());
-      }
-      auto value = values.join(QStringLiteral(" | "));
-      if (value.size() > 50) {
-        value = QStringLiteral("%1...").arg(value.left(47));
-      }
-      rows.append(
-        {attribute.value(QStringLiteral("name")).toString(), tr("string"), QString::number(values.size()), value});
-    }
-    if (rows.isEmpty()) {
-      object_attributes_status_->setText(tr("The explicitly inspected standard image has no MetaAttributes."));
+  ksj::ismrmrd::InspectionObjectLocator locator;
+  if (!inspection_object_locator(kind, locator)) {
+    if (kind == SemanticObjectKind::images) {
+      object_attributes_status_->setText(
+        tr("Images is a semantic collection, not one HDF5 object. Its ISMRMRD Image MetaAttributes are displayed "
+           "only in the Image details view."));
+    } else if (kind == SemanticObjectKind::pipeline) {
+      object_attributes_status_->setText(
+        tr("PipelineDefinition is JSON rather than an HDF5 object and has no HDF5 attributes."));
     } else {
       object_attributes_status_->setText(
-        tr("%1 standard ISMRMRD Image MetaAttribute name(s) on the explicitly inspected image.").arg(rows.size()));
+        tr("Select a standard MRD container or one of its concrete semantic objects to inspect HDF5 attributes."));
     }
-    set_attribute_rows(rows);
+    set_attribute_rows({});
+    return;
+  }
+
+  std::vector<ksj::ismrmrd::InspectionObjectAttributeDescriptor> attributes;
+  QString attribute_error;
+  if (!inspection_session_.read_object_attributes(container_path, locator, attributes, attribute_error)) {
+    object_attributes_status_->setText(
+      tr("Unable to read bounded HDF5 attributes for %1: %2").arg(path, attribute_error));
+    set_attribute_rows({});
+    return;
+  }
+
+  QList<QStringList> rows;
+  rows.reserve(static_cast<qsizetype>(attributes.size()));
+  for (const auto& attribute : attributes) {
+    rows.append({QString::fromUtf8(attribute.name.data(), static_cast<qsizetype>(attribute.name.size())),
+                 QString::fromUtf8(attribute.type_name.data(), static_cast<qsizetype>(attribute.type_name.size())),
+                 attribute_array_size(attribute), attribute_preview(attribute)});
+  }
+  if (rows.isEmpty()) {
+    object_attributes_status_->setText(tr("No HDF5 attributes are attached to %1.").arg(path));
   } else {
     object_attributes_status_->setText(
-      tr("Inspect a standard image to show its bounded ISMRMRD Image MetaAttributes. Generic HDF5 attributes are not "
-         "exposed."));
-    set_attribute_rows({});
+      tr("%1 HDF5 attribute(s) attached to %2. Values are bounded read-only previews.").arg(rows.size()).arg(path));
   }
+  set_attribute_rows(rows);
 }
 
 void ViewerWindow::update_selection_actions() {
@@ -1729,25 +1805,53 @@ void ViewerWindow::open_pipeline() {
   }
 
   QString error;
-  if (!load_pipeline_presentation(file_path, pipeline_presentation_, error)) {
+  if (!open_pipeline_source(file_path, error)) {
     QMessageBox::critical(this, tr("Cannot open PipelineDefinition"), error);
-    return;
   }
+}
+
+bool ViewerWindow::open_pipeline_source(const QString& file_path, QString& error) {
+  const auto trimmed_path = file_path.trimmed();
+  if (trimmed_path.startsWith(QStringLiteral("http://"), Qt::CaseInsensitive) ||
+      trimmed_path.startsWith(QStringLiteral("https://"), Qt::CaseInsensitive) ||
+      trimmed_path.startsWith(QStringLiteral("ftp://"), Qt::CaseInsensitive)) {
+    error = tr("KSpaceJet Viewer opens local PipelineDefinition JSON files only; URLs are not supported");
+    return false;
+  }
+
+  PipelinePresentation next_presentation;
+  if (!load_pipeline_presentation(trimmed_path, next_presentation, error)) {
+    return false;
+  }
+
+  pipeline_presentation_ = next_presentation;
   refresh_pipeline();
   set_workspace_view(WorkspaceView::pipeline);
   rebuild_dataset_navigation();
   append_info(tr("Parsed PipelineDefinition without resolving or executing it."));
+  return true;
 }
 
-void ViewerWindow::load_acquisition() {
-  QString error;
-  if (!make_kspace_presentation(inspection_session_, static_cast<std::uint32_t>(acquisition_ordinal_->value()),
-                                kspace_presentation_, error)) {
-    QMessageBox::warning(this, tr("Cannot inspect acquisition"), error);
+void ViewerWindow::load_kspace() {
+  if (kspace_coil_ == nullptr || kspace_coil_->currentIndex() < 0) {
+    QMessageBox::warning(this, tr("Cannot render Cartesian K-space"),
+                         tr("Choose a reference acquisition and coil display mode first."));
     return;
   }
+
+  const CartesianKspaceRequest request{
+    .reference_acquisition_ordinal = static_cast<std::uint32_t>(acquisition_ordinal_->value()),
+    .coil_channel = kspace_coil_->currentData().toInt(),
+  };
+  KspacePresentation next_presentation;
+  QString error;
+  if (!make_cartesian_kspace_presentation(inspection_session_, request, next_presentation, error)) {
+    QMessageBox::warning(this, tr("Cannot render Cartesian K-space"), error);
+    return;
+  }
+  kspace_presentation_ = std::move(next_presentation);
   refresh_kspace();
-  append_info(tr("Created a bounded k-space display derivative; it is not a reconstructed image."));
+  append_info(tr("Rendered a bounded raw Cartesian k-space plane; it is not a reconstructed image."));
 }
 
 void ViewerWindow::load_image() {
@@ -1850,6 +1954,7 @@ void ViewerWindow::refresh_metadata() {
   acquisition_ordinal_->setRange(0, 0);
   image_series_->clear();
   if (!inspection_session_.is_open()) {
+    refresh_kspace_controls();
     update_image_controls();
     update_source_context();
     rebuild_dataset_navigation();
@@ -1862,6 +1967,7 @@ void ViewerWindow::refresh_metadata() {
   for (const auto& series : metadata.image_series) {
     image_series_->addItem(QString::fromUtf8(series.series_id.data(), static_cast<qsizetype>(series.series_id.size())));
   }
+  refresh_kspace_controls();
   update_image_controls();
   update_source_context();
   rebuild_dataset_navigation();
@@ -1903,10 +2009,49 @@ void ViewerWindow::refresh_acquisition_header_table() {
   set_table_contents(acquisition_header_table_, columns, rows);
 }
 
+void ViewerWindow::refresh_kspace_controls() {
+  if (kspace_coil_ == nullptr) {
+    return;
+  }
+
+  const auto previously_selected_coil = kspace_coil_->currentIndex() >= 0 ? kspace_coil_->currentData().toInt() : -1;
+  const QSignalBlocker coil_blocker(kspace_coil_);
+  kspace_coil_->clear();
+  if (!inspection_session_.is_open() || inspection_session_.metadata().acquisition_count == 0U) {
+    kspace_coil_->addItem(tr("RSS (all active coils)"), -1);
+    update_control_state();
+    return;
+  }
+
+  ksj::ismrmrd::AcquisitionHeader header;
+  std::string error;
+  const auto ordinal = static_cast<std::uint32_t>(acquisition_ordinal_->value());
+  if (!inspection_session_.reader().read_acquisition_header(ordinal, header, error)) {
+    kspace_coil_->addItem(tr("RSS (header unavailable)"), -1);
+    update_control_state();
+    return;
+  }
+
+  kspace_coil_->addItem(tr("RSS (all %1 active coils)").arg(header.active_channels), -1);
+  for (std::uint16_t channel = 0U; channel < header.active_channels; ++channel) {
+    kspace_coil_->addItem(tr("Coil %1").arg(channel), static_cast<int>(channel));
+  }
+  const auto restored_index = kspace_coil_->findData(previously_selected_coil);
+  kspace_coil_->setCurrentIndex(restored_index >= 0 ? restored_index : 0);
+  update_control_state();
+}
+
 void ViewerWindow::refresh_kspace() {
   set_display_image(kspace_image_, kspace_presentation_.image,
-                    tr("Open a dataset and choose an acquisition to display a k-space projection."));
-  kspace_summary_->setPlainText(kspace_presentation_.summary);
+                    tr("Select a reference acquisition and render a Cartesian k-space plane."));
+  if (kspace_presentation_.details.isEmpty()) {
+    kspace_summary_->setPlainText(inspection_session_.is_open()
+                                    ? tr("Choose a reference acquisition, select RSS or one coil, then render a raw "
+                                         "Cartesian k-space plane. Non-Cartesian trajectories are not shown as grids.")
+                                    : tr("Open a standard ISMRMRD source to render raw Cartesian k-space."));
+  } else {
+    kspace_summary_->setPlainText(kspace_presentation_.summary);
+  }
   refresh_acquisition_header_table();
   update_export_availability();
 }
@@ -2044,7 +2189,8 @@ void ViewerWindow::update_control_state() {
     }
   }
   acquisition_ordinal_->setEnabled(has_acquisitions);
-  load_acquisition_button_->setEnabled(has_acquisitions);
+  kspace_coil_->setEnabled(has_acquisitions);
+  render_kspace_button_->setEnabled(has_acquisitions && kspace_coil_->count() > 0);
   image_series_->setEnabled(has_images);
   image_ordinal_->setEnabled(has_images);
   image_z_->setEnabled(has_images);
@@ -2130,7 +2276,7 @@ bool ViewerWindow::current_derivative(VisualizationDerivative& derivative, QStri
   }
   if (active_tab == 1) {
     if (kspace_presentation_.details.isEmpty()) {
-      error = tr("Inspect an acquisition before exporting its k-space display derivative.");
+      error = tr("Render a Cartesian k-space plane before exporting its display derivative.");
       return false;
     }
     derivative.view_name = QStringLiteral("k-space");

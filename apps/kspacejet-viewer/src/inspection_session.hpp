@@ -39,6 +39,14 @@ public:
   available_containers() const noexcept;
   [[nodiscard]] const ksj::ismrmrd::InspectionDatasetMetadata& metadata() const noexcept;
 
+  // Reads attributes without changing the active container or retaining a
+  // second HDF5 handle. Selecting an inactive verified container uses a
+  // short-lived reader so tree selection remains non-destructive.
+  [[nodiscard]] bool read_object_attributes(const QString& container_path,
+                                            const ksj::ismrmrd::InspectionObjectLocator& object,
+                                            std::vector<ksj::ismrmrd::InspectionObjectAttributeDescriptor>& attributes,
+                                            QString& error);
+
   [[nodiscard]] ksj::ismrmrd::InspectionReader& reader() noexcept;
   [[nodiscard]] const ksj::ismrmrd::InspectionReader& reader() const noexcept;
 

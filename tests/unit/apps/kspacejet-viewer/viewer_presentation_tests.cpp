@@ -24,6 +24,7 @@
 #include <QPalette>
 #include <QPlainTextEdit>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTemporaryDir>
@@ -34,11 +35,14 @@
 
 #include <hdf5.h>
 #include <ismrmrd/dataset.h>
+#include <ismrmrd/waveform.h>
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -55,6 +59,40 @@ constexpr std::string_view kXmlHeader{"<ismrmrdHeader xmlns=\"http://www.ismrm.o
                                       "</experimentalConditions></ismrmrdHeader>"};
 constexpr std::uint16_t kSourceImageWidth = 2'049U;
 constexpr std::uint16_t kSourceImageHeight = 1'025U;
+
+struct CartesianKspaceTestFrame final {
+  std::uint16_t encoding_space_ref{0U};
+  std::uint16_t kspace_encode_step_2{0U};
+  std::uint16_t average{0U};
+  std::uint16_t slice{0U};
+  std::uint16_t contrast{0U};
+  std::uint16_t phase{0U};
+  std::uint16_t repetition{0U};
+  std::uint16_t set{0U};
+  std::uint16_t segment{0U};
+  std::array<std::uint16_t, 8U> user{};
+};
+
+constexpr std::string_view kCartesianKspaceXml = R"xml(
+<ismrmrdHeader xmlns="http://www.ismrm.org/ISMRMRD">
+  <experimentalConditions><H1resonanceFrequency_Hz>123456789</H1resonanceFrequency_Hz></experimentalConditions>
+  <acquisitionSystemInformation><receiverChannels>2</receiverChannels></acquisitionSystemInformation>
+  <encoding>
+    <trajectory>cartesian</trajectory>
+    <encodedSpace>
+      <matrixSize><x>4</x><y>3</y><z>1</z></matrixSize>
+      <fieldOfView_mm><x>200</x><y>150</y><z>5</z></fieldOfView_mm>
+    </encodedSpace>
+    <reconSpace>
+      <matrixSize><x>4</x><y>3</y><z>1</z></matrixSize>
+      <fieldOfView_mm><x>200</x><y>150</y><z>5</z></fieldOfView_mm>
+    </reconSpace>
+    <encodingLimits>
+      <kspace_encoding_step_1><minimum>0</minimum><maximum>2</maximum><center>1</center></kspace_encoding_step_1>
+    </encodingLimits>
+  </encoding>
+</ismrmrdHeader>
+)xml";
 
 [[nodiscard]] std::filesystem::path native_path(const QString& value) {
 #ifdef _WIN32
@@ -77,8 +115,20 @@ void append_synthetic_image(ISMRMRD::Dataset& dataset) {
   dataset.appendImage(std::string(kImageSeries), image);
 }
 
+void append_synthetic_waveform(ISMRMRD::Dataset& dataset) {
+  ISMRMRD::Waveform waveform(2U, 1U);
+  waveform.head.measurement_uid = 31U;
+  waveform.head.scan_counter = 17U;
+  waveform.head.time_stamp = 23U;
+  waveform.head.sample_time_us = 2.5F;
+  waveform.head.waveform_id = 7U;
+  waveform.data[0U] = 1U;
+  waveform.data[1U] = 2U;
+  dataset.appendWaveform(waveform);
+}
+
 void write_synthetic_dataset(const std::filesystem::path& path, const std::string_view group = kDatasetGroup,
-                             const bool write_image = true) {
+                             const bool write_image = true, const bool write_waveform = false) {
   const auto filename = path.string();
   ISMRMRD::Dataset dataset(filename.c_str(), std::string(group).c_str(), true);
   dataset.writeHeader(std::string(kXmlHeader));
@@ -101,6 +151,79 @@ void write_synthetic_dataset(const std::filesystem::path& path, const std::strin
   if (write_image) {
     append_synthetic_image(dataset);
   }
+  if (write_waveform) {
+    append_synthetic_waveform(dataset);
+  }
+}
+
+void append_cartesian_kspace_line(ISMRMRD::Dataset& dataset, const std::uint16_t ky,
+                                  const std::array<std::complex<float>, 4U>& coil_zero,
+                                  const std::array<std::complex<float>, 4U>& coil_one,
+                                  const CartesianKspaceTestFrame frame = {}) {
+  ISMRMRD::Acquisition acquisition(4U, 2U, 0U);
+  acquisition.center_sample() = 2U;
+  acquisition.idx().kspace_encode_step_1 = ky;
+  acquisition.encoding_space_ref() = frame.encoding_space_ref;
+  acquisition.idx().kspace_encode_step_2 = frame.kspace_encode_step_2;
+  acquisition.idx().average = frame.average;
+  acquisition.idx().slice = frame.slice;
+  acquisition.idx().contrast = frame.contrast;
+  acquisition.idx().phase = frame.phase;
+  acquisition.idx().repetition = frame.repetition;
+  acquisition.idx().set = frame.set;
+  acquisition.idx().segment = frame.segment;
+  for (std::size_t index = 0U; index < frame.user.size(); ++index) {
+    acquisition.idx().user[index] = frame.user[index];
+  }
+  for (std::uint16_t sample = 0U; sample < 4U; ++sample) {
+    acquisition.data(sample, 0U) = coil_zero[sample];
+    acquisition.data(sample, 1U) = coil_one[sample];
+  }
+  dataset.appendAcquisition(acquisition);
+}
+
+void write_cartesian_kspace_dataset(const std::filesystem::path& path) {
+  const auto filename = path.string();
+  ISMRMRD::Dataset dataset(filename.c_str(), "dataset", true);
+  dataset.writeHeader(std::string(kCartesianKspaceXml));
+
+  const std::array<std::complex<float>, 4U> ky_zero_coil_zero{
+    std::complex<float>{3.0F, 0.0F}, std::complex<float>{3.0F, 0.0F}, std::complex<float>{3.0F, 0.0F},
+    std::complex<float>{3.0F, 0.0F}};
+  const std::array<std::complex<float>, 4U> ky_zero_coil_one{
+    std::complex<float>{4.0F, 0.0F}, std::complex<float>{4.0F, 0.0F}, std::complex<float>{4.0F, 0.0F},
+    std::complex<float>{4.0F, 0.0F}};
+  const std::array<std::complex<float>, 4U> repeated_ky_zero_coil_zero{
+    std::complex<float>{6.0F, 0.0F}, std::complex<float>{6.0F, 0.0F}, std::complex<float>{6.0F, 0.0F},
+    std::complex<float>{6.0F, 0.0F}};
+  const std::array<std::complex<float>, 4U> repeated_ky_zero_coil_one{
+    std::complex<float>{8.0F, 0.0F}, std::complex<float>{8.0F, 0.0F}, std::complex<float>{8.0F, 0.0F},
+    std::complex<float>{8.0F, 0.0F}};
+  const std::array<std::complex<float>, 4U> ky_two_coil_zero{
+    std::complex<float>{1.0F, 0.0F}, std::complex<float>{1.0F, 0.0F}, std::complex<float>{1.0F, 0.0F},
+    std::complex<float>{1.0F, 0.0F}};
+  const std::array<std::complex<float>, 4U> ky_two_coil_one{
+    std::complex<float>{2.0F, 0.0F}, std::complex<float>{2.0F, 0.0F}, std::complex<float>{2.0F, 0.0F},
+    std::complex<float>{2.0F, 0.0F}};
+
+  // Deliberately non-monotonic ky order, repeated ky=0, omitted ky=1, and
+  // variants for every non-planar frame counter. The viewer must group by the
+  // entire selected ISMRMRD frame, preserve empty cells, and disclose multiple
+  // source contributions.
+  append_cartesian_kspace_line(dataset, 2U, ky_two_coil_zero, ky_two_coil_one);
+  append_cartesian_kspace_line(dataset, 0U, ky_zero_coil_zero, ky_zero_coil_one);
+  append_cartesian_kspace_line(dataset, 0U, repeated_ky_zero_coil_zero, repeated_ky_zero_coil_one);
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.encoding_space_ref = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.kspace_encode_step_2 = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.average = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.slice = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.contrast = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.phase = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.repetition = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.set = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one, {.segment = 1U});
+  append_cartesian_kspace_line(dataset, 1U, ky_zero_coil_zero, ky_zero_coil_one,
+                               {.user = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 1U}});
 }
 
 void write_synthetic_image_artifact(const std::filesystem::path& path, const std::string_view group = kDatasetGroup) {
@@ -117,6 +240,25 @@ void create_empty_root_group(const std::filesystem::path& path, const std::strin
   const auto empty_group = H5Gcreate2(file, std::string(group).c_str(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   ASSERT_GE(empty_group, 0);
   EXPECT_GE(H5Gclose(empty_group), 0);
+  EXPECT_GE(H5Fclose(file), 0);
+}
+
+void write_uint32_attribute(const std::filesystem::path& path, const std::string_view object_path,
+                            const std::string_view attribute_name, const std::uint32_t value) {
+  const auto filename = path.string();
+  const auto file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+  ASSERT_GE(file, 0);
+  const auto object = H5Oopen(file, std::string(object_path).c_str(), H5P_DEFAULT);
+  ASSERT_GE(object, 0);
+  const auto dataspace = H5Screate(H5S_SCALAR);
+  ASSERT_GE(dataspace, 0);
+  const auto attribute =
+    H5Acreate2(object, std::string(attribute_name).c_str(), H5T_NATIVE_UINT32, dataspace, H5P_DEFAULT, H5P_DEFAULT);
+  ASSERT_GE(attribute, 0);
+  ASSERT_GE(H5Awrite(attribute, H5T_NATIVE_UINT32, &value), 0);
+  EXPECT_GE(H5Aclose(attribute), 0);
+  EXPECT_GE(H5Sclose(dataspace), 0);
+  EXPECT_GE(H5Oclose(object), 0);
   EXPECT_GE(H5Fclose(file), 0);
 }
 
@@ -217,6 +359,11 @@ template <typename Widget>
 } // namespace
 
 TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSize) {
+  QTemporaryDir temporary_directory;
+  ASSERT_TRUE(temporary_directory.isValid()) << temporary_directory.errorString().toStdString();
+  const auto pipeline_path = QDir(temporary_directory.path()).filePath(QStringLiteral("viewer-pipeline.json"));
+  write_file(pipeline_path, valid_pipeline_definition().toUtf8());
+
   auto& application = viewer_application();
   ksj::viewer::apply_viewer_theme(application);
 
@@ -265,7 +412,7 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
   EXPECT_NE(window.findChild<QAction*>(QStringLiteral("openMrdAction")), nullptr);
   EXPECT_NE(window.findChild<QAction*>(QStringLiteral("openPipelineAction")), nullptr);
   const auto* close_source = window.findChild<QAction*>(QStringLiteral("closeMrdAction"));
-  const auto* inspect_object = window.findChild<QAction*>(QStringLiteral("inspectObjectAction"));
+  auto* inspect_object = window.findChild<QAction*>(QStringLiteral("inspectObjectAction"));
   const auto* open_as = window.findChild<QAction*>(QStringLiteral("openAsAction"));
   const auto* copy_path = window.findChild<QAction*>(QStringLiteral("copyObjectPathAction"));
   ASSERT_NE(close_source, nullptr);
@@ -277,19 +424,31 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
   EXPECT_FALSE(open_as->isEnabled());
   EXPECT_FALSE(copy_path->isEnabled());
 
-  const auto* dataset_navigation = find_named_widget<QTreeWidget>(window, {"semanticObjectTree"});
+  auto* dataset_navigation = find_named_widget<QTreeWidget>(window, {"semanticObjectTree"});
   ASSERT_NE(dataset_navigation, nullptr);
-  ASSERT_EQ(dataset_navigation->topLevelItemCount(), 2);
+  const auto find_root = [dataset_navigation](const QString& name) -> QTreeWidgetItem* {
+    for (int index = 0; index < dataset_navigation->topLevelItemCount(); ++index) {
+      auto* candidate = dataset_navigation->topLevelItem(index);
+      if (candidate != nullptr && candidate->text(0) == name) {
+        return candidate;
+      }
+    }
+    return nullptr;
+  };
+  ASSERT_EQ(dataset_navigation->topLevelItemCount(), 1);
   EXPECT_TRUE(dataset_navigation->topLevelItem(0)->text(0).contains(QStringLiteral("No ISMRMRD source open")));
   EXPECT_FALSE(dataset_navigation->topLevelItem(0)->flags().testFlag(Qt::ItemIsEnabled));
-  EXPECT_TRUE(dataset_navigation->topLevelItem(1)->text(0).contains(QStringLiteral("PipelineDefinition")));
+  EXPECT_EQ(find_root(QStringLiteral("Pipeline")), nullptr);
 
   const auto* export_button = find_named_widget<QAbstractButton>(window, {"exportDisplayButton"});
   ASSERT_NE(export_button, nullptr);
   EXPECT_FALSE(export_button->isEnabled());
-  const auto* kspace_inspect = find_named_widget<QAbstractButton>(window, {"kspaceInspectButton"});
-  ASSERT_NE(kspace_inspect, nullptr);
-  EXPECT_FALSE(kspace_inspect->isEnabled());
+  const auto* render_kspace = find_named_widget<QAbstractButton>(window, {"renderKspaceButton"});
+  ASSERT_NE(render_kspace, nullptr);
+  EXPECT_FALSE(render_kspace->isEnabled());
+  const auto* kspace_coil = find_named_widget<QComboBox>(window, {"kspaceCoilSelector"});
+  ASSERT_NE(kspace_coil, nullptr);
+  EXPECT_FALSE(kspace_coil->isEnabled());
   const auto* image_inspect = find_named_widget<QAbstractButton>(window, {"imageInspectButton"});
   ASSERT_NE(image_inspect, nullptr);
   EXPECT_FALSE(image_inspect->isEnabled());
@@ -315,6 +474,21 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
   ASSERT_NE(info_panel, nullptr);
   EXPECT_TRUE(info_panel->toPlainText().contains(QStringLiteral("read-only"), Qt::CaseInsensitive));
 
+  QString pipeline_error;
+  ASSERT_TRUE(window.open_pipeline_source(pipeline_path, pipeline_error)) << pipeline_error.toStdString();
+  application.processEvents();
+
+  auto* pipeline_item = find_root(QStringLiteral("Pipeline"));
+  ASSERT_NE(pipeline_item, nullptr);
+  EXPECT_TRUE(pipeline_item->flags().testFlag(Qt::ItemIsEnabled));
+  dataset_navigation->setCurrentItem(pipeline_item);
+  application.processEvents();
+  ASSERT_TRUE(inspect_object->isEnabled());
+  inspect_object->trigger();
+  application.processEvents();
+  EXPECT_TRUE(data_views->isVisible());
+  EXPECT_EQ(data_views->tabText(data_views->currentIndex()), QStringLiteral("Pipeline"));
+
   window.close();
   application.processEvents();
 }
@@ -325,6 +499,8 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   const auto dataset_path = QDir(temporary_directory.path()).filePath(QStringLiteral("viewer-workbench.mrd"));
   write_synthetic_dataset(native_path(dataset_path), "dataset_1", false);
   write_synthetic_dataset(native_path(dataset_path), "dataset_2", true);
+  write_synthetic_dataset(native_path(dataset_path), "dataset_3", false, true);
+  write_uint32_attribute(native_path(dataset_path), "/dataset_2/data", "acquisition_count_hint", 42U);
 
   auto& application = viewer_application();
   ksj::viewer::apply_viewer_theme(application);
@@ -341,6 +517,7 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   auto* tree = find_named_widget<QTreeWidget>(window, {"semanticObjectTree"});
   const auto* data_views = find_named_widget<QTabWidget>(window, {"viewerDataViews"});
   auto* object_path = find_named_widget<QLineEdit>(window, {"objectPathField"});
+  auto* semantic_table = find_named_widget<QTableWidget>(window, {"objectSemanticInfoTable"});
   auto* attributes_status = find_named_widget<QLabel>(window, {"objectAttributesStatus"});
   auto* attributes = find_named_widget<QTableWidget>(window, {"objectAttributesInfo"});
   auto* inspect = window.findChild<QAction*>(QStringLiteral("inspectObjectAction"));
@@ -349,22 +526,31 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   ASSERT_NE(tree, nullptr);
   ASSERT_NE(data_views, nullptr);
   ASSERT_NE(object_path, nullptr);
+  ASSERT_NE(semantic_table, nullptr);
   ASSERT_NE(attributes_status, nullptr);
   ASSERT_NE(attributes, nullptr);
   ASSERT_NE(inspect, nullptr);
   ASSERT_NE(close_source, nullptr);
   EXPECT_GE(source_file_bar->findText(dataset_path), 0);
-  ASSERT_EQ(tree->topLevelItemCount(), 2);
+  ASSERT_EQ(tree->topLevelItemCount(), 1);
   EXPECT_FALSE(data_views->isVisible());
 
-  const auto find_second_container = [tree]() -> QTreeWidgetItem* {
+  tree->setCurrentItem(tree->topLevelItem(0));
+  application.processEvents();
+  ASSERT_EQ(semantic_table->rowCount(), 3);
+  EXPECT_EQ(semantic_table->verticalScrollBar()->maximum(), 0);
+  const auto last_semantic_row = semantic_table->rowCount() - 1;
+  EXPECT_GE(semantic_table->viewport()->height(),
+            semantic_table->rowViewportPosition(last_semantic_row) + semantic_table->rowHeight(last_semantic_row));
+
+  const auto find_container = [tree](const QString& container_path) -> QTreeWidgetItem* {
     auto* source_item = tree->topLevelItem(0);
     if (source_item == nullptr) {
       return nullptr;
     }
     for (int index = 0; index < source_item->childCount(); ++index) {
       auto* candidate = source_item->child(index);
-      if (candidate != nullptr && candidate->text(0).contains(QStringLiteral("/dataset_2"))) {
+      if (candidate != nullptr && candidate->data(0, Qt::UserRole + 1).toString() == container_path) {
         return candidate;
       }
     }
@@ -383,10 +569,27 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
     return nullptr;
   };
 
-  auto* second_container = find_second_container();
+  auto* first_container = find_container(QStringLiteral("/dataset_1"));
+  ASSERT_NE(first_container, nullptr);
+  EXPECT_EQ(find_semantic_child(first_container, QStringLiteral("Images")), nullptr);
+  EXPECT_EQ(find_semantic_child(first_container, QStringLiteral("Waveforms")), nullptr);
+
+  auto* second_container = find_container(QStringLiteral("/dataset_2"));
   ASSERT_NE(second_container, nullptr);
   auto* header_item = find_semantic_child(second_container, QStringLiteral("Header / XML"));
+  auto* acquisitions_item = find_semantic_child(second_container, QStringLiteral("Acquisitions / K-space"));
   ASSERT_NE(header_item, nullptr);
+  ASSERT_NE(acquisitions_item, nullptr);
+  EXPECT_EQ(find_semantic_child(second_container, QStringLiteral("Waveforms")), nullptr);
+
+  auto* waveform_container = find_container(QStringLiteral("/dataset_3"));
+  ASSERT_NE(waveform_container, nullptr);
+  EXPECT_EQ(find_semantic_child(waveform_container, QStringLiteral("Images")), nullptr);
+  auto* waveforms_item = find_semantic_child(waveform_container, QStringLiteral("Waveforms"));
+  ASSERT_NE(waveforms_item, nullptr);
+  EXPECT_EQ(waveforms_item->text(0), QStringLiteral("Waveforms (discovered)"));
+  EXPECT_FALSE(waveforms_item->flags().testFlag(Qt::ItemIsEnabled));
+  EXPECT_FALSE(waveforms_item->flags().testFlag(Qt::ItemIsSelectable));
 
   const auto initial_data_view = data_views->currentIndex();
   tree->setCurrentItem(header_item);
@@ -395,6 +598,22 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   EXPECT_FALSE(data_views->isVisible());
   EXPECT_EQ(object_path->text(), QStringLiteral("/dataset_2/xml"));
   EXPECT_TRUE(inspect->isEnabled());
+  EXPECT_EQ(attributes->rowCount(), 0);
+  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("No HDF5 attributes"), Qt::CaseInsensitive));
+
+  tree->setCurrentItem(acquisitions_item);
+  application.processEvents();
+  EXPECT_EQ(object_path->text(), QStringLiteral("/dataset_2/data"));
+  ASSERT_EQ(attributes->rowCount(), 1);
+  EXPECT_EQ(attributes->item(0, 0)->text(), QStringLiteral("acquisition_count_hint"));
+  EXPECT_EQ(attributes->item(0, 2)->text(), QStringLiteral("1"));
+  EXPECT_EQ(attributes->item(0, 3)->text(), QStringLiteral("42"));
+  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("1 HDF5 attribute"), Qt::CaseInsensitive));
+
+  tree->setCurrentItem(header_item);
+  application.processEvents();
+  EXPECT_EQ(attributes->rowCount(), 0);
+  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("No HDF5 attributes"), Qt::CaseInsensitive));
 
   inspect->trigger();
   application.processEvents();
@@ -404,7 +623,7 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   ASSERT_NE(xml_preview, nullptr);
   EXPECT_TRUE(xml_preview->toPlainText().contains(QStringLiteral("ismrmrdHeader")));
 
-  second_container = find_second_container();
+  second_container = find_container(QStringLiteral("/dataset_2"));
   ASSERT_NE(second_container, nullptr);
   auto* images_item = find_semantic_child(second_container, QStringLiteral("Images"));
   ASSERT_NE(images_item, nullptr);
@@ -422,11 +641,14 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   EXPECT_EQ(data_views->currentIndex(), 2);
   EXPECT_EQ(attributes->columnCount(), 4);
   EXPECT_EQ(attributes->rowCount(), 0);
-  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("no MetaAttributes"), Qt::CaseInsensitive));
+  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("semantic collection"), Qt::CaseInsensitive));
+  const auto* image_summary = find_named_widget<QPlainTextEdit>(window, {"imageSummary"});
+  ASSERT_NE(image_summary, nullptr);
+  EXPECT_TRUE(image_summary->toPlainText().contains(QStringLiteral("MetaAttributes: none")));
 
   close_source->trigger();
   application.processEvents();
-  ASSERT_EQ(tree->topLevelItemCount(), 2);
+  ASSERT_EQ(tree->topLevelItemCount(), 1);
   EXPECT_TRUE(tree->topLevelItem(0)->text(0).contains(QStringLiteral("No ISMRMRD source open")));
   EXPECT_FALSE(close_source->isEnabled());
   EXPECT_FALSE(data_views->isVisible());
@@ -435,7 +657,73 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   application.processEvents();
 }
 
-TEST(KSpaceJetViewerPresentation, InspectsMetadataKspaceAndImagesAsBoundedDisplayDerivatives) {
+TEST(KSpaceJetViewerWindow, ExplicitAcquisitionInspectionRendersTheCartesianKspacePlane) {
+  QTemporaryDir temporary_directory;
+  ASSERT_TRUE(temporary_directory.isValid()) << temporary_directory.errorString().toStdString();
+  const auto dataset_path = QDir(temporary_directory.path()).filePath(QStringLiteral("viewer-cartesian-window.mrd"));
+  write_cartesian_kspace_dataset(native_path(dataset_path));
+
+  auto& application = viewer_application();
+  ksj::viewer::apply_viewer_theme(application);
+  ksj::viewer::ViewerWindow window;
+  window.resize(1'280, 800);
+  window.show();
+  application.processEvents();
+
+  QString error;
+  ASSERT_TRUE(window.open_mrd_source(dataset_path, error)) << error.toStdString();
+  application.processEvents();
+
+  auto* tree = find_named_widget<QTreeWidget>(window, {"semanticObjectTree"});
+  auto* data_views = find_named_widget<QTabWidget>(window, {"viewerDataViews"});
+  auto* inspect = window.findChild<QAction*>(QStringLiteral("inspectObjectAction"));
+  const auto* canvas = find_named_widget<QLabel>(window, {"kspaceCanvas"});
+  const auto* summary = find_named_widget<QPlainTextEdit>(window, {"kspaceSummary"});
+  const auto* coil = find_named_widget<QComboBox>(window, {"kspaceCoilSelector"});
+  const auto* render = find_named_widget<QAbstractButton>(window, {"renderKspaceButton"});
+  ASSERT_NE(tree, nullptr);
+  ASSERT_NE(data_views, nullptr);
+  ASSERT_NE(inspect, nullptr);
+  ASSERT_NE(canvas, nullptr);
+  ASSERT_NE(summary, nullptr);
+  ASSERT_NE(coil, nullptr);
+  ASSERT_NE(render, nullptr);
+
+  auto* source = tree->topLevelItem(0);
+  ASSERT_NE(source, nullptr);
+  ASSERT_EQ(source->childCount(), 1);
+  auto* container = source->child(0);
+  ASSERT_NE(container, nullptr);
+  QTreeWidgetItem* acquisitions = nullptr;
+  for (int index = 0; index < container->childCount(); ++index) {
+    auto* child = container->child(index);
+    if (child != nullptr && child->text(0).startsWith(QStringLiteral("Acquisitions / K-space"))) {
+      acquisitions = child;
+      break;
+    }
+  }
+  ASSERT_NE(acquisitions, nullptr);
+  tree->setCurrentItem(acquisitions);
+  application.processEvents();
+  ASSERT_TRUE(inspect->isEnabled());
+  inspect->trigger();
+  application.processEvents();
+
+  EXPECT_TRUE(data_views->isVisible());
+  EXPECT_EQ(data_views->currentIndex(), 1);
+  EXPECT_EQ(data_views->tabText(1), QStringLiteral("K-space"));
+  EXPECT_TRUE(render->isEnabled());
+  EXPECT_EQ(coil->count(), 3);
+  EXPECT_EQ(coil->currentData().toInt(), -1);
+  EXPECT_FALSE(canvas->pixmap(Qt::ReturnByValue).isNull());
+  EXPECT_TRUE(summary->toPlainText().contains(QStringLiteral("Raw Cartesian K-space")));
+  EXPECT_TRUE(summary->toPlainText().contains(QStringLiteral("not a reconstructed image")));
+
+  window.close();
+  application.processEvents();
+}
+
+TEST(KSpaceJetViewerPresentation, InspectsMetadataAndImagesAndRejectsNonCartesianKspaceAsABoundedDisplayDerivative) {
   QTemporaryDir temporary_directory;
   ASSERT_TRUE(temporary_directory.isValid()) << temporary_directory.errorString().toStdString();
   const auto dataset_path = QDir(temporary_directory.path()).filePath(QStringLiteral("viewer-source.mrd"));
@@ -463,14 +751,10 @@ TEST(KSpaceJetViewerPresentation, InspectsMetadataKspaceAndImagesAsBoundedDispla
             QStringLiteral("%1 (container /dataset)").arg(opened_source_path));
 
   ksj::viewer::KspacePresentation kspace;
-  ASSERT_TRUE(ksj::viewer::make_kspace_presentation(session, 0U, kspace, error)) << error.toStdString();
-  EXPECT_FALSE(kspace.image.isNull());
-  EXPECT_EQ(kspace.image.size(), QSize(3, 2));
-  EXPECT_TRUE(kspace.summary.contains(QStringLiteral("not a reconstructed image")));
-  EXPECT_EQ(kspace.details.value(QStringLiteral("representation")).toString(),
-            QStringLiteral("acquisition magnitude projection; not reconstructed image"));
-  EXPECT_EQ(kspace.details.value(QStringLiteral("artifact_kind")).toString(),
-            QStringLiteral("visualization-derivative"));
+  EXPECT_FALSE(ksj::viewer::make_cartesian_kspace_presentation(
+    session, {.reference_acquisition_ordinal = 0U, .coil_channel = -1}, kspace, error));
+  EXPECT_TRUE(error.contains(QStringLiteral("has a trajectory")));
+  EXPECT_TRUE(kspace.image.isNull());
 
   ksj::viewer::ImagePresentation image;
   ASSERT_TRUE(ksj::viewer::make_image_presentation(session,
@@ -513,6 +797,93 @@ TEST(KSpaceJetViewerPresentation, InspectsMetadataKspaceAndImagesAsBoundedDispla
                                                     QString::fromLatin1(kImageSeries.data(), kImageSeries.size()), 0U,
                                                     0U, 0U, invalid_window, manual_window_image, error));
   EXPECT_EQ(error, QStringLiteral("image window width must be finite and greater than zero"));
+}
+
+TEST(KSpaceJetViewerPresentation, RejectsCartesianGridWhenXmlDeclaresANonCartesianEncoding) {
+  QTemporaryDir temporary_directory;
+  ASSERT_TRUE(temporary_directory.isValid()) << temporary_directory.errorString().toStdString();
+  const auto dataset_path = QDir(temporary_directory.path()).filePath(QStringLiteral("viewer-radial-declaration.mrd"));
+
+  const auto filename = native_path(dataset_path).string();
+  ISMRMRD::Dataset dataset(filename.c_str(), "dataset", true);
+  auto non_cartesian_xml = std::string(kCartesianKspaceXml);
+  constexpr std::string_view kCartesianTrajectory{"<trajectory>cartesian</trajectory>"};
+  const auto trajectory_offset = non_cartesian_xml.find(kCartesianTrajectory);
+  ASSERT_NE(trajectory_offset, std::string::npos);
+  non_cartesian_xml.replace(trajectory_offset, kCartesianTrajectory.size(), "<trajectory>radial</trajectory>");
+  dataset.writeHeader(non_cartesian_xml);
+
+  const std::array<std::complex<float>, 4U> coil_zero{std::complex<float>{1.0F, 0.0F}, std::complex<float>{1.0F, 0.0F},
+                                                      std::complex<float>{1.0F, 0.0F}, std::complex<float>{1.0F, 0.0F}};
+  const std::array<std::complex<float>, 4U> coil_one{std::complex<float>{2.0F, 0.0F}, std::complex<float>{2.0F, 0.0F},
+                                                     std::complex<float>{2.0F, 0.0F}, std::complex<float>{2.0F, 0.0F}};
+  // The payload has no trajectory. This deliberately reaches the XML
+  // trajectory declaration branch rather than the raw-header rejection.
+  append_cartesian_kspace_line(dataset, 0U, coil_zero, coil_one);
+
+  ksj::viewer::InspectionSession session;
+  QString error;
+  ASSERT_TRUE(session.open_mrd(dataset_path, error)) << error.toStdString();
+
+  ksj::viewer::KspacePresentation presentation;
+  EXPECT_FALSE(ksj::viewer::make_cartesian_kspace_presentation(
+    session, {.reference_acquisition_ordinal = 0U, .coil_channel = -1}, presentation, error));
+  EXPECT_TRUE(error.contains(QStringLiteral("not Cartesian")));
+  EXPECT_TRUE(presentation.image.isNull());
+}
+
+TEST(KSpaceJetViewerPresentation, RendersAFrameGroupedCartesianKspacePlaneWithExplicitAggregationSemantics) {
+  QTemporaryDir temporary_directory;
+  ASSERT_TRUE(temporary_directory.isValid()) << temporary_directory.errorString().toStdString();
+  const auto dataset_path = QDir(temporary_directory.path()).filePath(QStringLiteral("viewer-cartesian-kspace.mrd"));
+  write_cartesian_kspace_dataset(native_path(dataset_path));
+
+  ksj::viewer::InspectionSession session;
+  QString error;
+  ASSERT_TRUE(session.open_mrd(dataset_path, error)) << error.toStdString();
+
+  ksj::viewer::KspacePresentation rss;
+  ASSERT_TRUE(ksj::viewer::make_cartesian_kspace_presentation(
+    session, {.reference_acquisition_ordinal = 0U, .coil_channel = -1}, rss, error))
+    << error.toStdString();
+  EXPECT_EQ(rss.image.size(), QSize(4, 3));
+  EXPECT_EQ(rss.details.value(QStringLiteral("view")).toString(), QStringLiteral("cartesian-k-space"));
+  EXPECT_EQ(rss.details.value(QStringLiteral("coil_mode")).toString(), QStringLiteral("rss"));
+  EXPECT_EQ(rss.details.value(QStringLiteral("matching_acquisition_count")).toInt(), 3);
+  EXPECT_EQ(rss.details.value(QStringLiteral("source_complex_values")).toInt(), 24);
+  EXPECT_EQ(rss.details.value(QStringLiteral("occupied_display_cells")).toInt(), 8);
+  EXPECT_EQ(rss.details.value(QStringLiteral("empty_display_cells")).toInt(), 4);
+  EXPECT_EQ(rss.details.value(QStringLiteral("multi_contribution_display_cells")).toInt(), 4);
+  EXPECT_EQ(
+    rss.details.value(QStringLiteral("source_grid")).toObject().value(QStringLiteral("readout_coordinate_min")).toInt(),
+    -2);
+  EXPECT_EQ(
+    rss.details.value(QStringLiteral("source_grid")).toObject().value(QStringLiteral("readout_coordinate_max")).toInt(),
+    1);
+  EXPECT_EQ(rss.details.value(QStringLiteral("source_grid")).toObject().value(QStringLiteral("height")).toInt(), 3);
+  EXPECT_TRUE(rss.summary.contains(QStringLiteral("not a reconstructed image")));
+  EXPECT_TRUE(rss.summary.contains(QStringLiteral("multiple contributions")));
+
+  ASSERT_EQ(rss.csv_columns.size(), 8);
+  ASSERT_EQ(rss.csv_rows.size(), 12);
+  EXPECT_EQ(rss.csv_rows.at(0).at(0), QStringLiteral("0"));
+  EXPECT_EQ(rss.csv_rows.at(0).at(1), QStringLiteral("0"));
+  EXPECT_EQ(rss.csv_rows.at(0).at(2), QStringLiteral("-2"));
+  EXPECT_EQ(rss.csv_rows.at(0).at(3), QStringLiteral("-2"));
+  EXPECT_EQ(rss.csv_rows.at(0).at(4), QStringLiteral("0"));
+  EXPECT_EQ(rss.csv_rows.at(0).at(5), QStringLiteral("0"));
+  EXPECT_NEAR(rss.csv_rows.at(0).at(6).toDouble(), std::sqrt(62.5), 1.0e-9);
+  EXPECT_EQ(rss.csv_rows.at(0).at(7), QStringLiteral("2"));
+  EXPECT_EQ(rss.csv_rows.at(4).at(7), QStringLiteral("0"));
+  EXPECT_DOUBLE_EQ(rss.csv_rows.at(4).at(6).toDouble(), 0.0);
+
+  ksj::viewer::KspacePresentation coil_zero;
+  ASSERT_TRUE(ksj::viewer::make_cartesian_kspace_presentation(
+    session, {.reference_acquisition_ordinal = 0U, .coil_channel = 0}, coil_zero, error))
+    << error.toStdString();
+  EXPECT_EQ(coil_zero.details.value(QStringLiteral("coil_mode")).toString(), QStringLiteral("single-coil"));
+  EXPECT_EQ(coil_zero.details.value(QStringLiteral("coil_channel")).toInt(), 0);
+  EXPECT_NEAR(coil_zero.csv_rows.at(0).at(6).toDouble(), std::sqrt(22.5), 1.0e-9);
 }
 
 TEST(KSpaceJetViewerPresentation, DiscoversAndSwitchesOnlyReadableStandardContainers) {

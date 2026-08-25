@@ -41,19 +41,34 @@ copying or linking its Java/SWT implementation:
    dashboard.
 2. Inspect the left **ISMRMRD File Hierarchy**. It contains only recursively
    verified standard ISMRMRD semantic objects, not a generic HDF5 traversal.
+   A container with no reconstructed image series or standard waveform storage
+   has no corresponding **Images** or **Waveforms** tree entry: unavailable
+   content is omitted instead of being shown as a disabled `(none)` action.
+   The separate JSON source appears as a root-level **Pipeline** entry only
+   after **File → Open pipeline** has successfully parsed a
+   `PipelineDefinition`; it is not an empty MRD dataset placeholder.
 3. Select an object to see its read-only **General Object Info** page. It
    follows HDFView's compact object form: Name, Path, Type, and Access, then
-   standard dataset semantics and standard ISMRMRD member tables. **Object
-   Attribute Info** is a table of standard image `MetaAttributes` after an
-   image is explicitly inspected; it is not a generic HDF5 attribute browser.
-   The bounded XML header preview belongs to the dedicated **XML** typed view:
-   select the semantic Header/XML object and explicitly inspect it, rather than
-   expecting a file-level metadata dashboard.
+   standard dataset semantics and standard ISMRMRD member tables. The compact
+   semantic table derives its height from the actual styled Qt rows and table
+   frame, so its content is not clipped; any outer overflow belongs to the
+   General Object Info scroll surface. **Object
+   Attribute Info** separately shows the actual native HDF5 Attributes attached
+   to the selected concrete standard-MRD object. Names and type/shape remain
+   visible under a bounded read-only policy; oversized values are explicitly
+   shown as omitted previews, and an object with no HDF5 Attributes says so
+   explicitly. The semantic **Images** collection is not itself one HDF5
+   object, and standard image `MetaAttributes` belong only in Image details,
+   not in this tab. This is still not an arbitrary-path HDF5 attribute browser
+   or editor. The bounded XML header preview belongs to the dedicated **XML**
+   typed view: select the semantic Header/XML object and explicitly inspect it,
+   rather than expecting a file-level metadata dashboard.
 4. Use **Inspect**, **Open As…**, a double click, or the context menu to open
-   an XML header, an acquisition header table/k-space projection, an `image_x`
-   image view, or a PipelineDefinition view. The File/Window/Tools/Help menu
-   structure, toolbar, info panel, flat split-pane layout, and dense tables
-   follow the same hierarchy → inspector → typed-view pattern.
+   an XML header, a Cartesian K-space view with its reference-acquisition
+   header, an `image_x` image view, or a PipelineDefinition view. The
+   File/Window/Tools/Help menu structure, toolbar, info panel, flat split-pane
+   layout, and dense tables follow the same hierarchy → inspector → typed-view
+   pattern.
 
 The bottom **Info** panel and status bar record open, close, inspection, and
 export actions. The interface has no generic object editor, source-file save,
@@ -75,9 +90,9 @@ file. The viewer never changes the source file.
 - Image series belong to the semantic **Images** object and its Image typed
   view. A raw-acquisition source normally has zero reconstructed image series;
   that is expected data state, not missing viewer content.
-- K-space displays a bounded acquisition-magnitude projection, explicitly
-  labelled as *not a reconstructed image*, alongside a header-only acquisition
-  table.
+- **K-space** is a bounded raw Cartesian K-space viewer, not a single-readout
+  `sample × channel` projection. Its reference-acquisition header remains
+  visible alongside the rendered plane.
 - Image inspection reads one selected `[z, channel]` plane and creates a
   bounded grayscale display derivative. It offers ordinal cine and auto/manual
   window-level, zoom, pixel probe, and histogram; each update rereads the
@@ -94,6 +109,55 @@ file. The viewer never changes the source file.
 
 The viewer never reconstructs, loads a Provider, connects a gateway, or
 becomes a runtime/data-plane dependency.
+
+### Cartesian K-space Viewer
+
+The K-space view needs a standard ISMRMRD XML encoding and a selected
+reference acquisition. The reference is a frame selector, not the only raw
+acquisition displayed. The viewer first indexes headers without materializing
+their payloads, then groups raw acquisitions whose frame key exactly matches
+the reference:
+
+- `encoding_space_ref` and `idx.kspace_encode_step_2`;
+- `idx.average`, `idx.slice`, `idx.contrast`, `idx.phase`, `idx.repetition`,
+  `idx.set`, and `idx.segment`; and
+- all eight `idx.user` counters.
+
+`idx.kspace_encode_step_1` is deliberately not part of that key: it is the
+vertical K-space axis. The horizontal coordinate of every included source
+sample is `sample - center_sample`; samples in `discard_pre` and `discard_post`
+are excluded. The vertical range comes from the selected encoding's standard
+`kspace_encode_step_1` limit when it is declared, otherwise from the matching
+raw acquisitions. The selected `kspace_encode_step_2` and all other frame
+counters remain fixed, so one view is one explicit raw Cartesian plane.
+
+The coil selector offers **RSS** across all active coils or a single active
+coil. RSS sums the squared complex magnitude across active coils for each raw
+sample. Each displayed cell is then the RMS of all of its raw contributions;
+this applies both to repeated raw grid cells and to source coordinates grouped
+into one display cell during bounded downsampling. No later acquisition can
+silently overwrite an earlier one. Empty cells retain magnitude zero, and the
+plane summary and JSON export report occupied, empty, and
+multi-contribution-cell counts.
+
+Display intensity is `log10(1 + RMS magnitude)` and is normalized only for the
+grayscale visualization. It contains no reconstructed image, inverse Fourier
+transform, phase image, or new MRD artifact. CSV rows describe *display bins*,
+including their represented readout and `kspace_encode_step_1` coordinate
+ranges plus contribution counts; CSV output is bounded just like the display.
+
+The current view accepts at most 16,384 matching acquisition lines and 32 Mi
+complex source values, and creates no more than 2,048 pixels along either axis
+or 2 Mi display cells. It retains only the resulting display derivative and
+owned header records, never a raw-acquisition cache. A limit, malformed shape,
+or non-finite value fails the render rather than silently truncating source
+data.
+
+This is intentionally a Cartesian-only view. It rejects an acquisition with
+trajectory samples, a non-Cartesian XML encoding, or matching records with
+inconsistent Cartesian geometry. It does not grid radial, spiral, or other
+trajectory-space data into a fabricated Cartesian matrix; a future
+trajectory-space viewer must be an explicit separate mode.
 
 See the [ISMRMRD inspection reader contract](../../docs/architecture/KSpaceJet_ismrmrd_inspection_reader.md)
 for the ownership model, bounded discovery, image axes, and metadata rules.

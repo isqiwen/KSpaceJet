@@ -27,6 +27,16 @@ struct InspectionReadLimits {
   std::size_t max_hdf5_group_path_bytes{4U * 1024U};
   // Bounds HDF5 group-name materialization during container discovery.
   std::size_t max_hdf5_group_name_bytes{256U};
+  // Bounds owned HDF5 object-attribute descriptors. Attribute previews are
+  // deliberately diagnostic-only: they never retain HDF5 values or permit an
+  // arbitrary HDF5 object path to be read. A value which exceeds the element
+  // or byte limits remains a descriptor with an omitted/truncated preview.
+  std::uint32_t max_hdf5_object_attributes{256U};
+  std::uint32_t max_hdf5_attribute_rank{8U};
+  std::uint64_t max_hdf5_attribute_elements{1'024U};
+  std::size_t max_hdf5_attribute_name_bytes{256U};
+  std::size_t max_hdf5_attribute_value_bytes{64U * 1024U};
+  std::size_t max_hdf5_attribute_preview_bytes{4U * 1024U};
   std::uint32_t max_image_series{128U};
   std::size_t max_image_series_name_bytes{256U};
   std::uint32_t max_images_per_series{100'000U};
@@ -65,6 +75,43 @@ struct InspectionDatasetMetadata {
   std::vector<InspectionImageSeriesDescriptor> image_series;
 };
 
+// A semantic selector for the currently open standard MRD container. It is
+// intentionally not an arbitrary HDF5 path: viewers may inspect only the
+// container and its standard direct objects.
+enum class InspectionObjectKind {
+  container,
+  xml,
+  acquisitions,
+  waveforms,
+  image_series,
+};
+
+struct InspectionObjectLocator {
+  InspectionObjectKind kind{InspectionObjectKind::container};
+  // Required only for `image_series`; it must name a series advertised by
+  // InspectionDatasetMetadata::image_series.
+  std::string image_series_id;
+};
+
+enum class InspectionAttributeValuePreviewState {
+  available,
+  truncated,
+  unsupported,
+};
+
+// A bounded, owned description of one native HDF5 Attribute. `dimensions` is
+// empty for an HDF5 scalar; `element_count` is the total scalar count in its
+// dataspace. `type_name` and `value_preview` are display text, never HDF5
+// identifiers or retained source storage.
+struct InspectionObjectAttributeDescriptor {
+  std::string name;
+  std::string type_name;
+  std::vector<std::uint64_t> dimensions;
+  std::uint64_t element_count{0U};
+  std::string value_preview;
+  InspectionAttributeValuePreviewState value_preview_state{InspectionAttributeValuePreviewState::unsupported};
+};
+
 // `ordinal` is the zero-based storage ordinal in the ISMRMRD acquisition
 // dataset. Samples and trajectory are borrowed for the duration of one
 // callback only.
@@ -76,6 +123,14 @@ struct InspectionAcquisitionView {
   std::span<const std::complex<float>> samples;
   // ISMRMRD trajectory layout: trajectory[sample * trajectory_dimensions + dimension].
   std::span<const float> trajectory;
+};
+
+// An owned header-only acquisition record. Unlike InspectionAcquisitionView,
+// this never exposes sample or trajectory storage and may safely be retained
+// by a caller that builds a bounded acquisition index.
+struct InspectionAcquisitionHeaderRecord {
+  std::uint32_t ordinal{0U};
+  AcquisitionHeader header;
 };
 
 enum class ImageDataType : std::uint16_t {
@@ -159,6 +214,7 @@ enum class InspectionIterationResult {
 };
 
 using InspectionAcquisitionConsumer = std::function<bool(const InspectionAcquisitionView&)>;
+using InspectionAcquisitionHeaderConsumer = std::function<bool(const InspectionAcquisitionHeaderRecord&)>;
 using ImagePixelConsumer = std::function<bool(const InspectionImageRecord&, const ImagePixelsView&)>;
 
 // Read-only, move-only inspection facade for one standard ISMRMRD HDF5
@@ -193,10 +249,26 @@ public:
   [[nodiscard]] bool is_open() const noexcept;
   [[nodiscard]] const InspectionDatasetMetadata& metadata() const noexcept;
 
+  // Reads bounded native HDF5 Attributes only from one semantic object of the
+  // current standard container. On failure `attributes` is cleared and no
+  // partial descriptors escape. Unsupported HDF5 value types are successful
+  // descriptors with `value_preview_state == unsupported`; their value storage
+  // is never materialized.
+  [[nodiscard]] bool read_object_attributes(const InspectionObjectLocator& object,
+                                            std::vector<InspectionObjectAttributeDescriptor>& attributes,
+                                            std::string& error);
+
   // Reads one copied standard acquisition header after named-field HDF5
   // preflight. It never materializes the acquisition samples or trajectory.
   // On failure `header` is cleared and no partial header escapes.
   [[nodiscard]] bool read_acquisition_header(std::uint32_t ordinal, AcquisitionHeader& header, std::string& error);
+
+  // Iterates copied standard acquisition headers without materializing any
+  // acquisition sample or trajectory payload. A false consumer return is a
+  // normal stopped result. Each record is an owned value and may be retained
+  // by the consumer subject to its own bounds.
+  [[nodiscard]] InspectionIterationResult
+  for_each_acquisition_header(const InspectionAcquisitionHeaderConsumer& consumer, std::string& error);
 
   // `visit_acquisition` reads exactly one zero-based acquisition. A false
   // consumer return is a normal stopped result.

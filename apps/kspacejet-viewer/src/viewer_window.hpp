@@ -37,6 +37,11 @@ public:
   // traversal or source-file mutation is exposed here.
   [[nodiscard]] bool open_mrd_source(const QString& file_path, QString& error);
 
+  // App-local entry point used by the file action and widget tests. It parses
+  // a local PipelineDefinition document only; it does not resolve, compile,
+  // load, or execute a Provider.
+  [[nodiscard]] bool open_pipeline_source(const QString& file_path, QString& error);
+
 private:
   enum class WorkspaceView : int {
     metadata = 0,
@@ -55,7 +60,7 @@ private:
   void open_mrd();
   void close_mrd_source();
   void open_pipeline();
-  void load_acquisition();
+  void load_kspace();
   void load_image();
   void toggle_image_cine();
   void stop_image_cine();
@@ -74,6 +79,7 @@ private:
   void update_object_inspector(QTreeWidgetItem* item);
   void update_selection_actions();
   void refresh_acquisition_header_table();
+  void refresh_kspace_controls();
   void refresh_image_histogram();
   void update_image_pixel_probe(const QPoint& position);
   void refresh_metadata();
@@ -130,7 +136,8 @@ protected:
   QPlainTextEdit* metadata_xml_ = nullptr;
   bool metadata_view_open_ = false;
   QSpinBox* acquisition_ordinal_ = nullptr;
-  QToolButton* load_acquisition_button_ = nullptr;
+  QComboBox* kspace_coil_ = nullptr;
+  QToolButton* render_kspace_button_ = nullptr;
   QLabel* kspace_image_ = nullptr;
   QPlainTextEdit* kspace_summary_ = nullptr;
   QTableWidget* acquisition_header_table_ = nullptr;
