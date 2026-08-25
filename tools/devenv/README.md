@@ -104,6 +104,10 @@ Qt/X11 development package set; Windows uses winget only when `just` is missing.
 14, matching the Conan profiles. On Windows the scripts require Visual Studio 2022 with the v143 C++
 tools (MSVC 19.4x / toolset 14.4x); install a Windows SDK with that workload.
 
+Linux profiles build KSpaceJet targets as strict C++20. The Qt dependency alone uses GNU C++20 so Qt
+6.8.3 can use libstdc++ `__int128` traits; this does not relax the project's `CXX_EXTENSIONS OFF`
+policy.
+
 On a minimal Linux host, the first bootstrap additionally needs ordinary host download and archive
 utilities: `curl` or `wget`, `tar`, and `sha256sum` or `shasum`. It also needs `apt-get` and `sudo`.
 Linux VS Code debugging

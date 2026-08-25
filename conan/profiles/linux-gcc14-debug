@@ -5,6 +5,10 @@ compiler=gcc
 compiler.version=14
 compiler.libcxx=libstdc++11
 compiler.cppstd=20
+# Qt 6.8.3 needs libstdc++'s __int128 traits, which are unavailable under
+# strict -std=c++20. Scope GNU extensions to Qt's dependency build; KSpaceJet
+# targets continue to enforce CXX_EXTENSIONS OFF in their own CMake files.
+qt/*:compiler.cppstd=gnu20
 build_type=Debug
 
 [options]
