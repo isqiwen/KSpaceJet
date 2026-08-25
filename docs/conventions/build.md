@@ -55,6 +55,11 @@ that provide a `shared` option (`*:shared=True`).  Linux also enables PIC for
 those dependencies.  Do not override this to static linking in a KSpaceJet
 build.
 
+The Linux profiles use strict C++20 for KSpaceJet, while scoping
+`qt/*:compiler.cppstd=gnu20` to Qt's dependency build. Qt 6.8.3 needs the
+libstdc++ `__int128` traits that strict `-std=c++20` omits; the root and target
+CMake rules continue to enforce `CXX_EXTENSIONS OFF` for KSpaceJet code.
+
 ## VS Code workflow
 
 The VS Code workflow deliberately separates environment preparation from ordinary

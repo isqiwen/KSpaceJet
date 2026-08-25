@@ -120,6 +120,8 @@ Bootstrap provisions the repository-local Python tool environment. Afterwards in
 
 `prepare-debug` / `prepare-release`, `build-*-applications`, `install-*-applications`, `format-*`, `check`, `pre-commit`, `pre-push`, `workspace-check` and `plan-check` have the same names on Linux and Windows. The recipes select the platform-specific bootstrap script, Conan profile and CMake preset. For focused diagnostics that have no recipe, call the platform runner explicitly with a locked managed tool; do not select a system Conan/CMake/Ninja/formatter by PATH order.
 
+Linux Conan profiles keep the framework at strict C++20, but scope `qt/*:compiler.cppstd=gnu20` to Qt's own build: Qt 6.8.3 requires libstdc++ `__int128` traits that strict `-std=c++20` does not expose. Do not broaden that setting to KSpaceJet targets; the root and target CMake rules retain `CXX_EXTENSIONS OFF`.
+
 Product application builds and unit/benchmark/research test builds are separate CMake trees. Never configure KSJ_BUILD_APPLICATIONS together with KSJ_BUILD_UNIT_TESTS, KSJ_BUILD_BENCHMARKS or KSJ_BUILD_RESEARCH.
 
 ## VS Code workflow

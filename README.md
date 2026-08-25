@@ -116,6 +116,10 @@ Intel payload 位于 `third_party/intel/payload/`，由 Git LFS 管理。发布�
 标准 Conan profile 为所有提供 `shared` 选项的依赖固定使用动态库；Linux 同时启用
 PIC。不要在 KSpaceJet 构建中以 `*:shared=False` 覆盖此策略。
 
+Linux profile 仅为 Qt 的 Conan build scope `qt/*:compiler.cppstd=gnu20`：Qt 6.8.3 需要
+libstdc++ 的 `__int128` traits，而严格 `-std=c++20` 不会提供它们。KSpaceJet 自身仍由
+CMake 强制以 strict C++20 / `CXX_EXTENSIONS OFF` 构建。
+
 ### VS Code 工作流
 
 在 VS Code 中，也可以通过 **Tasks: Run Task** 先运行可见的
