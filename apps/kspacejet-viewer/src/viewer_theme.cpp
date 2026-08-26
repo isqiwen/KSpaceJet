@@ -138,8 +138,8 @@ void apply_viewer_theme(QApplication& application) {
       border-bottom: 1px solid #c9c9c9;
     }
 
-    QFrame#semanticTreeSurface, QFrame#objectInspectorSurface, QFrame#viewerDataSurface,
-    QFrame#viewerInfoSurface, QWidget[surfaceRole="panel"] {
+    QFrame#semanticTreeSurface, QFrame#objectInspectorSurface, QFrame#viewerInfoSurface,
+    QWidget[surfaceRole="panel"] {
       background: #ffffff;
       border: none;
     }

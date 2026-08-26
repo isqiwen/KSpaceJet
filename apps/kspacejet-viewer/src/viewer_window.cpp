@@ -425,13 +425,6 @@ void ViewerWindow::create_actions() {
   quit_action->setObjectName(QStringLiteral("quitAction"));
   quit_action->setShortcut(QKeySequence::Quit);
 
-  auto* window_menu = menuBar()->addMenu(tr("&Window"));
-  window_menu->setObjectName(QStringLiteral("viewerWindowMenu"));
-  close_typed_view_action_ = window_menu->addAction(tr("Close &typed data view"));
-  close_typed_view_action_->setObjectName(QStringLiteral("closeTypedDataViewAction"));
-  close_typed_view_action_->setToolTip(tr("Return to the selected object's HDFView-style information pane"));
-  close_typed_view_action_->setEnabled(false);
-
   auto* tools_menu = menuBar()->addMenu(tr("&Tools"));
   tools_menu->setObjectName(QStringLiteral("viewerToolsMenu"));
   inspect_object_action_ =
@@ -476,9 +469,6 @@ void ViewerWindow::create_actions() {
   connect(open_as_action_, &QAction::triggered, this, [this] {
     open_selected_object_as();
   });
-  connect(close_typed_view_action_, &QAction::triggered, this, [this] {
-    set_typed_data_visible(false);
-  });
   connect(copy_object_path_action_, &QAction::triggered, this, [this] {
     copy_selected_object_path();
   });
@@ -508,7 +498,7 @@ void ViewerWindow::create_actions() {
       this, tr("KSpaceJet Viewer guide"),
       tr("1. Open a local standard ISMRMRD file from File or the file bar.\n"
          "2. Select a verified semantic object in the hierarchy. Selection only updates the inspector.\n"
-         "3. Use Inspect, Open As..., a double click, or the context menu to open a bounded typed view.\n"
+         "3. Use its contextual tab, Inspect, Open As..., a double click, or the context menu to open a bounded view.\n"
          "4. The lower Info panel records local read-only inspection actions.\n\n"
          "KSpaceJet Viewer does not edit HDF5, retain full raw payloads, or support URL loading."));
   });
@@ -605,11 +595,7 @@ void ViewerWindow::create_workbench() {
   dataset_navigation_->setContextMenuPolicy(Qt::CustomContextMenu);
   tree_layout->addWidget(dataset_navigation_, 1);
 
-  details_splitter_ = new QSplitter(Qt::Vertical, main_splitter);
-  details_splitter_->setObjectName(QStringLiteral("viewerDetailsSplitter"));
-  details_splitter_->setChildrenCollapsible(false);
-
-  auto* inspector_surface = new QFrame(details_splitter_);
+  auto* inspector_surface = new QFrame(main_splitter);
   inspector_surface->setObjectName(QStringLiteral("objectInspectorSurface"));
   inspector_surface->setProperty("surfaceRole", QStringLiteral("panel"));
   auto* inspector_layout = new QVBoxLayout(inspector_surface);
@@ -717,30 +703,14 @@ void ViewerWindow::create_workbench() {
   object_inspector_->setCurrentIndex(1);
   inspector_layout->addWidget(object_inspector_, 1);
 
-  typed_data_surface_ = new QFrame(details_splitter_);
-  typed_data_surface_->setObjectName(QStringLiteral("viewerDataSurface"));
-  typed_data_surface_->setProperty("surfaceRole", QStringLiteral("panel"));
-  auto* data_layout = new QVBoxLayout(typed_data_surface_);
-  data_layout->setContentsMargins(0, 0, 0, 0);
-  tabs_ = new QTabWidget(typed_data_surface_);
-  tabs_->setObjectName(QStringLiteral("viewerDataViews"));
-  tabs_->setDocumentMode(true);
-  data_layout->addWidget(tabs_);
-
-  create_metadata_page();
   create_kspace_page();
+  create_metadata_page();
   create_image_page();
   create_pipeline_page();
-
-  details_splitter_->addWidget(inspector_surface);
-  details_splitter_->addWidget(typed_data_surface_);
-  details_splitter_->setStretchFactor(0, 1);
-  details_splitter_->setStretchFactor(1, 1);
-  typed_data_surface_->hide();
-  details_splitter_->setSizes({840, 0});
+  update_workspace_tab_visibility(nullptr);
 
   main_splitter->addWidget(tree_surface);
-  main_splitter->addWidget(details_splitter_);
+  main_splitter->addWidget(inspector_surface);
   main_splitter->setStretchFactor(0, 0);
   main_splitter->setStretchFactor(1, 1);
   main_splitter->setSizes({300, 1040});
@@ -766,6 +736,7 @@ void ViewerWindow::create_workbench() {
           [this](QTreeWidgetItem* item, QTreeWidgetItem* previous_item) {
             Q_UNUSED(previous_item)
             update_object_inspector(item);
+            update_workspace_tab_visibility(item);
             update_selection_actions();
           });
   connect(dataset_navigation_, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* item, const int column) {
@@ -793,9 +764,21 @@ void ViewerWindow::create_workbench() {
   connect(source_file_bar_->lineEdit(), &QLineEdit::returnPressed, this, [this, open_file_bar_source] {
     open_file_bar_source(source_file_bar_->currentText());
   });
-  connect(tabs_, &QTabWidget::currentChanged, this, [this](const int index) {
-    Q_UNUSED(index)
-    update_export_availability();
+  connect(object_inspector_, &QTabWidget::currentChanged, this, [this](const int index) {
+    if (object_inspector_ == nullptr) {
+      return;
+    }
+    if (index == object_inspector_->indexOf(metadata_page_)) {
+      activate_workspace_view(WorkspaceView::metadata);
+    } else if (index == object_inspector_->indexOf(kspace_page_)) {
+      activate_workspace_view(WorkspaceView::kspace);
+    } else if (index == object_inspector_->indexOf(image_page_)) {
+      activate_workspace_view(WorkspaceView::image);
+    } else if (index == object_inspector_->indexOf(pipeline_page_)) {
+      activate_workspace_view(WorkspaceView::pipeline);
+    } else {
+      update_export_availability();
+    }
   });
   rebuild_dataset_navigation();
 
@@ -809,8 +792,9 @@ void ViewerWindow::create_workbench() {
 }
 
 void ViewerWindow::create_metadata_page() {
-  const auto page = make_workspace_page(tabs_, QStringLiteral("metadataPage"), tr("STANDARD ISMRMRD"), tr("XML header"),
-                                        tr("Bounded read-only XML from the selected header object."));
+  const auto page = make_workspace_page(object_inspector_, QStringLiteral("metadataPage"), tr("STANDARD ISMRMRD"),
+                                        tr("XML header"), tr("Bounded read-only XML from the selected header object."));
+  metadata_page_ = page.widget;
   metadata_stack_ = new QStackedWidget(page.widget);
   metadata_stack_->setObjectName(QStringLiteral("metadataContentStack"));
 
@@ -835,13 +819,14 @@ void ViewerWindow::create_metadata_page() {
 
   metadata_stack_->addWidget(content);
   page.layout->addWidget(metadata_stack_, 1);
-  tabs_->addTab(page.widget, tr("XML"));
+  object_inspector_->addTab(page.widget, tr("XML"));
 }
 
 void ViewerWindow::create_kspace_page() {
   const auto page =
-    make_workspace_page(tabs_, QStringLiteral("kspacePage"), tr("CARTESIAN K-SPACE"), tr("K-space"),
+    make_workspace_page(object_inspector_, QStringLiteral("kspacePage"), tr("CARTESIAN K-SPACE"), tr("K-space"),
                         tr("Render one bounded raw Cartesian ISMRMRD plane. This is not a reconstructed image."));
+  kspace_page_ = page.widget;
 
   auto* controls_card = make_surface(page.widget, QStringLiteral("kspaceControlsCard"), QStringLiteral("controls"));
   auto* controls = new QHBoxLayout(controls_card);
@@ -921,13 +906,14 @@ void ViewerWindow::create_kspace_page() {
   view_splitter->setStretchFactor(1, 2);
   view_splitter->setSizes({640, 360});
   page.layout->addWidget(view_splitter, 1);
-  tabs_->addTab(page.widget, tr("K-space"));
+  object_inspector_->addTab(page.widget, tr("K-space"));
 }
 
 void ViewerWindow::create_image_page() {
   const auto page =
-    make_workspace_page(tabs_, QStringLiteral("imagePage"), tr("STANDARD IMAGE"), tr("Image"),
+    make_workspace_page(object_inspector_, QStringLiteral("imagePage"), tr("STANDARD IMAGE"), tr("Image"),
                         tr("Read one selected ISMRMRD image plane and retain only a bounded display derivative."));
+  image_page_ = page.widget;
 
   auto* controls_card = make_surface(page.widget, QStringLiteral("imageControlsCard"), QStringLiteral("controls"));
   auto* controls = new QHBoxLayout(controls_card);
@@ -1097,13 +1083,15 @@ void ViewerWindow::create_image_page() {
   view_splitter->setStretchFactor(1, 2);
   view_splitter->setSizes({640, 360});
   page.layout->addWidget(view_splitter, 1);
-  tabs_->addTab(page.widget, tr("Image"));
+  object_inspector_->addTab(page.widget, tr("Image"));
 }
 
 void ViewerWindow::create_pipeline_page() {
-  const auto page = make_workspace_page(tabs_, QStringLiteral("pipelinePage"), tr("AUTHORED PIPELINE"), tr("Pipeline"),
-                                        tr("Read and validate a PipelineDefinition document without resolving, "
-                                           "loading, compiling, or executing a Provider."));
+  const auto page =
+    make_workspace_page(object_inspector_, QStringLiteral("pipelinePage"), tr("AUTHORED PIPELINE"), tr("Pipeline"),
+                        tr("Read and validate a PipelineDefinition document without resolving, loading, compiling, "
+                           "or executing a Provider."));
+  pipeline_page_ = page.widget;
   pipeline_stack_ = new QStackedWidget(page.widget);
   pipeline_stack_->setObjectName(QStringLiteral("pipelineContentStack"));
 
@@ -1147,7 +1135,7 @@ void ViewerWindow::create_pipeline_page() {
   pipeline_stack_->addWidget(content);
 
   page.layout->addWidget(pipeline_stack_, 1);
-  tabs_->addTab(page.widget, tr("Pipeline"));
+  object_inspector_->addTab(page.widget, tr("Pipeline"));
 }
 
 void ViewerWindow::inspect_selected_object() {
@@ -1307,9 +1295,6 @@ void ViewerWindow::activate_navigation_item(QTreeWidgetItem* item, const Workspa
     return;
   }
   set_workspace_view(view);
-  if (view == WorkspaceView::kspace) {
-    refresh_acquisition_header_table();
-  }
 }
 
 bool ViewerWindow::activate_navigation_container(QTreeWidgetItem* item, QString& error) {
@@ -1477,6 +1462,7 @@ void ViewerWindow::rebuild_dataset_navigation() {
     dataset_navigation_->setCurrentItem(selected_item);
   }
   update_object_inspector(dataset_navigation_->currentItem());
+  update_workspace_tab_visibility(dataset_navigation_->currentItem());
   update_selection_actions();
 }
 
@@ -1701,35 +1687,114 @@ void ViewerWindow::clear_dataset_derivatives() {
   image_presentation_ = {};
 }
 
-void ViewerWindow::set_typed_data_visible(const bool visible) {
-  if (typed_data_surface_ == nullptr || details_splitter_ == nullptr) {
+QWidget* ViewerWindow::workspace_page(const WorkspaceView view) const {
+  switch (view) {
+    case WorkspaceView::metadata:
+      return metadata_page_;
+    case WorkspaceView::kspace:
+      return kspace_page_;
+    case WorkspaceView::image:
+      return image_page_;
+    case WorkspaceView::pipeline:
+      return pipeline_page_;
+  }
+  return nullptr;
+}
+
+void ViewerWindow::update_workspace_tab_visibility(QTreeWidgetItem* item) {
+  if (object_inspector_ == nullptr) {
     return;
   }
-  typed_data_surface_->setVisible(visible);
-  details_splitter_->setSizes(visible ? QList<int>{420, 420} : QList<int>{840, 0});
-  if (close_typed_view_action_ != nullptr) {
-    close_typed_view_action_->setEnabled(visible);
+
+  const auto kind = semantic_object_kind(item);
+  const auto selection_enabled = item != nullptr && (item->flags() & Qt::ItemIsEnabled);
+  const auto selected_container = item == nullptr ? QString{} : item->data(0, kNavigationContainerRole).toString();
+  const auto is_active_mrd_object = selection_enabled && inspection_session_.is_open() &&
+                                    !selected_container.isEmpty() &&
+                                    selected_container == inspection_session_.container_path();
+
+  const auto metadata_visible = is_active_mrd_object && kind == SemanticObjectKind::header;
+  const auto kspace_visible = is_active_mrd_object && kind == SemanticObjectKind::acquisitions &&
+                              inspection_session_.metadata().acquisition_count > 0U;
+  const auto image_visible =
+    is_active_mrd_object && kind == SemanticObjectKind::images && !inspection_session_.metadata().image_series.empty();
+  const auto pipeline_visible = !pipeline_presentation_.details.isEmpty();
+
+  const auto current_page = object_inspector_->currentWidget();
+  const auto page_will_hide =
+    (current_page == metadata_page_ && !metadata_visible) || (current_page == kspace_page_ && !kspace_visible) ||
+    (current_page == image_page_ && !image_visible) || (current_page == pipeline_page_ && !pipeline_visible);
+  const QSignalBlocker blocker(object_inspector_);
+  const auto set_visible = [this](QWidget* page, const bool visible) {
+    if (page == nullptr) {
+      return;
+    }
+    const auto index = object_inspector_->indexOf(page);
+    if (index >= 0) {
+      object_inspector_->setTabVisible(index, visible);
+    }
+  };
+  set_visible(kspace_page_, kspace_visible);
+  set_visible(metadata_page_, metadata_visible);
+  set_visible(image_page_, image_visible);
+  set_visible(pipeline_page_, pipeline_visible);
+  if (page_will_hide && object_general_ != nullptr) {
+    object_inspector_->setCurrentWidget(object_general_);
   }
   update_export_availability();
 }
 
-void ViewerWindow::set_workspace_view(const WorkspaceView view) {
-  if (tabs_ == nullptr) {
+void ViewerWindow::activate_workspace_view(const WorkspaceView view) {
+  if (object_inspector_ == nullptr) {
     return;
-  }
-  auto index = static_cast<int>(view);
-  if (view == WorkspaceView::image &&
-      (!inspection_session_.is_open() || inspection_session_.metadata().image_series.empty())) {
-    index = static_cast<int>(WorkspaceView::metadata);
   }
   if (view == WorkspaceView::metadata) {
     metadata_view_open_ = inspection_session_.is_open();
     metadata_xml_->setPlainText(metadata_view_open_ ? metadata_presentation_.xml_preview : QString{});
     metadata_stack_->setCurrentIndex(metadata_view_open_ ? 1 : 0);
+  } else if (view == WorkspaceView::kspace) {
+    refresh_acquisition_header_table();
   }
-  set_typed_data_visible(true);
-  tabs_->setCurrentIndex(index);
   update_export_availability();
+}
+
+void ViewerWindow::set_workspace_view(const WorkspaceView view) {
+  if (object_inspector_ == nullptr) {
+    return;
+  }
+
+  const auto is_available = [this, view] {
+    switch (view) {
+      case WorkspaceView::metadata:
+        return inspection_session_.is_open();
+      case WorkspaceView::kspace:
+        return inspection_session_.is_open() && inspection_session_.metadata().acquisition_count > 0U;
+      case WorkspaceView::image:
+        return inspection_session_.is_open() && !inspection_session_.metadata().image_series.empty();
+      case WorkspaceView::pipeline:
+        return !pipeline_presentation_.details.isEmpty();
+    }
+    return false;
+  };
+  if (!is_available()) {
+    if (object_general_ != nullptr) {
+      object_inspector_->setCurrentWidget(object_general_);
+    }
+    update_export_availability();
+    return;
+  }
+
+  auto* page = workspace_page(view);
+  if (page == nullptr) {
+    return;
+  }
+  const auto index = object_inspector_->indexOf(page);
+  if (index < 0) {
+    return;
+  }
+  object_inspector_->setTabVisible(index, true);
+  object_inspector_->setCurrentWidget(page);
+  activate_workspace_view(view);
 }
 
 void ViewerWindow::open_mrd() {
@@ -1761,7 +1826,6 @@ bool ViewerWindow::open_mrd_source(const QString& file_path, QString& error) {
   refresh_metadata();
   refresh_kspace();
   refresh_image();
-  set_typed_data_visible(false);
   if (source_file_bar_ != nullptr) {
     const QSignalBlocker blocker(source_file_bar_);
     const auto source_path = inspection_session_.source_path();
@@ -1789,7 +1853,6 @@ void ViewerWindow::close_mrd_source() {
   refresh_metadata();
   refresh_kspace();
   refresh_image();
-  set_typed_data_visible(false);
   if (source_file_bar_ != nullptr) {
     const QSignalBlocker blocker(source_file_bar_);
     source_file_bar_->setEditText({});
@@ -1826,8 +1889,8 @@ bool ViewerWindow::open_pipeline_source(const QString& file_path, QString& error
 
   pipeline_presentation_ = next_presentation;
   refresh_pipeline();
-  set_workspace_view(WorkspaceView::pipeline);
   rebuild_dataset_navigation();
+  set_workspace_view(WorkspaceView::pipeline);
   append_info(tr("Parsed PipelineDefinition without resolving or executing it."));
   return true;
 }
@@ -2175,6 +2238,7 @@ void ViewerWindow::update_source_context() {
     source_file_bar_->setEditText(inspection_session_.source_path());
   }
   update_object_inspector(dataset_navigation_ == nullptr ? nullptr : dataset_navigation_->currentItem());
+  update_workspace_tab_visibility(dataset_navigation_ == nullptr ? nullptr : dataset_navigation_->currentItem());
   update_selection_actions();
 }
 
@@ -2182,12 +2246,6 @@ void ViewerWindow::update_control_state() {
   const auto dataset_is_open = inspection_session_.is_open();
   const auto has_acquisitions = dataset_is_open && inspection_session_.metadata().acquisition_count > 0U;
   const auto has_images = dataset_is_open && image_series_->count() > 0;
-  if (tabs_ != nullptr) {
-    tabs_->setTabVisible(static_cast<int>(WorkspaceView::image), has_images);
-    if (!has_images && tabs_->currentIndex() == static_cast<int>(WorkspaceView::image)) {
-      tabs_->setCurrentIndex(static_cast<int>(WorkspaceView::metadata));
-    }
-  }
   acquisition_ordinal_->setEnabled(has_acquisitions);
   kspace_coil_->setEnabled(has_acquisitions);
   render_kspace_button_->setEnabled(has_acquisitions && kspace_coil_->count() > 0);
@@ -2205,27 +2263,20 @@ void ViewerWindow::update_control_state() {
     stop_image_cine();
   }
   load_image_button_->setEnabled(has_images);
+  update_workspace_tab_visibility(dataset_navigation_ == nullptr ? nullptr : dataset_navigation_->currentItem());
 }
 
 void ViewerWindow::update_export_availability() {
   bool can_export = false;
-  if (tabs_ != nullptr && typed_data_surface_ != nullptr && !typed_data_surface_->isHidden()) {
-    switch (tabs_->currentIndex()) {
-      case 0:
-        can_export = metadata_view_open_ && inspection_session_.is_open();
-        break;
-      case 1:
-        can_export = !kspace_presentation_.details.isEmpty();
-        break;
-      case 2:
-        can_export = !image_presentation_.details.isEmpty();
-        break;
-      case 3:
-        can_export = !pipeline_presentation_.details.isEmpty();
-        break;
-      default:
-        break;
-    }
+  const auto* current_page = object_inspector_ == nullptr ? nullptr : object_inspector_->currentWidget();
+  if (current_page == metadata_page_) {
+    can_export = metadata_view_open_ && inspection_session_.is_open();
+  } else if (current_page == kspace_page_) {
+    can_export = !kspace_presentation_.details.isEmpty();
+  } else if (current_page == image_page_) {
+    can_export = !image_presentation_.details.isEmpty();
+  } else if (current_page == pipeline_page_) {
+    can_export = !pipeline_presentation_.details.isEmpty();
   }
   export_button_->setEnabled(can_export);
   for (auto* action : {export_png_action_, export_svg_action_, export_csv_action_, export_json_action_}) {
@@ -2256,13 +2307,13 @@ bool ViewerWindow::current_derivative(VisualizationDerivative& derivative, QStri
   derivative = {};
   error.clear();
 
-  if (tabs_ == nullptr || typed_data_surface_ == nullptr || typed_data_surface_->isHidden()) {
-    error = tr("Explicitly inspect a standard object before exporting its visualization derivative.");
+  if (object_inspector_ == nullptr) {
+    error = tr("Open a bounded inspection view before exporting its visualization derivative.");
     return false;
   }
 
-  const auto active_tab = tabs_->currentIndex();
-  if (active_tab == 0) {
+  const auto* active_page = object_inspector_->currentWidget();
+  if (active_page == metadata_page_) {
     if (!metadata_view_open_ || !inspection_session_.is_open()) {
       error = tr("Inspect an ISMRMRD XML header before exporting its visualization derivative.");
       return false;
@@ -2274,7 +2325,7 @@ bool ViewerWindow::current_derivative(VisualizationDerivative& derivative, QStri
     derivative.details = metadata_presentation_.details;
     return true;
   }
-  if (active_tab == 1) {
+  if (active_page == kspace_page_) {
     if (kspace_presentation_.details.isEmpty()) {
       error = tr("Render a Cartesian k-space plane before exporting its display derivative.");
       return false;
@@ -2287,7 +2338,7 @@ bool ViewerWindow::current_derivative(VisualizationDerivative& derivative, QStri
     derivative.details = kspace_presentation_.details;
     return true;
   }
-  if (active_tab == 2) {
+  if (active_page == image_page_) {
     if (image_presentation_.details.isEmpty()) {
       error = tr("Inspect an image before exporting its display derivative.");
       return false;
@@ -2300,7 +2351,7 @@ bool ViewerWindow::current_derivative(VisualizationDerivative& derivative, QStri
     derivative.details = image_presentation_.details;
     return true;
   }
-  if (active_tab == 3) {
+  if (active_page == pipeline_page_) {
     if (pipeline_presentation_.details.isEmpty()) {
       error = tr("Open a PipelineDefinition before exporting its display derivative.");
       return false;

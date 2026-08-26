@@ -25,6 +25,7 @@ class QToolButton;
 class QTimer;
 class QTreeWidget;
 class QTreeWidgetItem;
+class QWidget;
 
 namespace ksj::viewer {
 
@@ -72,8 +73,10 @@ private:
   void activate_navigation_item(QTreeWidgetItem* item, WorkspaceView view);
   void rebuild_dataset_navigation();
   void clear_dataset_derivatives();
-  void set_typed_data_visible(bool visible);
   void set_workspace_view(WorkspaceView view);
+  void activate_workspace_view(WorkspaceView view);
+  void update_workspace_tab_visibility(QTreeWidgetItem* item);
+  [[nodiscard]] QWidget* workspace_page(WorkspaceView view) const;
 
   [[nodiscard]] bool activate_navigation_container(QTreeWidgetItem* item, QString& error);
   void update_object_inspector(QTreeWidgetItem* item);
@@ -108,15 +111,15 @@ protected:
   QAction* inspect_object_action_ = nullptr;
   QAction* open_as_action_ = nullptr;
   QAction* copy_object_path_action_ = nullptr;
-  QAction* close_typed_view_action_ = nullptr;
   QAction* export_png_action_ = nullptr;
   QAction* export_svg_action_ = nullptr;
   QAction* export_csv_action_ = nullptr;
   QAction* export_json_action_ = nullptr;
-  QTabWidget* tabs_ = nullptr;
   QTabWidget* object_inspector_ = nullptr;
-  QSplitter* details_splitter_ = nullptr;
-  QWidget* typed_data_surface_ = nullptr;
+  QWidget* kspace_page_ = nullptr;
+  QWidget* metadata_page_ = nullptr;
+  QWidget* image_page_ = nullptr;
+  QWidget* pipeline_page_ = nullptr;
   QToolButton* export_button_ = nullptr;
   QToolButton* recent_sources_button_ = nullptr;
   QToolButton* clear_file_bar_button_ = nullptr;

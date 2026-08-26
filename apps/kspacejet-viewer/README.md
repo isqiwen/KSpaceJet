@@ -21,13 +21,20 @@ absolute container paths and classifies standard content as `[RAW]`, `[IMAGE]`,
   result-only ISMRMRD artifact.
 
 The navigation tree chooses a discovered container rather than asking the user
-to type a group name. Opening an MRD initially shows that semantic tree and
-the HDFView-style **Object Attribute Info** / **General Object Info**
-inspector; its typed-data area stays hidden. Tree selection is non-destructive:
-it updates the inspector only. `Inspect`, `Open As…`, a double click, or the
-semantic-object context menu explicitly activates a container and opens a
-typed view; moving to another container clears k-space and image display
-derivatives. The Pipeline view is independent and remains parse-only.
+to type a group name. Opening an MRD initially shows that semantic tree and a
+single HDFView-style primary inspector: **Object Attribute Info** and
+**General Object Info** are always present, while contextual **K-space**,
+**XML**, and **Image** tabs appear only for the selected, active standard MRD
+object. **Pipeline** is a peer tab only after a `PipelineDefinition` has been
+opened successfully; there is no empty Pipeline placeholder or a second,
+lower typed-data tab bar. Tree selection remains non-destructive with respect
+to raw payloads: it updates object information and applicable tabs only.
+Selecting a contextual tab, `Inspect`, `Open As…`, a double click, or the
+semantic-object context menu explicitly activates its bounded inspection
+surface; rendering K-space or image pixels still requires its explicit
+bounded inspection action. Moving to another container clears K-space and
+image display derivatives. The Pipeline view is independent and remains
+parse-only.
 
 ## Desktop workflow
 
@@ -60,15 +67,18 @@ copying or linking its Java/SWT implementation:
    explicitly. The semantic **Images** collection is not itself one HDF5
    object, and standard image `MetaAttributes` belong only in Image details,
    not in this tab. This is still not an arbitrary-path HDF5 attribute browser
-   or editor. The bounded XML header preview belongs to the dedicated **XML**
-   typed view: select the semantic Header/XML object and explicitly inspect it,
+   or editor. The bounded XML header preview belongs to the contextual **XML**
+   tab: select the semantic Header/XML object and explicitly inspect it,
    rather than expecting a file-level metadata dashboard.
-4. Use **Inspect**, **Open As…**, a double click, or the context menu to open
-   an XML header, a Cartesian K-space view with its reference-acquisition
-   header, an `image_x` image view, or a PipelineDefinition view. The
-   File/Window/Tools/Help menu structure, toolbar, info panel, flat split-pane
-   layout, and dense tables follow the same hierarchy → inspector → typed-view
-   pattern.
+4. **K-space** follows General Object Info in the same primary tab group;
+   **XML**, **Image**, and a successfully opened **Pipeline** are its peer
+   contextual tabs. No second lower tab strip duplicates these pages. Use
+   **Inspect**, **Open As…**, a double click, the context menu, or an
+   applicable contextual tab to open an XML header, a Cartesian K-space view
+   with its reference-acquisition header, an `image_x` image view, or a
+   PipelineDefinition view. The File/Tools/Help menus, toolbar, info panel,
+   flat split-pane layout, and dense tables follow the same hierarchy →
+   inspector → bounded data-view pattern.
 
 The bottom **Info** panel and status bar record open, close, inspection, and
 export actions. The interface has no generic object editor, source-file save,
