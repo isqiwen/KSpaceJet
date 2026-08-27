@@ -49,7 +49,7 @@ This changes only the desktop presentation; standard MRD input remains local
 and read-only.
 
 1. Use **File** or `Ctrl+O` to open a local standard MRD file. The compact
-   current-file bar also accepts a local path on Enter. **Recent Files** keeps
+   current-file bar also accepts a local path on Enter. **File → Recent Files** keeps
    the five most recently successfully opened local MRD or PipelineDefinition
    files, preserves their source type so each is reopened correctly, and
    survives restart; missing local entries are discarded on the next start.

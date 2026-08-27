@@ -134,17 +134,17 @@ void apply_viewer_theme(QApplication& application) {
 
     /* arrShow-compatible changer: abbreviation / + / value / − / extent. */
     QWidget[arrShowDimension="true"] {
-      background: #f8f8f8;
+      background: transparent;
       border: 1px solid #a9a9a9;
     }
 
     QWidget[arrShowDimension="true"][arrShowDimensionActive="true"] {
-      background: #e3edf6;
+      background: transparent;
       border-color: #6d9fbe;
     }
 
     QWidget[arrShowDimension="true"] QToolButton {
-      background: #f1f1f1;
+      background: transparent;
       border: none;
       border-bottom: 1px solid #c4c4c4;
       border-radius: 0;
@@ -161,13 +161,13 @@ void apply_viewer_theme(QApplication& application) {
     }
 
     QWidget[arrShowDimension="true"] QToolButton:disabled {
-      background: #f1f1f1;
+      background: transparent;
       border-bottom: 1px solid #d4d4d4;
       color: #777777;
     }
 
     QLineEdit[arrShowDimensionValue="true"] {
-      background: #ffffff;
+      background: transparent;
       border: none;
       border-bottom: 1px solid #c4c4c4;
       border-radius: 0;
@@ -178,12 +178,17 @@ void apply_viewer_theme(QApplication& application) {
       padding: 0;
     }
 
+    QLineEdit[arrShowDimensionValue="true"][arrShowDimensionFixedIndexInput="true"] {
+      background: #ffffff;
+    }
+
     QLineEdit[arrShowDimensionValue="true"]:focus {
       border: 1px solid #6697b8;
       padding: 0;
     }
 
-    QWidget[arrShowDimension="true"][arrShowDimensionActive="true"] QLineEdit[arrShowDimensionValue="true"] {
+    QWidget[arrShowDimension="true"][arrShowDimensionActive="true"]
+    QLineEdit[arrShowDimensionValue="true"][arrShowDimensionFixedIndexInput="true"] {
       background: #1c5fa8;
       color: #ffffff;
       selection-background-color: #d9e8f5;
@@ -191,7 +196,7 @@ void apply_viewer_theme(QApplication& application) {
     }
 
     QToolButton[arrShowDimensionLabel="true"] {
-      background: #f7f7f7;
+      background: transparent;
       border-bottom: none;
       color: #303030;
       font-size: 8pt;
@@ -211,7 +216,7 @@ void apply_viewer_theme(QApplication& application) {
     }
 
     QToolButton[arrShowDimensionAbbreviation="true"] {
-      background: #e7eef4;
+      background: transparent;
       color: #1e4e72;
       font-size: 7pt;
       font-weight: 600;

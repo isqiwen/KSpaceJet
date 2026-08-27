@@ -100,8 +100,6 @@ constexpr auto kViewerSettingsOrganization = "KSpaceJet";
 constexpr auto kViewerSettingsApplication = "ksj-viewer";
 constexpr auto kLastOpenDirectorySettingsKey = "file_dialogs/last_open_directory";
 constexpr auto kRecentFilesSettingsKey = "file_dialogs/recent_files";
-constexpr auto kRecentFilePathRole = Qt::UserRole;
-constexpr auto kRecentFileIsPipelineRole = Qt::UserRole + 1;
 constexpr qsizetype kMaximumRecentFiles = 5;
 
 [[nodiscard]] QSettings viewer_settings() {
@@ -1368,9 +1366,12 @@ void ViewerWindow::create_actions() {
   open_pipeline_action_ = new QAction(style()->standardIcon(QStyle::SP_FileIcon), tr("Open &pipeline..."), this);
   open_pipeline_action_->setObjectName(QStringLiteral("openPipelineAction"));
   file_menu->addAction(open_mrd_action_);
-  file_menu->addAction(close_mrd_action_);
-  file_menu->addSeparator();
   file_menu->addAction(open_pipeline_action_);
+  recent_files_menu_ = file_menu->addMenu(tr("Recent &Files"));
+  recent_files_menu_->setObjectName(QStringLiteral("recentFilesMenu"));
+  refresh_recent_files_menu();
+  file_menu->addSeparator();
+  file_menu->addAction(close_mrd_action_);
   file_menu->addSeparator();
 
   auto* export_menu = file_menu->addMenu(tr("Export current &display derivative"));
@@ -1460,11 +1461,13 @@ void ViewerWindow::create_actions() {
   connect(viewer_guide_action, &QAction::triggered, this, [this] {
     QMessageBox::information(
       this, tr("KSpaceJet Viewer guide"),
-      tr("1. Open a local standard ISMRMRD file from File or the file bar.\n"
-         "2. Select a verified semantic object in the hierarchy. Selection only updates the inspector.\n"
-         "3. Use its contextual tab, Inspect, Open As..., a double click, or the context menu to open a bounded view.\n"
-         "4. The lower Info panel records local read-only inspection actions.\n\n"
-         "KSpaceJet Viewer does not edit HDF5, retain full raw payloads, or support URL loading."));
+      tr(
+        "1. Open a local standard ISMRMRD file from File or the file bar; reopen either source type from File → Recent "
+        "Files.\n"
+        "2. Select a verified semantic object in the hierarchy. Selection only updates the inspector.\n"
+        "3. Use its contextual tab, Inspect, Open As..., a double click, or the context menu to open a bounded view.\n"
+        "4. The lower Info panel records local read-only inspection actions.\n\n"
+        "KSpaceJet Viewer does not edit HDF5, retain full raw payloads, or support URL loading."));
   });
   connect(about_action, &QAction::triggered, this, [this] {
     QMessageBox::about(this, tr("About KSpaceJet Viewer"),
@@ -1513,19 +1516,10 @@ void ViewerWindow::create_workbench() {
   auto* file_layout = new QHBoxLayout(file_bar);
   file_layout->setContentsMargins(4, 2, 4, 2);
   file_layout->setSpacing(4);
-  recent_sources_button_ = new QToolButton(file_bar);
-  recent_sources_button_->setObjectName(QStringLiteral("recentSourcesButton"));
-  recent_sources_button_->setText(tr("Recent Files"));
-  recent_sources_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-  file_layout->addWidget(recent_sources_button_);
-  source_file_bar_ = new QComboBox(file_bar);
+  source_file_bar_ = new QLineEdit(file_bar);
   source_file_bar_->setObjectName(QStringLiteral("sourceFileBar"));
-  source_file_bar_->setEditable(true);
-  source_file_bar_->setInsertPolicy(QComboBox::NoInsert);
-  source_file_bar_->setMinimumContentsLength(42);
-  source_file_bar_->setToolTip(
-    tr("Enter a local standard ISMRMRD file path, or choose a recent MRD/Pipeline file. URLs are not supported."));
-  refresh_recent_file_bar();
+  source_file_bar_->setPlaceholderText(tr("Enter a local standard ISMRMRD file path"));
+  source_file_bar_->setToolTip(tr("Enter a local standard ISMRMRD file path. URLs are not supported."));
   file_layout->addWidget(source_file_bar_, 1);
   clear_file_bar_button_ = new QToolButton(file_bar);
   clear_file_bar_button_->setObjectName(QStringLiteral("clearFileBarButton"));
@@ -1714,11 +1708,8 @@ void ViewerWindow::create_workbench() {
   connect(dataset_navigation_, &QTreeWidget::customContextMenuRequested, this, [this](const QPoint& position) {
     show_object_context_menu(position);
   });
-  connect(recent_sources_button_, &QToolButton::clicked, this, [this] {
-    source_file_bar_->showPopup();
-  });
   connect(clear_file_bar_button_, &QToolButton::clicked, this, [this] {
-    source_file_bar_->setEditText({});
+    source_file_bar_->clear();
   });
   const auto open_file_bar_source = [this](const QString& file_path) {
     QString error;
@@ -1726,17 +1717,8 @@ void ViewerWindow::create_workbench() {
       show_viewer_error(this, tr("Cannot open ISMRMRD file"), error, "open_mrd");
     }
   };
-  connect(source_file_bar_, &QComboBox::textActivated, this, [this, open_file_bar_source](const QString& text) {
-    const auto index = source_file_bar_->currentIndex();
-    const auto recent_path = source_file_bar_->itemData(index, kRecentFilePathRole).toString();
-    if (recent_path.isEmpty()) {
-      open_file_bar_source(text);
-      return;
-    }
-    open_recent_file(recent_path, source_file_bar_->itemData(index, kRecentFileIsPipelineRole).toBool());
-  });
-  connect(source_file_bar_->lineEdit(), &QLineEdit::returnPressed, this, [this, open_file_bar_source] {
-    open_file_bar_source(source_file_bar_->currentText());
+  connect(source_file_bar_, &QLineEdit::returnPressed, this, [this, open_file_bar_source] {
+    open_file_bar_source(source_file_bar_->text());
   });
   connect(object_inspector_, &QTabWidget::currentChanged, this, [this](const int index) {
     if (object_inspector_ == nullptr) {
@@ -3264,7 +3246,7 @@ bool ViewerWindow::open_mrd_source(const QString& file_path, QString& error) {
   if (source_file_bar_ != nullptr) {
     const QSignalBlocker blocker(source_file_bar_);
     const auto source_path = inspection_session_.source_path();
-    source_file_bar_->setEditText(source_path);
+    source_file_bar_->setText(source_path);
   }
   append_info(tr("Opened %1 and selected standard container %2. %3 readable container(s) are available; "
                  "payloads are read only when explicitly inspected.")
@@ -3287,7 +3269,7 @@ void ViewerWindow::close_mrd_source() {
   refresh_image();
   if (source_file_bar_ != nullptr) {
     const QSignalBlocker blocker(source_file_bar_);
-    source_file_bar_->setEditText({});
+    source_file_bar_->clear();
   }
   append_info(tr("Closed read-only source: %1").arg(closed_path));
 }
@@ -3324,7 +3306,7 @@ bool ViewerWindow::open_pipeline_source(const QString& file_path, QString& error
   remember_recent_file(trimmed_path, true);
   if (source_file_bar_ != nullptr) {
     const QSignalBlocker blocker(source_file_bar_);
-    source_file_bar_->setEditText(inspection_session_.is_open() ? inspection_session_.source_path() : QString{});
+    source_file_bar_->setText(inspection_session_.is_open() ? inspection_session_.source_path() : QString{});
   }
   refresh_pipeline();
   rebuild_dataset_navigation();
@@ -3413,25 +3395,30 @@ void ViewerWindow::remember_recent_file(const QString& file_path, const bool is_
     recent_files_.removeLast();
   }
   persist_recent_files();
-  refresh_recent_file_bar();
+  refresh_recent_files_menu();
 }
 
-void ViewerWindow::refresh_recent_file_bar() {
-  if (source_file_bar_ == nullptr) {
+void ViewerWindow::refresh_recent_files_menu() {
+  if (recent_files_menu_ == nullptr) {
     return;
   }
-  const auto visible_text = source_file_bar_->currentText();
-  const QSignalBlocker blocker(source_file_bar_);
-  source_file_bar_->clear();
-  for (const auto& entry : recent_files_) {
-    source_file_bar_->addItem(entry.path);
-    const auto index = source_file_bar_->count() - 1;
-    source_file_bar_->setItemData(index, entry.path, kRecentFilePathRole);
-    source_file_bar_->setItemData(index, entry.is_pipeline, kRecentFileIsPipelineRole);
-    source_file_bar_->setItemData(index, entry.is_pipeline ? tr("PipelineDefinition") : tr("ISMRMRD source"),
-                                  Qt::ToolTipRole);
+  recent_files_menu_->clear();
+  recent_files_menu_->setEnabled(!recent_files_.isEmpty());
+  for (qsizetype index = 0; index < recent_files_.size(); ++index) {
+    const auto& entry = recent_files_.at(index);
+    const auto source_kind = entry.is_pipeline ? tr("PipelineDefinition") : tr("ISMRMRD");
+    const auto source_path = QDir::toNativeSeparators(entry.path);
+    auto* action = recent_files_menu_->addAction(tr("%1: %2").arg(source_kind, source_path));
+    action->setObjectName(QStringLiteral("recentFileAction%1").arg(index));
+    action->setToolTip(tr("%1 source: %2").arg(source_kind, source_path));
+    action->setData(entry.path);
+    action->setProperty("isPipelineRecentFile", entry.is_pipeline);
+    connect(action, &QAction::triggered, this, [this, file_path = entry.path, is_pipeline = entry.is_pipeline] {
+      QTimer::singleShot(0, this, [this, file_path, is_pipeline] {
+        open_recent_file(file_path, is_pipeline);
+      });
+    });
   }
-  source_file_bar_->setEditText(visible_text);
 }
 
 void ViewerWindow::open_recent_file(const QString& file_path, const bool is_pipeline) {
@@ -4354,7 +4341,7 @@ void ViewerWindow::select_image_dimension_value(const QString& dimension_identif
 void ViewerWindow::update_source_context() {
   if (source_file_bar_ != nullptr && inspection_session_.is_open()) {
     const QSignalBlocker blocker(source_file_bar_);
-    source_file_bar_->setEditText(inspection_session_.source_path());
+    source_file_bar_->setText(inspection_session_.source_path());
   }
   update_object_inspector(dataset_navigation_ == nullptr ? nullptr : dataset_navigation_->currentItem());
   update_workspace_tab_visibility(dataset_navigation_ == nullptr ? nullptr : dataset_navigation_->currentItem());

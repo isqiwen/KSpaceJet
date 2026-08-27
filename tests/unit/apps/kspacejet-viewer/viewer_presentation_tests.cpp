@@ -32,8 +32,10 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPalette>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPointF>
 #include <QScrollArea>
@@ -794,6 +796,106 @@ TEST(KSpaceJetViewerTheme, KeepsNativeComboAndSpinAffordances) {
   EXPECT_GE(spin_down.left(), spin.width() / 2);
 }
 
+TEST(KSpaceJetViewerTheme, UsesWhiteOnlyForEditableFixedIndexDimensionCells) {
+  auto& application = viewer_application();
+  ksj::viewer::apply_viewer_theme(application);
+
+  QWidget controls_surface;
+  controls_surface.setProperty("surfaceRole", QStringLiteral("controls"));
+  controls_surface.resize(280, 112);
+  auto* dimensions = new ksj::viewer::ArrShowDimensionStrip(&controls_surface, QStringLiteral("kspace"));
+  dimensions->setGeometry(12, 8, 250, 96);
+
+  const ksj::viewer::ArrShowDimensionSpec readout{
+    .identifier = QStringLiteral("readout"),
+    .label = QStringLiteral("Readout"),
+    .abbreviation = QStringLiteral("RO"),
+    .observed_values = {0},
+    .current_value = 0,
+    .displayed_extent = 64,
+    .selection_tag = ksj::viewer::ArrShowDimensionSelectionTag::first,
+  };
+  const ksj::viewer::ArrShowDimensionSpec phase_encode{
+    .identifier = QStringLiteral("phase-encode"),
+    .label = QStringLiteral("Phase encode"),
+    .abbreviation = QStringLiteral("PE"),
+    .observed_values = {0},
+    .current_value = 0,
+    .displayed_extent = 64,
+    .selection_tag = ksj::viewer::ArrShowDimensionSelectionTag::second,
+  };
+  const ksj::viewer::ArrShowDimensionSpec coil{
+    .identifier = QStringLiteral("coil"),
+    .label = QStringLiteral("Raw coil"),
+    .abbreviation = QStringLiteral("Co"),
+    .observed_values = {0, 1},
+    .current_value = 0,
+    .displayed_extent = 2,
+  };
+  const ksj::viewer::ArrShowDimensionSpec average{
+    .identifier = QStringLiteral("average"),
+    .label = QStringLiteral("Average"),
+    .abbreviation = QStringLiteral("Avg"),
+    .observed_values = {0, 1},
+    .current_value = 0,
+    .displayed_extent = 2,
+  };
+  dimensions->set_dimensions({readout, phase_encode, coil, average}, QStringLiteral("average"));
+
+  controls_surface.show();
+  application.processEvents();
+
+  const auto* readout_value = find_named_widget<QLineEdit>(*dimensions, {"kspaceDimensionReadoutValue"});
+  const auto* coil_value = find_named_widget<QLineEdit>(*dimensions, {"kspaceDimensionCoilValue"});
+  const auto* average_value = find_named_widget<QLineEdit>(*dimensions, {"kspaceDimensionAverageValue"});
+  const auto* readout_abbreviation =
+    find_named_widget<QToolButton>(*dimensions, {"kspaceDimensionReadoutAbbreviation"});
+  const auto* readout_increment = find_named_widget<QToolButton>(*dimensions, {"kspaceDimensionReadoutUp"});
+  const auto* readout_decrement = find_named_widget<QToolButton>(*dimensions, {"kspaceDimensionReadoutDown"});
+  const auto* readout_extent = find_named_widget<QToolButton>(*dimensions, {"kspaceDimensionReadoutLabel"});
+  const auto* average_abbreviation =
+    find_named_widget<QToolButton>(*dimensions, {"kspaceDimensionAverageAbbreviation"});
+  const auto* average_extent = find_named_widget<QToolButton>(*dimensions, {"kspaceDimensionAverageLabel"});
+  ASSERT_NE(readout_value, nullptr);
+  ASSERT_NE(coil_value, nullptr);
+  ASSERT_NE(average_value, nullptr);
+  ASSERT_NE(readout_abbreviation, nullptr);
+  ASSERT_NE(readout_increment, nullptr);
+  ASSERT_NE(readout_decrement, nullptr);
+  ASSERT_NE(readout_extent, nullptr);
+  ASSERT_NE(average_abbreviation, nullptr);
+  ASSERT_NE(average_extent, nullptr);
+  ASSERT_TRUE(readout_value->isReadOnly());
+  ASSERT_FALSE(coil_value->isReadOnly());
+  ASSERT_FALSE(average_value->isReadOnly());
+  EXPECT_FALSE(readout_value->property("arrShowDimensionFixedIndexInput").toBool());
+  EXPECT_TRUE(coil_value->property("arrShowDimensionFixedIndexInput").toBool());
+
+  QImage rendered(controls_surface.size(), QImage::Format_ARGB32_Premultiplied);
+  rendered.fill(Qt::transparent);
+  {
+    QPainter painter(&rendered);
+    controls_surface.render(&painter);
+  }
+  const auto right_interior_color = [&controls_surface, &rendered](const QWidget* widget) {
+    const auto position = widget->mapTo(&controls_surface, QPoint{widget->width() - 5, widget->height() / 2});
+    return rendered.pixelColor(position);
+  };
+  const auto controls_background = QColor(QStringLiteral("#f3f3f3"));
+  EXPECT_EQ(right_interior_color(readout_abbreviation), controls_background);
+  EXPECT_EQ(right_interior_color(readout_increment), controls_background);
+  EXPECT_EQ(right_interior_color(readout_value), controls_background);
+  EXPECT_EQ(right_interior_color(readout_decrement), controls_background);
+  EXPECT_EQ(right_interior_color(readout_extent), controls_background);
+  EXPECT_EQ(right_interior_color(coil_value), QColor(QStringLiteral("#ffffff")));
+  EXPECT_EQ(right_interior_color(average_abbreviation), controls_background);
+  EXPECT_EQ(right_interior_color(average_extent), controls_background);
+  EXPECT_EQ(right_interior_color(average_value), QColor(QStringLiteral("#1c5fa8")));
+
+  controls_surface.close();
+  application.processEvents();
+}
+
 TEST(KSpaceJetViewerCanvas, KeepsArrShowStyleInteractionsInsideTheBoundedDisplayDerivative) {
   auto& application = viewer_application();
   ksj::viewer::InspectionCanvas canvas;
@@ -1438,6 +1540,9 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
 
   auto& application = viewer_application();
   ksj::viewer::apply_viewer_theme(application);
+  QSettings settings(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("KSpaceJet"),
+                     QStringLiteral("ksj-viewer"));
+  const ViewerFileDialogSettingsScope settings_scope(settings);
 
   ksj::viewer::ViewerWindow window;
   window.resize(1'280, 800);
@@ -1452,10 +1557,16 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
   EXPECT_NE(find_named_widget<QWidget>(window, {"viewerFileBar"}), nullptr);
   EXPECT_NE(find_named_widget<QWidget>(window, {"offlineReadonlyBadge"}), nullptr);
 
-  const auto* source_file_bar = find_named_widget<QComboBox>(window, {"sourceFileBar"});
+  const auto* source_file_bar = find_named_widget<QLineEdit>(window, {"sourceFileBar"});
   ASSERT_NE(source_file_bar, nullptr);
-  EXPECT_TRUE(source_file_bar->isEditable());
-  EXPECT_NE(find_named_widget<QAbstractButton>(window, {"recentSourcesButton"}), nullptr);
+  EXPECT_TRUE(source_file_bar->placeholderText().contains(QStringLiteral("ISMRMRD")));
+  EXPECT_EQ(find_named_widget<QAbstractButton>(window, {"recentSourcesButton"}), nullptr);
+  const auto* file_menu = window.findChild<QMenu*>(QStringLiteral("viewerFileMenu"));
+  ASSERT_NE(file_menu, nullptr);
+  const auto* recent_files_menu = window.findChild<QMenu*>(QStringLiteral("recentFilesMenu"));
+  ASSERT_NE(recent_files_menu, nullptr);
+  EXPECT_TRUE(file_menu->actions().contains(recent_files_menu->menuAction()));
+  EXPECT_FALSE(recent_files_menu->isEnabled());
   EXPECT_NE(find_named_widget<QAbstractButton>(window, {"clearFileBarButton"}), nullptr);
 
   const auto* object_inspector = find_named_widget<QTabWidget>(window, {"objectInspector"});
@@ -1723,27 +1834,31 @@ TEST(KSpaceJetViewerWindow, PersistsFiveTypedRecentFilesAfterSuccessfulOpensOnly
     assert_record(records.at(3).toObject(), pipeline_paths[1], QStringLiteral("pipeline"));
     assert_record(records.at(4).toObject(), mrd_path, QStringLiteral("mrd"));
 
-    const auto* source_file_bar = find_named_widget<QComboBox>(window, {"sourceFileBar"});
-    ASSERT_NE(source_file_bar, nullptr);
-    ASSERT_EQ(source_file_bar->count(), 5);
-    EXPECT_EQ(source_file_bar->itemData(0, Qt::UserRole).toString(), QDir::cleanPath(pipeline_paths[4]));
-    EXPECT_TRUE(source_file_bar->itemData(0, Qt::UserRole + 1).toBool());
-    EXPECT_EQ(source_file_bar->itemData(4, Qt::UserRole).toString(), QDir::cleanPath(mrd_path));
-    EXPECT_FALSE(source_file_bar->itemData(4, Qt::UserRole + 1).toBool());
+    const auto* recent_files_menu = window.findChild<QMenu*>(QStringLiteral("recentFilesMenu"));
+    ASSERT_NE(recent_files_menu, nullptr);
+    ASSERT_TRUE(recent_files_menu->isEnabled());
+    const auto recent_actions = recent_files_menu->actions();
+    ASSERT_EQ(recent_actions.size(), 5);
+    EXPECT_EQ(recent_actions.at(0)->data().toString(), QDir::cleanPath(pipeline_paths[4]));
+    EXPECT_TRUE(recent_actions.at(0)->property("isPipelineRecentFile").toBool());
+    EXPECT_EQ(recent_actions.at(4)->data().toString(), QDir::cleanPath(mrd_path));
+    EXPECT_FALSE(recent_actions.at(4)->property("isPipelineRecentFile").toBool());
   }
 
   {
     ksj::viewer::ViewerWindow restored_window;
-    auto* source_file_bar = find_named_widget<QComboBox>(restored_window, {"sourceFileBar"});
-    ASSERT_NE(source_file_bar, nullptr);
-    ASSERT_EQ(source_file_bar->count(), 5);
-    EXPECT_EQ(source_file_bar->itemData(0, Qt::UserRole).toString(), QDir::cleanPath(pipeline_paths[4]));
-    EXPECT_TRUE(source_file_bar->itemData(0, Qt::UserRole + 1).toBool());
-    EXPECT_EQ(source_file_bar->itemData(4, Qt::UserRole).toString(), QDir::cleanPath(mrd_path));
-    EXPECT_FALSE(source_file_bar->itemData(4, Qt::UserRole + 1).toBool());
+    auto* recent_files_menu = restored_window.findChild<QMenu*>(QStringLiteral("recentFilesMenu"));
+    ASSERT_NE(recent_files_menu, nullptr);
+    ASSERT_TRUE(recent_files_menu->isEnabled());
+    const auto recent_actions = recent_files_menu->actions();
+    ASSERT_EQ(recent_actions.size(), 5);
+    EXPECT_EQ(recent_actions.at(0)->data().toString(), QDir::cleanPath(pipeline_paths[4]));
+    EXPECT_TRUE(recent_actions.at(0)->property("isPipelineRecentFile").toBool());
+    EXPECT_EQ(recent_actions.at(4)->data().toString(), QDir::cleanPath(mrd_path));
+    EXPECT_FALSE(recent_actions.at(4)->property("isPipelineRecentFile").toBool());
 
-    source_file_bar->setCurrentIndex(0);
-    source_file_bar->textActivated(source_file_bar->currentText());
+    recent_actions.at(0)->trigger();
+    application.processEvents();
     application.processEvents();
     const auto* object_inspector = find_named_widget<QTabWidget>(restored_window, {"objectInspector"});
     ASSERT_NE(object_inspector, nullptr);
@@ -1754,11 +1869,12 @@ TEST(KSpaceJetViewerWindow, PersistsFiveTypedRecentFilesAfterSuccessfulOpensOnly
   ASSERT_TRUE(QFile::remove(pipeline_paths[4]));
   {
     ksj::viewer::ViewerWindow pruned_window;
-    const auto* source_file_bar = find_named_widget<QComboBox>(pruned_window, {"sourceFileBar"});
-    ASSERT_NE(source_file_bar, nullptr);
-    ASSERT_EQ(source_file_bar->count(), 4);
-    EXPECT_EQ(source_file_bar->itemData(0, Qt::UserRole).toString(), QDir::cleanPath(pipeline_paths[3]));
-    EXPECT_TRUE(source_file_bar->itemData(0, Qt::UserRole + 1).toBool());
+    const auto* recent_files_menu = pruned_window.findChild<QMenu*>(QStringLiteral("recentFilesMenu"));
+    ASSERT_NE(recent_files_menu, nullptr);
+    const auto recent_actions = recent_files_menu->actions();
+    ASSERT_EQ(recent_actions.size(), 4);
+    EXPECT_EQ(recent_actions.at(0)->data().toString(), QDir::cleanPath(pipeline_paths[3]));
+    EXPECT_TRUE(recent_actions.at(0)->property("isPipelineRecentFile").toBool());
   }
 }
 
@@ -1834,7 +1950,7 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   ASSERT_TRUE(window.open_mrd_source(dataset_path, error)) << error.toStdString();
   application.processEvents();
 
-  const auto* source_file_bar = find_named_widget<QComboBox>(window, {"sourceFileBar"});
+  const auto* source_file_bar = find_named_widget<QLineEdit>(window, {"sourceFileBar"});
   auto* tree = find_named_widget<QTreeWidget>(window, {"semanticObjectTree"});
   auto* object_inspector = find_named_widget<QTabWidget>(window, {"objectInspector"});
   auto* object_path = find_named_widget<QLineEdit>(window, {"objectPathField"});
@@ -1852,7 +1968,7 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   ASSERT_NE(attributes, nullptr);
   ASSERT_NE(inspect, nullptr);
   ASSERT_NE(close_source, nullptr);
-  EXPECT_GE(source_file_bar->findText(dataset_path), 0);
+  EXPECT_EQ(source_file_bar->text(), dataset_path);
   ASSERT_EQ(tree->topLevelItemCount(), 1);
   EXPECT_EQ(object_inspector->currentIndex(), 1);
   EXPECT_FALSE(object_inspector->isTabVisible(2));

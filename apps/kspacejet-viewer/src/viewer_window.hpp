@@ -21,6 +21,7 @@ class QGraphicsScene;
 class QGraphicsView;
 class QLabel;
 class QLineEdit;
+class QMenu;
 class QPlainTextEdit;
 class QPoint;
 class QPointF;
@@ -81,7 +82,7 @@ private:
   void restore_recent_files();
   void persist_recent_files() const;
   void remember_recent_file(const QString& file_path, bool is_pipeline);
-  void refresh_recent_file_bar();
+  void refresh_recent_files_menu();
   void open_recent_file(const QString& file_path, bool is_pipeline);
   void load_kspace(bool preserve_window_drag = false);
   void load_image(bool preserve_window_drag = false);
@@ -165,9 +166,9 @@ private:
   QWidget* image_page_ = nullptr;
   QWidget* pipeline_page_ = nullptr;
   QToolButton* export_button_ = nullptr;
-  QToolButton* recent_sources_button_ = nullptr;
   QToolButton* clear_file_bar_button_ = nullptr;
-  QComboBox* source_file_bar_ = nullptr;
+  QLineEdit* source_file_bar_ = nullptr;
+  QMenu* recent_files_menu_ = nullptr;
   QTreeWidget* dataset_navigation_ = nullptr;
   QScrollArea* object_general_ = nullptr;
   QLineEdit* object_name_field_ = nullptr;

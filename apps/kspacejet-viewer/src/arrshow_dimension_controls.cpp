@@ -434,8 +434,11 @@ private:
   }
 
   void refresh_value() {
-    value_->setText(is_display_axis() ? QStringLiteral(":") : QString::number(current_value_));
-    value_->setReadOnly(is_display_axis());
+    const auto fixed_index_input = !is_display_axis();
+    value_->setText(fixed_index_input ? QString::number(current_value_) : QStringLiteral(":"));
+    value_->setReadOnly(!fixed_index_input);
+    value_->setProperty("arrShowDimensionFixedIndexInput", fixed_index_input);
+    repolish(value_);
     const auto current_index = observed_values_.indexOf(current_value_);
     increment_button_->setEnabled(is_navigable() && current_index >= 0 && current_index + 1 < observed_values_.size());
     decrement_button_->setEnabled(is_navigable() && current_index > 0);
