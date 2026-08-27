@@ -44,13 +44,6 @@ The public API exposes only KSpaceJet value types:
 
 - `InspectionDatasetMetadata` owns XML, acquisition count, and image-series
   descriptors.
-- `InspectionObjectLocator` selects only the open container itself or its
-  standard `xml`, `data`, `waveforms`, or advertised named image-series
-  object. It does not accept an arbitrary HDF5 path.
-- `InspectionObjectAttributeDescriptor` owns the name, readable HDF5 type,
-  dataspace shape, element count, and a bounded preview of one actual native
-  HDF5 Attribute. Unsupported value types remain descriptors, but their source
-  value is not materialized.
 - `InspectionAcquisitionView` contains a copied standard acquisition header and
   borrowed samples/trajectory for one zero-based acquisition ordinal.
 - `InspectionAcquisitionHeaderRecord` owns one zero-based acquisition ordinal
@@ -84,37 +77,6 @@ the implementation checks standard HDF5 rank, record count, named fixed-header
 compound fields, logical shape, VLEN element type, integer arithmetic, and the
 corresponding byte/count limit. Malformed, out-of-range, and oversized input
 therefore fails deterministically instead of retaining an entire MRD file.
-
-## Native HDF5 object attributes
-
-`read_object_attributes(locator, attributes, error)` is the narrow inspection
-API behind the Viewer **Object Attribute Info** tab. It has a deliberately
-different meaning from ISMRMRD image `MetaAttributes`:
-
-- HDF5 object attributes are generic key/value metadata physically attached to
-  a selected HDF5 group or dataset, such as a dataset description or units.
-- ISMRMRD image `MetaAttributes` are standard per-image metadata stored in the
-  image-series `attributes` dataset; they remain part of
-  `InspectionImageRecord` and Image details.
-
-The method accepts only an `InspectionObjectLocator` for the already-open,
-verified standard MRD container. It neither traverses arbitrary HDF5 paths nor
-edits source content. Attribute count, name length, rank, scalar element count,
-materialized value bytes, and returned preview bytes are independently bounded
-by `InspectionReadLimits`. A successful empty descriptor list means that the
-selected HDF5 object simply has no attached HDF5 Attributes; it is not an
-error. A numeric or fixed-string value that exceeds the element or byte budget
-also remains visible as a descriptor with a truncated/omitted preview, so one
-large Attribute cannot hide the other structural information. Unsupported
-types are reported as bounded descriptors with an unsupported preview state
-instead of being silently read as another type.
-
-The selector preserves the standard MRD distinction between raw and image-only
-containers. A standalone `image_x` series can expose Attributes on that series
-or its advertised image series, but cannot be asked for XML, acquisitions, or
-waveforms; its pixel `data` dataset is never relabelled as raw acquisitions.
-Likewise, the waveform selector accepts only a validated standard ISMRMRD
-waveform dataset, not an arbitrary sibling named `waveforms`.
 
 Standard acquisition and image headers are validated by field name, scalar
 type, fixed-array extent, and a small storage bound, then HDF5 maps them into
@@ -260,10 +222,9 @@ visualization derivative, not a new MRI artifact. Its presentation layer separat
 `PipelineDefinition`; it does not resolve, load, compile, or execute it.
 
 The Qt hierarchy has a separate selection and activation boundary. Opening an
-MRD initially shows the semantic tree plus HDFView-style **Object Attribute
-Info** and **General Object Info**; the typed-data area remains hidden.
-Selecting a semantic tree item updates only those inspector pages. General
-Object Info presents Name, Path, Type, and Access in a compact read-only form,
+MRD initially shows the semantic tree plus the HDFView-style **General Object
+Info** page; the typed-data area remains hidden. Selecting a semantic tree item
+updates that inspector page. General Object Info presents Name, Path, Type, and Access in a compact read-only form,
 followed by standard dataset semantics and member tables. The small semantics
 table fits its actual styled Qt row heights and frame rather than estimating a
 fixed row height, so General Object Info never clips an object-semantic row;
@@ -285,12 +246,10 @@ reconstructed image series. In that case, and when no standard waveform storage
 is discovered, the semantic tree omits the respective child rather than showing
 an unavailable `(none)` pseudo-object. A separately opened, successfully parsed
 `PipelineDefinition` appears as the root-level **Pipeline** semantic source;
-when no pipeline is open, no empty pipeline placeholder is shown. Object Attribute Info is a read-only table of the
-selected concrete semantic object's actual bounded HDF5 Attributes; it never
-repurposes Image `MetaAttributes`, which stay in Image details. The `Images`
-tree item is a semantic collection rather than a single HDF5 object, so it does
-not invent an aggregate attribute list. This remains a restricted standard-MRD
-inspector, not a generic HDF5 attribute browser or editor.
+when no pipeline is open, no empty pipeline placeholder is shown. Native HDF5
+object attributes are not a Viewer surface. Standard per-image
+`MetaAttributes` remain in Image details. This remains a restricted
+standard-MRD inspector, not a generic HDF5 browser or editor.
 
 The reader itself has no Qt dependency and performs no rendering, export,
 Pipeline parsing, reconstruction, Provider loading, or gateway activity.

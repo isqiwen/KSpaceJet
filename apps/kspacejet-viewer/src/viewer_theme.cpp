@@ -222,12 +222,6 @@ void apply_viewer_theme(QApplication& application) {
       font-weight: 600;
     }
 
-    QFrame#viewerFileBar {
-      background: #f6f6f6;
-      border: none;
-      border-bottom: 1px solid #c9c9c9;
-    }
-
     QFrame#semanticTreeSurface, QFrame#objectInspectorSurface, QFrame#viewerInfoSurface,
     QWidget[surfaceRole="panel"] {
       background: #ffffff;
@@ -283,7 +277,7 @@ void apply_viewer_theme(QApplication& application) {
       font-size: 8pt;
     }
 
-    QLabel#fileBarReadonlyBadge, QLabel#offlineReadonlyBadge, QLabel#modeBadge, QLabel#workbenchModeBadge {
+    QLabel#offlineReadonlyBadge, QLabel#modeBadge, QLabel#workbenchModeBadge {
       background: transparent;
       border: none;
       color: #686868;
@@ -416,8 +410,7 @@ void apply_viewer_theme(QApplication& application) {
       font-size: 9pt;
     }
 
-    QTableWidget#objectSemanticInfoTable, QTableWidget#objectMembersInfoTable,
-    QTableWidget#objectAttributesInfo {
+    QTableWidget#objectSemanticInfoTable, QTableWidget#objectMembersInfoTable {
       font-family: "Consolas", "Microsoft YaHei UI", monospace;
       font-size: 10pt;
     }

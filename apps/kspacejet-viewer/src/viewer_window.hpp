@@ -166,8 +166,6 @@ private:
   QWidget* image_page_ = nullptr;
   QWidget* pipeline_page_ = nullptr;
   QToolButton* export_button_ = nullptr;
-  QToolButton* clear_file_bar_button_ = nullptr;
-  QLineEdit* source_file_bar_ = nullptr;
   QMenu* recent_files_menu_ = nullptr;
   QTreeWidget* dataset_navigation_ = nullptr;
   QScrollArea* object_general_ = nullptr;
@@ -177,8 +175,6 @@ private:
   QLineEdit* object_access_field_ = nullptr;
   QTableWidget* object_semantics_table_ = nullptr;
   QTableWidget* object_members_table_ = nullptr;
-  QLabel* object_attributes_status_ = nullptr;
-  QTableWidget* object_attributes_ = nullptr;
   QPlainTextEdit* info_panel_ = nullptr;
   QStackedWidget* metadata_stack_ = nullptr;
   QLabel* metadata_xml_summary_ = nullptr;

@@ -27,16 +27,6 @@ struct InspectionReadLimits {
   std::size_t max_hdf5_group_path_bytes{4U * 1024U};
   // Bounds HDF5 group-name materialization during container discovery.
   std::size_t max_hdf5_group_name_bytes{256U};
-  // Bounds owned HDF5 object-attribute descriptors. Attribute previews are
-  // deliberately diagnostic-only: they never retain HDF5 values or permit an
-  // arbitrary HDF5 object path to be read. A value which exceeds the element
-  // or byte limits remains a descriptor with an omitted/truncated preview.
-  std::uint32_t max_hdf5_object_attributes{256U};
-  std::uint32_t max_hdf5_attribute_rank{8U};
-  std::uint64_t max_hdf5_attribute_elements{1'024U};
-  std::size_t max_hdf5_attribute_name_bytes{256U};
-  std::size_t max_hdf5_attribute_value_bytes{64U * 1024U};
-  std::size_t max_hdf5_attribute_preview_bytes{4U * 1024U};
   std::uint32_t max_image_series{128U};
   std::size_t max_image_series_name_bytes{256U};
   std::uint32_t max_images_per_series{100'000U};
@@ -73,43 +63,6 @@ struct InspectionDatasetMetadata {
   std::string xml_header;
   std::uint32_t acquisition_count{0U};
   std::vector<InspectionImageSeriesDescriptor> image_series;
-};
-
-// A semantic selector for the currently open standard MRD container. It is
-// intentionally not an arbitrary HDF5 path: viewers may inspect only the
-// container and its standard direct objects.
-enum class InspectionObjectKind {
-  container,
-  xml,
-  acquisitions,
-  waveforms,
-  image_series,
-};
-
-struct InspectionObjectLocator {
-  InspectionObjectKind kind{InspectionObjectKind::container};
-  // Required only for `image_series`; it must name a series advertised by
-  // InspectionDatasetMetadata::image_series.
-  std::string image_series_id;
-};
-
-enum class InspectionAttributeValuePreviewState {
-  available,
-  truncated,
-  unsupported,
-};
-
-// A bounded, owned description of one native HDF5 Attribute. `dimensions` is
-// empty for an HDF5 scalar; `element_count` is the total scalar count in its
-// dataspace. `type_name` and `value_preview` are display text, never HDF5
-// identifiers or retained source storage.
-struct InspectionObjectAttributeDescriptor {
-  std::string name;
-  std::string type_name;
-  std::vector<std::uint64_t> dimensions;
-  std::uint64_t element_count{0U};
-  std::string value_preview;
-  InspectionAttributeValuePreviewState value_preview_state{InspectionAttributeValuePreviewState::unsupported};
 };
 
 // `ordinal` is the zero-based storage ordinal in the ISMRMRD acquisition
@@ -248,15 +201,6 @@ public:
                           std::string& error);
   [[nodiscard]] bool is_open() const noexcept;
   [[nodiscard]] const InspectionDatasetMetadata& metadata() const noexcept;
-
-  // Reads bounded native HDF5 Attributes only from one semantic object of the
-  // current standard container. On failure `attributes` is cleared and no
-  // partial descriptors escape. Unsupported HDF5 value types are successful
-  // descriptors with `value_preview_state == unsupported`; their value storage
-  // is never materialized.
-  [[nodiscard]] bool read_object_attributes(const InspectionObjectLocator& object,
-                                            std::vector<InspectionObjectAttributeDescriptor>& attributes,
-                                            std::string& error);
 
   // Reads one copied standard acquisition header after named-field HDF5
   // preflight. It never materializes the acquisition samples or trajectory.

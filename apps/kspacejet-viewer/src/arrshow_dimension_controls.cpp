@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QSizePolicy>
 #include <QStyle>
 #include <QStringList>
 #include <QToolButton>
@@ -16,6 +17,8 @@
 #include <utility>
 
 namespace {
+
+constexpr int k_arrshow_dimension_column_width = 42;
 
 [[nodiscard]] QString object_name_suffix(const QString& identifier) {
   QString result;
@@ -57,6 +60,10 @@ void configure_centered_dimension_text_cell(QToolButton* cell) {
   // explicitly on every row so an icon-oriented platform default cannot
   // alter the compact column geometry.
   cell->setToolButtonStyle(Qt::ToolButtonTextOnly);
+  // A QVBoxLayout keeps a default tool button at its text-size width.  The
+  // button must expand horizontally, otherwise its centred label is centred
+  // only in a left-hand sliver instead of in the whole dimension cell.
+  cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   cell->setProperty("arrShowDimensionTextCell", true);
 }
 
@@ -154,8 +161,7 @@ public:
         selection_tag_changed_callback_(std::move(selection_tag_changed_callback)) {
     setProperty("arrShowDimension", true);
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    setMinimumWidth(34);
-    setMaximumWidth(42);
+    setFixedWidth(k_arrshow_dimension_column_width);
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(1, 1, 1, 1);

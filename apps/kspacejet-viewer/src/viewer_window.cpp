@@ -108,7 +108,6 @@ constexpr qsizetype kMaximumRecentFiles = 5;
 }
 
 const QSize kMaximumUiPixmapSize{1600, 1200};
-constexpr int kMaximumAttributePreviewCharacters = 50;
 constexpr qsizetype kMaximumPipelineGraphSemanticItems = 512U;
 constexpr qreal kPipelineGraphNodeWidth = 250.0;
 constexpr qreal kPipelineGraphNodeHeight = 88.0;
@@ -394,66 +393,6 @@ constexpr int kNavigationDefaultViewRole = Qt::UserRole + 2;
       return QStringLiteral("Pipeline");
   }
   return QStringLiteral("object");
-}
-
-[[nodiscard]] bool inspection_object_locator(const SemanticObjectKind kind,
-                                             ksj::ismrmrd::InspectionObjectLocator& locator) {
-  switch (kind) {
-    case SemanticObjectKind::container:
-      locator = {.kind = ksj::ismrmrd::InspectionObjectKind::container};
-      return true;
-    case SemanticObjectKind::header:
-      locator = {.kind = ksj::ismrmrd::InspectionObjectKind::xml};
-      return true;
-    case SemanticObjectKind::acquisitions:
-      locator = {.kind = ksj::ismrmrd::InspectionObjectKind::acquisitions};
-      return true;
-    case SemanticObjectKind::waveforms:
-      locator = {.kind = ksj::ismrmrd::InspectionObjectKind::waveforms};
-      return true;
-    case SemanticObjectKind::source_file:
-    case SemanticObjectKind::images:
-    case SemanticObjectKind::pipeline:
-      return false;
-  }
-  return false;
-}
-
-[[nodiscard]] QString attribute_array_size(const ksj::ismrmrd::InspectionObjectAttributeDescriptor& attribute) {
-  if (attribute.dimensions.empty()) {
-    return QStringLiteral("1");
-  }
-  QStringList dimensions;
-  dimensions.reserve(static_cast<qsizetype>(attribute.dimensions.size()));
-  for (const auto dimension : attribute.dimensions) {
-    dimensions.append(QString::number(static_cast<qulonglong>(dimension)));
-  }
-  return dimensions.join(QStringLiteral(" × "));
-}
-
-[[nodiscard]] QString attribute_preview(const ksj::ismrmrd::InspectionObjectAttributeDescriptor& attribute) {
-  using State = ksj::ismrmrd::InspectionAttributeValuePreviewState;
-  QString preview;
-  switch (attribute.value_preview_state) {
-    case State::available:
-      preview =
-        attribute.value_preview.empty()
-          ? QObject::tr("(empty)")
-          : QString::fromUtf8(attribute.value_preview.data(), static_cast<qsizetype>(attribute.value_preview.size()));
-      break;
-    case State::truncated:
-      preview =
-        QString::fromUtf8(attribute.value_preview.data(), static_cast<qsizetype>(attribute.value_preview.size())) +
-        QStringLiteral("…");
-      break;
-    case State::unsupported:
-      preview = QObject::tr("(unsupported preview)");
-      break;
-  }
-  if (preview.size() > kMaximumAttributePreviewCharacters) {
-    preview = QStringLiteral("%1…").arg(preview.left(kMaximumAttributePreviewCharacters - 1));
-  }
-  return preview;
 }
 
 [[nodiscard]] ksj::viewer::CartesianKspaceAcquisitionKind
@@ -1461,13 +1400,11 @@ void ViewerWindow::create_actions() {
   connect(viewer_guide_action, &QAction::triggered, this, [this] {
     QMessageBox::information(
       this, tr("KSpaceJet Viewer guide"),
-      tr(
-        "1. Open a local standard ISMRMRD file from File or the file bar; reopen either source type from File → Recent "
-        "Files.\n"
-        "2. Select a verified semantic object in the hierarchy. Selection only updates the inspector.\n"
-        "3. Use its contextual tab, Inspect, Open As..., a double click, or the context menu to open a bounded view.\n"
-        "4. The lower Info panel records local read-only inspection actions.\n\n"
-        "KSpaceJet Viewer does not edit HDF5, retain full raw payloads, or support URL loading."));
+      tr("1. Open a local standard ISMRMRD file from File; reopen either source type from File → Recent Files.\n"
+         "2. Select a verified semantic object in the hierarchy. Selection only updates the inspector.\n"
+         "3. Use its contextual tab, Inspect, Open As..., a double click, or the context menu to open a bounded view.\n"
+         "4. The lower Info panel records local read-only inspection actions.\n\n"
+         "KSpaceJet Viewer does not edit HDF5, retain full raw payloads, or support URL loading."));
   });
   connect(about_action, &QAction::triggered, this, [this] {
     QMessageBox::about(this, tr("About KSpaceJet Viewer"),
@@ -1510,29 +1447,6 @@ void ViewerWindow::create_workbench() {
   root_layout->setContentsMargins(0, 0, 0, 0);
   root_layout->setSpacing(0);
 
-  auto* file_bar = new QFrame(workspace_root);
-  file_bar->setObjectName(QStringLiteral("viewerFileBar"));
-  file_bar->setProperty("surfaceRole", QStringLiteral("filebar"));
-  auto* file_layout = new QHBoxLayout(file_bar);
-  file_layout->setContentsMargins(4, 2, 4, 2);
-  file_layout->setSpacing(4);
-  source_file_bar_ = new QLineEdit(file_bar);
-  source_file_bar_->setObjectName(QStringLiteral("sourceFileBar"));
-  source_file_bar_->setPlaceholderText(tr("Enter a local standard ISMRMRD file path"));
-  source_file_bar_->setToolTip(tr("Enter a local standard ISMRMRD file path. URLs are not supported."));
-  file_layout->addWidget(source_file_bar_, 1);
-  clear_file_bar_button_ = new QToolButton(file_bar);
-  clear_file_bar_button_->setObjectName(QStringLiteral("clearFileBarButton"));
-  clear_file_bar_button_->setText(tr("Clear Text"));
-  clear_file_bar_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-  clear_file_bar_button_->setToolTip(tr("Clear the file-bar text without closing the current source."));
-  file_layout->addWidget(clear_file_bar_button_);
-  auto* read_only_badge = make_text(tr("READ-ONLY"), "modeBadge", file_bar);
-  read_only_badge->setObjectName(QStringLiteral("fileBarReadonlyBadge"));
-  read_only_badge->setAlignment(Qt::AlignCenter);
-  file_layout->addWidget(read_only_badge);
-  root_layout->addWidget(file_bar);
-
   auto* main_splitter = new QSplitter(Qt::Horizontal, workspace_root);
   main_splitter->setObjectName(QStringLiteral("viewerMainSplitter"));
   main_splitter->setChildrenCollapsible(false);
@@ -1564,29 +1478,6 @@ void ViewerWindow::create_workbench() {
   object_inspector_ = new QTabWidget(inspector_surface);
   object_inspector_->setObjectName(QStringLiteral("objectInspector"));
   object_inspector_->setDocumentMode(true);
-
-  auto* attributes_page = new QWidget(object_inspector_);
-  auto* attributes_layout = new QVBoxLayout(attributes_page);
-  attributes_layout->setContentsMargins(6, 6, 6, 6);
-  attributes_layout->setSpacing(4);
-  object_attributes_status_ =
-    make_text(tr("Read-only, bounded native HDF5 attributes attached to the selected standard MRD object. "
-                 "ISMRMRD image MetaAttributes are shown only in Image details."),
-              "inspectorHint", attributes_page);
-  object_attributes_status_->setObjectName(QStringLiteral("objectAttributesStatus"));
-  attributes_layout->addWidget(object_attributes_status_);
-  object_attributes_ = new QTableWidget(attributes_page);
-  object_attributes_->setObjectName(QStringLiteral("objectAttributesInfo"));
-  object_attributes_->setColumnCount(4);
-  object_attributes_->setHorizontalHeaderLabels({tr("Name"), tr("Type"), tr("Array Size"), tr("Value [50]")});
-  object_attributes_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  object_attributes_->setSelectionBehavior(QAbstractItemView::SelectRows);
-  object_attributes_->setSelectionMode(QAbstractItemView::SingleSelection);
-  object_attributes_->setAlternatingRowColors(true);
-  object_attributes_->verticalHeader()->setVisible(false);
-  object_attributes_->horizontalHeader()->setStretchLastSection(true);
-  attributes_layout->addWidget(object_attributes_);
-  object_inspector_->addTab(attributes_page, tr("Object Attribute Info"));
 
   object_general_ = new QScrollArea(object_inspector_);
   object_general_->setObjectName(QStringLiteral("generalObjectInfo"));
@@ -1658,9 +1549,7 @@ void ViewerWindow::create_workbench() {
   general_layout->addWidget(members_group, 1);
   object_general_->setWidget(general_content);
   object_inspector_->addTab(object_general_, tr("General Object Info"));
-  // HDFView opens the general object summary first while retaining its
-  // Object Attribute Info tab immediately beside it.
-  object_inspector_->setCurrentIndex(1);
+  object_inspector_->setCurrentWidget(object_general_);
   inspector_layout->addWidget(object_inspector_, 1);
 
   create_kspace_page();
@@ -1707,18 +1596,6 @@ void ViewerWindow::create_workbench() {
   });
   connect(dataset_navigation_, &QTreeWidget::customContextMenuRequested, this, [this](const QPoint& position) {
     show_object_context_menu(position);
-  });
-  connect(clear_file_bar_button_, &QToolButton::clicked, this, [this] {
-    source_file_bar_->clear();
-  });
-  const auto open_file_bar_source = [this](const QString& file_path) {
-    QString error;
-    if (!open_mrd_source(file_path, error)) {
-      show_viewer_error(this, tr("Cannot open ISMRMRD file"), error, "open_mrd");
-    }
-  };
-  connect(source_file_bar_, &QLineEdit::returnPressed, this, [this, open_file_bar_source] {
-    open_file_bar_source(source_file_bar_->text());
   });
   connect(object_inspector_, &QTabWidget::currentChanged, this, [this](const int index) {
     if (object_inspector_ == nullptr) {
@@ -2839,7 +2716,7 @@ void ViewerWindow::rebuild_dataset_navigation() {
 void ViewerWindow::update_object_inspector(QTreeWidgetItem* item) {
   if (object_general_ == nullptr || object_name_field_ == nullptr || object_path_field_ == nullptr ||
       object_type_field_ == nullptr || object_access_field_ == nullptr || object_semantics_table_ == nullptr ||
-      object_members_table_ == nullptr || object_attributes_status_ == nullptr || object_attributes_ == nullptr) {
+      object_members_table_ == nullptr) {
     return;
   }
 
@@ -2858,10 +2735,6 @@ void ViewerWindow::update_object_inspector(QTreeWidgetItem* item) {
     set_table_contents(object_members_table_, {tr("Name"), tr("Type"), tr("Array Size")}, rows);
     object_members_table_->setMinimumHeight(rows.isEmpty() ? 46 : 176);
   };
-  const auto set_attribute_rows = [this](const QList<QStringList>& rows) {
-    set_table_contents(object_attributes_, {tr("Name"), tr("Type"), tr("Array Size"), tr("Value [50]")}, rows);
-    object_attributes_->resizeRowsToContents();
-  };
   if (item == nullptr) {
     object_name_field_->setText(tr("No object selected"));
     object_path_field_->clear();
@@ -2869,8 +2742,6 @@ void ViewerWindow::update_object_inspector(QTreeWidgetItem* item) {
     object_access_field_->setText(tr("Read-only"));
     set_semantics_rows({{tr("Status:"), tr("Select an object in the ISMRMRD file hierarchy.")}});
     set_members_rows({});
-    object_attributes_status_->setText(tr("No standard ISMRMRD object is selected."));
-    set_attribute_rows({});
     return;
   }
 
@@ -2986,47 +2857,6 @@ void ViewerWindow::update_object_inspector(QTreeWidgetItem* item) {
   object_access_field_->setText(tr("Read-only standard ISMRMRD semantic view"));
   set_semantics_rows(semantic_rows);
   set_members_rows(member_rows);
-
-  ksj::ismrmrd::InspectionObjectLocator locator;
-  if (!inspection_object_locator(kind, locator)) {
-    if (kind == SemanticObjectKind::images) {
-      object_attributes_status_->setText(
-        tr("Images is a semantic collection, not one HDF5 object. Its ISMRMRD Image MetaAttributes are displayed "
-           "only in the Image details view."));
-    } else if (kind == SemanticObjectKind::pipeline) {
-      object_attributes_status_->setText(
-        tr("PipelineDefinition is JSON rather than an HDF5 object and has no HDF5 attributes."));
-    } else {
-      object_attributes_status_->setText(
-        tr("Select a standard MRD container or one of its concrete semantic objects to inspect HDF5 attributes."));
-    }
-    set_attribute_rows({});
-    return;
-  }
-
-  std::vector<ksj::ismrmrd::InspectionObjectAttributeDescriptor> attributes;
-  QString attribute_error;
-  if (!inspection_session_.read_object_attributes(container_path, locator, attributes, attribute_error)) {
-    object_attributes_status_->setText(
-      tr("Unable to read bounded HDF5 attributes for %1: %2").arg(path, attribute_error));
-    set_attribute_rows({});
-    return;
-  }
-
-  QList<QStringList> rows;
-  rows.reserve(static_cast<qsizetype>(attributes.size()));
-  for (const auto& attribute : attributes) {
-    rows.append({QString::fromUtf8(attribute.name.data(), static_cast<qsizetype>(attribute.name.size())),
-                 QString::fromUtf8(attribute.type_name.data(), static_cast<qsizetype>(attribute.type_name.size())),
-                 attribute_array_size(attribute), attribute_preview(attribute)});
-  }
-  if (rows.isEmpty()) {
-    object_attributes_status_->setText(tr("No HDF5 attributes are attached to %1.").arg(path));
-  } else {
-    object_attributes_status_->setText(
-      tr("%1 HDF5 attribute(s) attached to %2. Values are bounded read-only previews.").arg(rows.size()).arg(path));
-  }
-  set_attribute_rows(rows);
 }
 
 void ViewerWindow::update_selection_actions() {
@@ -3243,11 +3073,6 @@ bool ViewerWindow::open_mrd_source(const QString& file_path, QString& error) {
   refresh_metadata();
   refresh_kspace();
   refresh_image();
-  if (source_file_bar_ != nullptr) {
-    const QSignalBlocker blocker(source_file_bar_);
-    const auto source_path = inspection_session_.source_path();
-    source_file_bar_->setText(source_path);
-  }
   append_info(tr("Opened %1 and selected standard container %2. %3 readable container(s) are available; "
                  "payloads are read only when explicitly inspected.")
                 .arg(inspection_session_.source_path(), inspection_session_.container_path())
@@ -3267,10 +3092,6 @@ void ViewerWindow::close_mrd_source() {
   refresh_metadata();
   refresh_kspace();
   refresh_image();
-  if (source_file_bar_ != nullptr) {
-    const QSignalBlocker blocker(source_file_bar_);
-    source_file_bar_->clear();
-  }
   append_info(tr("Closed read-only source: %1").arg(closed_path));
 }
 
@@ -3304,10 +3125,6 @@ bool ViewerWindow::open_pipeline_source(const QString& file_path, QString& error
   pipeline_presentation_ = next_presentation;
   remember_successful_open_directory(trimmed_path);
   remember_recent_file(trimmed_path, true);
-  if (source_file_bar_ != nullptr) {
-    const QSignalBlocker blocker(source_file_bar_);
-    source_file_bar_->setText(inspection_session_.is_open() ? inspection_session_.source_path() : QString{});
-  }
   refresh_pipeline();
   rebuild_dataset_navigation();
   set_workspace_view(WorkspaceView::pipeline);
@@ -4339,10 +4156,6 @@ void ViewerWindow::select_image_dimension_value(const QString& dimension_identif
 }
 
 void ViewerWindow::update_source_context() {
-  if (source_file_bar_ != nullptr && inspection_session_.is_open()) {
-    const QSignalBlocker blocker(source_file_bar_);
-    source_file_bar_->setText(inspection_session_.source_path());
-  }
   update_object_inspector(dataset_navigation_ == nullptr ? nullptr : dataset_navigation_->currentItem());
   update_workspace_tab_visibility(dataset_navigation_ == nullptr ? nullptr : dataset_navigation_->currentItem());
   update_selection_actions();

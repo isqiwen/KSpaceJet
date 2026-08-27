@@ -23,8 +23,8 @@ acquisition, image-series, waveform, and XML-header content:
 
 The navigation tree chooses a discovered container rather than asking the user
 to type a group name. Opening an MRD initially shows that semantic tree and a
-single HDFView-style primary inspector: **Object Attribute Info** and
-**General Object Info** are always present, while contextual **K-space**,
+single HDFView-style primary inspector: **General Object Info** is always
+present, while contextual **K-space**,
 **XML**, and **Image** tabs appear only for the selected, active standard MRD
 object. **Pipeline** is a peer tab only after a `PipelineDefinition` has been
 opened successfully; there is no empty Pipeline placeholder or a second,
@@ -48,8 +48,7 @@ work area while retaining the native minimize, maximize, and close controls.
 This changes only the desktop presentation; standard MRD input remains local
 and read-only.
 
-1. Use **File** or `Ctrl+O` to open a local standard MRD file. The compact
-   current-file bar also accepts a local path on Enter. **File → Recent Files** keeps
+1. Use **File** or `Ctrl+O` to open a local standard MRD file. **File → Recent Files** keeps
    the five most recently successfully opened local MRD or PipelineDefinition
    files, preserves their source type so each is reopened correctly, and
    survives restart; missing local entries are discarded on the next start.
@@ -72,17 +71,11 @@ and read-only.
    standard dataset semantics and standard ISMRMRD member tables. The compact
    semantic table derives its height from the actual styled Qt rows and table
    frame, so its content is not clipped; any outer overflow belongs to the
-   General Object Info scroll surface. **Object
-   Attribute Info** separately shows the actual native HDF5 Attributes attached
-   to the selected concrete standard-MRD object. Names and type/shape remain
-   visible under a bounded read-only policy; oversized values are explicitly
-   shown as omitted previews, and an object with no HDF5 Attributes says so
-   explicitly. The semantic **Images** collection is not itself one HDF5
-   object, and standard image `MetaAttributes` belong only in Image details,
-   not in this tab. This is still not an arbitrary-path HDF5 attribute browser
-   or editor. The bounded XML presentation belongs to the contextual **XML**
-   tab: select the semantic Header/XML object and explicitly inspect it,
-   rather than expecting a file-level metadata dashboard.
+   General Object Info scroll surface. Native HDF5 object attributes are not
+   exposed as a separate Viewer page. Standard image `MetaAttributes` belong
+   only in Image details. The bounded XML presentation belongs to the
+   contextual **XML** tab: select the semantic Header/XML object and explicitly
+   inspect it, rather than expecting a file-level metadata dashboard.
 4. **K-space** follows General Object Info in the same primary tab group;
    **XML**, **Image**, and a successfully opened **Pipeline** are its peer
    contextual tabs. No second lower tab strip duplicates these pages. Use

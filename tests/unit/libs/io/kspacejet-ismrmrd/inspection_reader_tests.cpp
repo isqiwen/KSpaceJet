@@ -14,7 +14,6 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
-#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -200,101 +199,6 @@ void create_empty_hdf5_file(const std::filesystem::path& path) {
   const auto filename = path.string();
   const auto file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   ASSERT_GE(file, 0);
-  EXPECT_GE(H5Fclose(file), 0);
-}
-
-void write_uint32_object_attribute(const std::filesystem::path& path, const std::string_view object_path,
-                                   const std::string_view attribute_name, const std::uint32_t value) {
-  const auto filename = path.string();
-  const auto file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
-  ASSERT_GE(file, 0);
-  const auto object = H5Oopen(file, std::string(object_path).c_str(), H5P_DEFAULT);
-  ASSERT_GE(object, 0);
-  const auto dataspace = H5Screate(H5S_SCALAR);
-  ASSERT_GE(dataspace, 0);
-  const auto attribute =
-    H5Acreate2(object, std::string(attribute_name).c_str(), H5T_NATIVE_UINT32, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-  ASSERT_GE(attribute, 0);
-  ASSERT_GE(H5Awrite(attribute, H5T_NATIVE_UINT32, &value), 0);
-  EXPECT_GE(H5Aclose(attribute), 0);
-  EXPECT_GE(H5Sclose(dataspace), 0);
-  EXPECT_GE(H5Oclose(object), 0);
-  EXPECT_GE(H5Fclose(file), 0);
-}
-
-void write_uint32_array_object_attribute(const std::filesystem::path& path, const std::string_view object_path,
-                                         const std::string_view attribute_name,
-                                         const std::span<const std::uint32_t> values) {
-  const auto filename = path.string();
-  const auto file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
-  ASSERT_GE(file, 0);
-  const auto object = H5Oopen(file, std::string(object_path).c_str(), H5P_DEFAULT);
-  ASSERT_GE(object, 0);
-  const hsize_t element_count = values.size();
-  const auto dataspace = H5Screate_simple(1, &element_count, nullptr);
-  ASSERT_GE(dataspace, 0);
-  const auto attribute =
-    H5Acreate2(object, std::string(attribute_name).c_str(), H5T_NATIVE_UINT32, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-  ASSERT_GE(attribute, 0);
-  ASSERT_GE(H5Awrite(attribute, H5T_NATIVE_UINT32, values.data()), 0);
-  EXPECT_GE(H5Aclose(attribute), 0);
-  EXPECT_GE(H5Sclose(dataspace), 0);
-  EXPECT_GE(H5Oclose(object), 0);
-  EXPECT_GE(H5Fclose(file), 0);
-}
-
-void write_fixed_string_object_attribute(const std::filesystem::path& path, const std::string_view object_path,
-                                         const std::string_view attribute_name, const std::string_view value) {
-  const auto filename = path.string();
-  const auto file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
-  ASSERT_GE(file, 0);
-  const auto object = H5Oopen(file, std::string(object_path).c_str(), H5P_DEFAULT);
-  ASSERT_GE(object, 0);
-  const auto type = H5Tcopy(H5T_C_S1);
-  ASSERT_GE(type, 0);
-  ASSERT_GE(H5Tset_size(type, value.size() + 1U), 0);
-  ASSERT_GE(H5Tset_strpad(type, H5T_STR_NULLTERM), 0);
-  const auto dataspace = H5Screate(H5S_SCALAR);
-  ASSERT_GE(dataspace, 0);
-  const auto attribute =
-    H5Acreate2(object, std::string(attribute_name).c_str(), type, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-  ASSERT_GE(attribute, 0);
-  const std::string value_copy(value);
-  ASSERT_GE(H5Awrite(attribute, type, value_copy.c_str()), 0);
-  EXPECT_GE(H5Aclose(attribute), 0);
-  EXPECT_GE(H5Sclose(dataspace), 0);
-  EXPECT_GE(H5Tclose(type), 0);
-  EXPECT_GE(H5Oclose(object), 0);
-  EXPECT_GE(H5Fclose(file), 0);
-}
-
-void write_compound_object_attribute(const std::filesystem::path& path, const std::string_view object_path,
-                                     const std::string_view attribute_name) {
-  struct Pair {
-    std::uint32_t first;
-    std::uint32_t second;
-  };
-
-  const auto filename = path.string();
-  const auto file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
-  ASSERT_GE(file, 0);
-  const auto object = H5Oopen(file, std::string(object_path).c_str(), H5P_DEFAULT);
-  ASSERT_GE(object, 0);
-  const auto type = H5Tcreate(H5T_COMPOUND, sizeof(Pair));
-  ASSERT_GE(type, 0);
-  ASSERT_GE(H5Tinsert(type, "first", offsetof(Pair, first), H5T_NATIVE_UINT32), 0);
-  ASSERT_GE(H5Tinsert(type, "second", offsetof(Pair, second), H5T_NATIVE_UINT32), 0);
-  const auto dataspace = H5Screate(H5S_SCALAR);
-  ASSERT_GE(dataspace, 0);
-  const auto attribute =
-    H5Acreate2(object, std::string(attribute_name).c_str(), type, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-  ASSERT_GE(attribute, 0);
-  const Pair value{.first = 7U, .second = 9U};
-  ASSERT_GE(H5Awrite(attribute, type, &value), 0);
-  EXPECT_GE(H5Aclose(attribute), 0);
-  EXPECT_GE(H5Sclose(dataspace), 0);
-  EXPECT_GE(H5Tclose(type), 0);
-  EXPECT_GE(H5Oclose(object), 0);
   EXPECT_GE(H5Fclose(file), 0);
 }
 
@@ -742,19 +646,6 @@ TEST(KSpaceJetInspectionReader, ClassifiesOnlyStandardWaveformDatasets) {
   ASSERT_NE(nonstandard, containers.end());
   EXPECT_TRUE(nonstandard->has_header);
   EXPECT_FALSE(nonstandard->has_waveforms);
-
-  ksj::ismrmrd::InspectionReader reader;
-  ASSERT_TRUE(reader.open(path, "/standard_waveforms", {}, error)) << error;
-  std::vector<ksj::ismrmrd::InspectionObjectAttributeDescriptor> attributes;
-  EXPECT_TRUE(reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::waveforms}, attributes, error))
-    << error;
-  EXPECT_TRUE(attributes.empty());
-
-  ASSERT_TRUE(reader.open(path, "/nonstandard_waveforms", {}, error)) << error;
-  EXPECT_FALSE(
-    reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::waveforms}, attributes, error));
-  EXPECT_EQ(error, "The selected ISMRMRD container has no standard waveform object.");
-  EXPECT_TRUE(attributes.empty());
 }
 
 TEST(KSpaceJetInspectionReader, OpensStandardImageArtifactWithoutRawAcquisitions) {
@@ -823,134 +714,6 @@ TEST(KSpaceJetInspectionReader, DiscoversNestedRawAndStandaloneImageContainers) 
     standalone_image_reader.read_image_record({.series_id = "image_inspection", .ordinal = 0U}, image_record, error))
     << error;
   EXPECT_EQ(image_record.header.image_index, 7U);
-
-  std::vector<ksj::ismrmrd::InspectionObjectAttributeDescriptor> attributes;
-  EXPECT_FALSE(standalone_image_reader.read_object_attributes(
-    {.kind = ksj::ismrmrd::InspectionObjectKind::acquisitions}, attributes, error));
-  EXPECT_EQ(error, "A standalone ISMRMRD image series has no acquisition object.");
-  EXPECT_TRUE(attributes.empty());
-}
-
-TEST(KSpaceJetInspectionReader, ReadsBoundedNativeHdf5ObjectAttributesWithoutConflatingImageMetaAttributes) {
-  const auto path = make_test_dataset_path("native_hdf5_object_attributes");
-  write_standard_dataset(path);
-  write_uint32_object_attribute(path, "/dataset/data", "acquisition_count_hint", 42U);
-  const std::array<std::uint32_t, 3U> coil_order{2U, 4U, 8U};
-  write_uint32_array_object_attribute(path, "/dataset/data", "coil_order", coil_order);
-  write_fixed_string_object_attribute(path, "/dataset/xml", "description", "synthetic header");
-  write_compound_object_attribute(path, "/dataset/data", "compound_details");
-
-  ksj::ismrmrd::InspectionReader reader;
-  std::string error;
-  ASSERT_TRUE(reader.open(path, std::string(kDatasetGroup), {}, error)) << error;
-
-  std::vector<ksj::ismrmrd::InspectionObjectAttributeDescriptor> attributes;
-  ASSERT_TRUE(reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::container}, attributes, error))
-    << error;
-  EXPECT_TRUE(attributes.empty());
-
-  ASSERT_TRUE(reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::xml}, attributes, error))
-    << error;
-  ASSERT_EQ(attributes.size(), 1U);
-  EXPECT_EQ(attributes.front().name, "description");
-  EXPECT_TRUE(attributes.front().type_name.starts_with("string"));
-  EXPECT_TRUE(attributes.front().dimensions.empty());
-  EXPECT_EQ(attributes.front().element_count, 1U);
-  EXPECT_EQ(attributes.front().value_preview, "synthetic header");
-  EXPECT_EQ(attributes.front().value_preview_state, ksj::ismrmrd::InspectionAttributeValuePreviewState::available);
-
-  ASSERT_TRUE(
-    reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::acquisitions}, attributes, error))
-    << error;
-  ASSERT_EQ(attributes.size(), 3U);
-  const auto find_attribute = [&attributes](const std::string_view name) {
-    return std::find_if(attributes.begin(), attributes.end(), [name](const auto& attribute) {
-      return attribute.name == name;
-    });
-  };
-  const auto acquisition_hint = find_attribute("acquisition_count_hint");
-  ASSERT_NE(acquisition_hint, attributes.end());
-  EXPECT_EQ(acquisition_hint->type_name, "32-bit unsigned integer");
-  EXPECT_EQ(acquisition_hint->element_count, 1U);
-  EXPECT_EQ(acquisition_hint->value_preview, "42");
-  EXPECT_EQ(acquisition_hint->value_preview_state, ksj::ismrmrd::InspectionAttributeValuePreviewState::available);
-  const auto coil_order_attribute = find_attribute("coil_order");
-  ASSERT_NE(coil_order_attribute, attributes.end());
-  EXPECT_EQ(coil_order_attribute->dimensions, std::vector<std::uint64_t>({3U}));
-  EXPECT_EQ(coil_order_attribute->element_count, 3U);
-  EXPECT_EQ(coil_order_attribute->value_preview, "[2, 4, 8]");
-  EXPECT_EQ(coil_order_attribute->value_preview_state, ksj::ismrmrd::InspectionAttributeValuePreviewState::available);
-  const auto compound_attribute = find_attribute("compound_details");
-  ASSERT_NE(compound_attribute, attributes.end());
-  EXPECT_EQ(compound_attribute->type_name, "compound");
-  EXPECT_EQ(compound_attribute->value_preview_state, ksj::ismrmrd::InspectionAttributeValuePreviewState::unsupported);
-  EXPECT_TRUE(compound_attribute->value_preview.empty());
-
-  ASSERT_TRUE(reader.read_object_attributes(
-    {.kind = ksj::ismrmrd::InspectionObjectKind::image_series, .image_series_id = std::string(kImageSeries)},
-    attributes, error))
-    << error;
-  EXPECT_TRUE(attributes.empty());
-
-  EXPECT_FALSE(reader.read_object_attributes(
-    {.kind = ksj::ismrmrd::InspectionObjectKind::image_series, .image_series_id = "unknown"}, attributes, error));
-  EXPECT_EQ(error, "ISMRMRD image series was not found.");
-  EXPECT_TRUE(attributes.empty());
-
-  auto preview_limits = ksj::ismrmrd::InspectionReadLimits{};
-  preview_limits.max_hdf5_attribute_preview_bytes = 4U;
-  ASSERT_TRUE(reader.open(path, std::string(kDatasetGroup), preview_limits, error)) << error;
-  ASSERT_TRUE(reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::xml}, attributes, error))
-    << error;
-  ASSERT_EQ(attributes.size(), 1U);
-  EXPECT_EQ(attributes.front().value_preview, "synt");
-  EXPECT_EQ(attributes.front().value_preview_state, ksj::ismrmrd::InspectionAttributeValuePreviewState::truncated);
-}
-
-TEST(KSpaceJetInspectionReader, BoundsNativeHdf5ObjectAttributeEnumerationAndPreviews) {
-  const auto path = make_test_dataset_path("native_hdf5_object_attribute_limits");
-  write_standard_dataset(path);
-  write_uint32_object_attribute(path, "/dataset/data", "acquisition_count_hint", 42U);
-  write_uint32_object_attribute(path, "/dataset/data", "second_attribute", 43U);
-
-  auto limits = ksj::ismrmrd::InspectionReadLimits{};
-  limits.max_hdf5_object_attributes = 1U;
-  ksj::ismrmrd::InspectionReader reader;
-  std::string error;
-  ASSERT_TRUE(reader.open(path, std::string(kDatasetGroup), limits, error)) << error;
-  std::vector<ksj::ismrmrd::InspectionObjectAttributeDescriptor> attributes;
-  EXPECT_FALSE(
-    reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::acquisitions}, attributes, error));
-  EXPECT_EQ(error, "HDF5 object attribute count exceeds inspection limit.");
-  EXPECT_TRUE(attributes.empty());
-
-  limits.max_hdf5_object_attributes = 2U;
-  limits.max_hdf5_attribute_value_bytes = 3U;
-  ASSERT_TRUE(reader.open(path, std::string(kDatasetGroup), limits, error)) << error;
-  ASSERT_TRUE(
-    reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::acquisitions}, attributes, error))
-    << error;
-  ASSERT_EQ(attributes.size(), 2U);
-  for (const auto& attribute : attributes) {
-    EXPECT_EQ(attribute.value_preview, "preview omitted: inspection limit");
-    EXPECT_EQ(attribute.value_preview_state, ksj::ismrmrd::InspectionAttributeValuePreviewState::truncated);
-  }
-
-  const auto element_path = make_test_dataset_path("native_hdf5_object_attribute_element_limit");
-  write_standard_dataset(element_path);
-  const std::array<std::uint32_t, 3U> values{3U, 5U, 7U};
-  write_uint32_array_object_attribute(element_path, "/dataset/data", "three_values", values);
-  limits = {};
-  limits.max_hdf5_attribute_elements = 2U;
-  ASSERT_TRUE(reader.open(element_path, std::string(kDatasetGroup), limits, error)) << error;
-  ASSERT_TRUE(
-    reader.read_object_attributes({.kind = ksj::ismrmrd::InspectionObjectKind::acquisitions}, attributes, error))
-    << error;
-  ASSERT_EQ(attributes.size(), 1U);
-  EXPECT_EQ(attributes.front().dimensions, std::vector<std::uint64_t>({3U}));
-  EXPECT_EQ(attributes.front().element_count, 3U);
-  EXPECT_EQ(attributes.front().value_preview, "preview omitted: inspection limit");
-  EXPECT_EQ(attributes.front().value_preview_state, ksj::ismrmrd::InspectionAttributeValuePreviewState::truncated);
 }
 
 TEST(KSpaceJetInspectionReader, ReadsStandardAcquisitionsImagesAxesAndMetaAttributes) {

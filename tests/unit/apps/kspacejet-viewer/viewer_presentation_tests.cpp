@@ -42,6 +42,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QStyle>
 #include <QStyleOptionComboBox>
@@ -479,25 +480,6 @@ void create_empty_root_group(const std::filesystem::path& path, const std::strin
   EXPECT_GE(H5Fclose(file), 0);
 }
 
-void write_uint32_attribute(const std::filesystem::path& path, const std::string_view object_path,
-                            const std::string_view attribute_name, const std::uint32_t value) {
-  const auto filename = path.string();
-  const auto file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
-  ASSERT_GE(file, 0);
-  const auto object = H5Oopen(file, std::string(object_path).c_str(), H5P_DEFAULT);
-  ASSERT_GE(object, 0);
-  const auto dataspace = H5Screate(H5S_SCALAR);
-  ASSERT_GE(dataspace, 0);
-  const auto attribute =
-    H5Acreate2(object, std::string(attribute_name).c_str(), H5T_NATIVE_UINT32, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-  ASSERT_GE(attribute, 0);
-  ASSERT_GE(H5Awrite(attribute, H5T_NATIVE_UINT32, &value), 0);
-  EXPECT_GE(H5Aclose(attribute), 0);
-  EXPECT_GE(H5Sclose(dataspace), 0);
-  EXPECT_GE(H5Oclose(object), 0);
-  EXPECT_GE(H5Fclose(file), 0);
-}
-
 [[nodiscard]] QString valid_pipeline_definition() {
   return QStringLiteral(R"json(
 {
@@ -847,6 +829,7 @@ TEST(KSpaceJetViewerTheme, UsesWhiteOnlyForEditableFixedIndexDimensionCells) {
   application.processEvents();
 
   const auto* readout_value = find_named_widget<QLineEdit>(*dimensions, {"kspaceDimensionReadoutValue"});
+  const auto* phase_encode_value = find_named_widget<QLineEdit>(*dimensions, {"kspaceDimensionPhaseEncodeValue"});
   const auto* coil_value = find_named_widget<QLineEdit>(*dimensions, {"kspaceDimensionCoilValue"});
   const auto* average_value = find_named_widget<QLineEdit>(*dimensions, {"kspaceDimensionAverageValue"});
   const auto* readout_abbreviation =
@@ -858,6 +841,7 @@ TEST(KSpaceJetViewerTheme, UsesWhiteOnlyForEditableFixedIndexDimensionCells) {
     find_named_widget<QToolButton>(*dimensions, {"kspaceDimensionAverageAbbreviation"});
   const auto* average_extent = find_named_widget<QToolButton>(*dimensions, {"kspaceDimensionAverageLabel"});
   ASSERT_NE(readout_value, nullptr);
+  ASSERT_NE(phase_encode_value, nullptr);
   ASSERT_NE(coil_value, nullptr);
   ASSERT_NE(average_value, nullptr);
   ASSERT_NE(readout_abbreviation, nullptr);
@@ -877,6 +861,7 @@ TEST(KSpaceJetViewerTheme, UsesWhiteOnlyForEditableFixedIndexDimensionCells) {
   const auto expect_centered_text_cell = [](const QToolButton* cell) {
     ASSERT_NE(cell, nullptr);
     EXPECT_EQ(cell->toolButtonStyle(), Qt::ToolButtonTextOnly);
+    EXPECT_EQ(cell->sizePolicy().horizontalPolicy(), QSizePolicy::Expanding);
     EXPECT_TRUE(cell->property("arrShowDimensionTextCell").toBool());
   };
   expect_centered_text_cell(readout_abbreviation);
@@ -898,6 +883,20 @@ TEST(KSpaceJetViewerTheme, UsesWhiteOnlyForEditableFixedIndexDimensionCells) {
   expect_full_cell_width(readout_value);
   expect_full_cell_width(readout_decrement);
   expect_full_cell_width(readout_extent);
+  const auto expect_fixed_equal_column_width = [readout_value](const QLineEdit* value) {
+    ASSERT_NE(value, nullptr);
+    ASSERT_NE(value->parentWidget(), nullptr);
+    ASSERT_NE(readout_value->parentWidget(), nullptr);
+    const auto* column = value->parentWidget();
+    const auto* reference_column = readout_value->parentWidget();
+    EXPECT_EQ(column->minimumWidth(), column->maximumWidth());
+    EXPECT_EQ(column->width(), column->minimumWidth());
+    EXPECT_EQ(column->width(), reference_column->width());
+  };
+  expect_fixed_equal_column_width(readout_value);
+  expect_fixed_equal_column_width(phase_encode_value);
+  expect_fixed_equal_column_width(coil_value);
+  expect_fixed_equal_column_width(average_value);
 
   QImage rendered(controls_surface.size(), QImage::Format_ARGB32_Premultiplied);
   rendered.fill(Qt::transparent);
@@ -1582,12 +1581,12 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
 
   EXPECT_NE(find_named_widget<QWidget>(window, {"viewerRoot"}), nullptr);
   EXPECT_NE(find_named_widget<QWidget>(window, {"viewerMenuBar", "viewerToolbar"}), nullptr);
-  EXPECT_NE(find_named_widget<QWidget>(window, {"viewerFileBar"}), nullptr);
+  EXPECT_EQ(find_named_widget<QWidget>(window, {"viewerFileBar"}), nullptr);
   EXPECT_NE(find_named_widget<QWidget>(window, {"offlineReadonlyBadge"}), nullptr);
 
-  const auto* source_file_bar = find_named_widget<QLineEdit>(window, {"sourceFileBar"});
-  ASSERT_NE(source_file_bar, nullptr);
-  EXPECT_TRUE(source_file_bar->placeholderText().contains(QStringLiteral("ISMRMRD")));
+  EXPECT_EQ(find_named_widget<QLineEdit>(window, {"sourceFileBar"}), nullptr);
+  EXPECT_EQ(find_named_widget<QAbstractButton>(window, {"clearFileBarButton"}), nullptr);
+  EXPECT_EQ(find_named_widget<QLabel>(window, {"fileBarReadonlyBadge"}), nullptr);
   EXPECT_EQ(find_named_widget<QAbstractButton>(window, {"recentSourcesButton"}), nullptr);
   const auto* file_menu = window.findChild<QMenu*>(QStringLiteral("viewerFileMenu"));
   ASSERT_NE(file_menu, nullptr);
@@ -1595,24 +1594,21 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
   ASSERT_NE(recent_files_menu, nullptr);
   EXPECT_TRUE(file_menu->actions().contains(recent_files_menu->menuAction()));
   EXPECT_FALSE(recent_files_menu->isEnabled());
-  EXPECT_NE(find_named_widget<QAbstractButton>(window, {"clearFileBarButton"}), nullptr);
 
   const auto* object_inspector = find_named_widget<QTabWidget>(window, {"objectInspector"});
   ASSERT_NE(object_inspector, nullptr);
-  EXPECT_EQ(object_inspector->count(), 6);
-  EXPECT_EQ(object_inspector->tabText(0), QStringLiteral("Object Attribute Info"));
-  EXPECT_EQ(object_inspector->tabText(1), QStringLiteral("General Object Info"));
-  EXPECT_EQ(object_inspector->tabText(2), QStringLiteral("K-space"));
-  EXPECT_EQ(object_inspector->tabText(3), QStringLiteral("XML"));
-  EXPECT_EQ(object_inspector->tabText(4), QStringLiteral("Image"));
-  EXPECT_EQ(object_inspector->tabText(5), QStringLiteral("Pipeline"));
+  EXPECT_EQ(object_inspector->count(), 5);
+  EXPECT_EQ(object_inspector->tabText(0), QStringLiteral("General Object Info"));
+  EXPECT_EQ(object_inspector->tabText(1), QStringLiteral("K-space"));
+  EXPECT_EQ(object_inspector->tabText(2), QStringLiteral("XML"));
+  EXPECT_EQ(object_inspector->tabText(3), QStringLiteral("Image"));
+  EXPECT_EQ(object_inspector->tabText(4), QStringLiteral("Pipeline"));
   EXPECT_TRUE(object_inspector->isTabVisible(0));
-  EXPECT_TRUE(object_inspector->isTabVisible(1));
+  EXPECT_FALSE(object_inspector->isTabVisible(1));
   EXPECT_FALSE(object_inspector->isTabVisible(2));
   EXPECT_FALSE(object_inspector->isTabVisible(3));
   EXPECT_FALSE(object_inspector->isTabVisible(4));
-  EXPECT_FALSE(object_inspector->isTabVisible(5));
-  EXPECT_EQ(object_inspector->currentIndex(), 1);
+  EXPECT_EQ(object_inspector->currentIndex(), 0);
   EXPECT_NE(find_named_widget<QScrollArea>(window, {"generalObjectInfo"}), nullptr);
   EXPECT_NE(find_named_widget<QLineEdit>(window, {"objectNameField"}), nullptr);
   EXPECT_NE(find_named_widget<QLineEdit>(window, {"objectPathField"}), nullptr);
@@ -1620,7 +1616,8 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
   EXPECT_NE(find_named_widget<QLineEdit>(window, {"objectAccessField"}), nullptr);
   EXPECT_NE(find_named_widget<QTableWidget>(window, {"objectSemanticInfoTable"}), nullptr);
   EXPECT_NE(find_named_widget<QTableWidget>(window, {"objectMembersInfoTable"}), nullptr);
-  EXPECT_NE(find_named_widget<QTableWidget>(window, {"objectAttributesInfo"}), nullptr);
+  EXPECT_EQ(find_named_widget<QLabel>(window, {"objectAttributesStatus"}), nullptr);
+  EXPECT_EQ(find_named_widget<QTableWidget>(window, {"objectAttributesInfo"}), nullptr);
 
   EXPECT_EQ(find_named_widget<QTabWidget>(window, {"viewerDataViews"}), nullptr);
   EXPECT_EQ(find_named_widget<QWidget>(window, {"viewerDataSurface"}), nullptr);
@@ -1725,7 +1722,7 @@ TEST(KSpaceJetViewerWindow, PresentsHdfViewInspiredReadOnlyWorkbenchAtDesktopSiz
   ASSERT_TRUE(inspect_object->isEnabled());
   inspect_object->trigger();
   application.processEvents();
-  EXPECT_TRUE(object_inspector->isTabVisible(5));
+  EXPECT_TRUE(object_inspector->isTabVisible(4));
   EXPECT_EQ(object_inspector->tabText(object_inspector->currentIndex()), QStringLiteral("Pipeline"));
   const auto* graph_view = find_named_widget<QGraphicsView>(window, {"pipelineGraphCanvas"});
   ASSERT_NE(graph_view, nullptr);
@@ -1890,8 +1887,8 @@ TEST(KSpaceJetViewerWindow, PersistsFiveTypedRecentFilesAfterSuccessfulOpensOnly
     application.processEvents();
     const auto* object_inspector = find_named_widget<QTabWidget>(restored_window, {"objectInspector"});
     ASSERT_NE(object_inspector, nullptr);
-    EXPECT_TRUE(object_inspector->isTabVisible(5));
-    EXPECT_EQ(object_inspector->tabText(5), QStringLiteral("Pipeline"));
+    EXPECT_TRUE(object_inspector->isTabVisible(4));
+    EXPECT_EQ(object_inspector->tabText(4), QStringLiteral("Pipeline"));
   }
 
   ASSERT_TRUE(QFile::remove(pipeline_paths[4]));
@@ -1965,7 +1962,6 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   write_synthetic_dataset(native_path(dataset_path), "dataset_1", false);
   write_synthetic_dataset(native_path(dataset_path), "dataset_2", true);
   write_synthetic_dataset(native_path(dataset_path), "dataset_3", false, true);
-  write_uint32_attribute(native_path(dataset_path), "/dataset_2/data", "acquisition_count_hint", 42U);
 
   auto& application = viewer_application();
   ksj::viewer::apply_viewer_theme(application);
@@ -1978,31 +1974,25 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   ASSERT_TRUE(window.open_mrd_source(dataset_path, error)) << error.toStdString();
   application.processEvents();
 
-  const auto* source_file_bar = find_named_widget<QLineEdit>(window, {"sourceFileBar"});
   auto* tree = find_named_widget<QTreeWidget>(window, {"semanticObjectTree"});
   auto* object_inspector = find_named_widget<QTabWidget>(window, {"objectInspector"});
   auto* object_path = find_named_widget<QLineEdit>(window, {"objectPathField"});
   auto* semantic_table = find_named_widget<QTableWidget>(window, {"objectSemanticInfoTable"});
-  auto* attributes_status = find_named_widget<QLabel>(window, {"objectAttributesStatus"});
-  auto* attributes = find_named_widget<QTableWidget>(window, {"objectAttributesInfo"});
   auto* inspect = window.findChild<QAction*>(QStringLiteral("inspectObjectAction"));
   auto* close_source = window.findChild<QAction*>(QStringLiteral("closeMrdAction"));
-  ASSERT_NE(source_file_bar, nullptr);
   ASSERT_NE(tree, nullptr);
   ASSERT_NE(object_inspector, nullptr);
   ASSERT_NE(object_path, nullptr);
   ASSERT_NE(semantic_table, nullptr);
-  ASSERT_NE(attributes_status, nullptr);
-  ASSERT_NE(attributes, nullptr);
   ASSERT_NE(inspect, nullptr);
   ASSERT_NE(close_source, nullptr);
-  EXPECT_EQ(source_file_bar->text(), dataset_path);
+  EXPECT_EQ(find_named_widget<QLineEdit>(window, {"sourceFileBar"}), nullptr);
   ASSERT_EQ(tree->topLevelItemCount(), 1);
-  EXPECT_EQ(object_inspector->currentIndex(), 1);
+  EXPECT_EQ(object_inspector->currentIndex(), 0);
+  EXPECT_FALSE(object_inspector->isTabVisible(1));
   EXPECT_FALSE(object_inspector->isTabVisible(2));
   EXPECT_FALSE(object_inspector->isTabVisible(3));
   EXPECT_FALSE(object_inspector->isTabVisible(4));
-  EXPECT_FALSE(object_inspector->isTabVisible(5));
 
   tree->setCurrentItem(tree->topLevelItem(0));
   application.processEvents();
@@ -2072,31 +2062,22 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
 
   tree->setCurrentItem(header_item);
   application.processEvents();
-  EXPECT_EQ(object_inspector->currentIndex(), 1);
-  EXPECT_FALSE(object_inspector->isTabVisible(3));
+  EXPECT_EQ(object_inspector->currentIndex(), 0);
+  EXPECT_FALSE(object_inspector->isTabVisible(2));
   EXPECT_EQ(object_path->text(), QStringLiteral("/dataset_2/xml"));
   EXPECT_TRUE(inspect->isEnabled());
-  EXPECT_EQ(attributes->rowCount(), 0);
-  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("No HDF5 attributes"), Qt::CaseInsensitive));
 
   tree->setCurrentItem(acquisitions_item);
   application.processEvents();
   EXPECT_EQ(object_path->text(), QStringLiteral("/dataset_2/data"));
-  ASSERT_EQ(attributes->rowCount(), 1);
-  EXPECT_EQ(attributes->item(0, 0)->text(), QStringLiteral("acquisition_count_hint"));
-  EXPECT_EQ(attributes->item(0, 2)->text(), QStringLiteral("1"));
-  EXPECT_EQ(attributes->item(0, 3)->text(), QStringLiteral("42"));
-  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("1 HDF5 attribute"), Qt::CaseInsensitive));
 
   tree->setCurrentItem(header_item);
   application.processEvents();
-  EXPECT_EQ(attributes->rowCount(), 0);
-  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("No HDF5 attributes"), Qt::CaseInsensitive));
 
   inspect->trigger();
   application.processEvents();
-  EXPECT_TRUE(object_inspector->isTabVisible(3));
-  EXPECT_EQ(object_inspector->currentIndex(), 3);
+  EXPECT_TRUE(object_inspector->isTabVisible(2));
+  EXPECT_EQ(object_inspector->currentIndex(), 2);
   auto* xml_view_modes = find_named_widget<QTabWidget>(window, {"metadataXmlViewModes"});
   const auto* xml_outline = find_named_widget<QTreeWidget>(window, {"metadataXmlOutline"});
   const auto* xml_preview = find_named_widget<QPlainTextEdit>(window, {"metadataXmlPreview"});
@@ -2133,27 +2114,24 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
 
   tree->setCurrentItem(acquisitions_item);
   application.processEvents();
-  EXPECT_EQ(object_inspector->currentIndex(), 1);
-  EXPECT_TRUE(object_inspector->isTabVisible(2));
-  EXPECT_EQ(object_inspector->tabText(2), QStringLiteral("K-space"));
-  object_inspector->setCurrentIndex(2);
+  EXPECT_EQ(object_inspector->currentIndex(), 0);
+  EXPECT_TRUE(object_inspector->isTabVisible(1));
+  EXPECT_EQ(object_inspector->tabText(1), QStringLiteral("K-space"));
+  object_inspector->setCurrentIndex(1);
   application.processEvents();
-  EXPECT_EQ(object_inspector->currentIndex(), 2);
+  EXPECT_EQ(object_inspector->currentIndex(), 1);
 
   tree->setCurrentItem(images_item);
   application.processEvents();
-  EXPECT_EQ(object_inspector->currentIndex(), 1);
-  EXPECT_FALSE(object_inspector->isTabVisible(2));
-  EXPECT_TRUE(object_inspector->isTabVisible(4));
+  EXPECT_EQ(object_inspector->currentIndex(), 0);
+  EXPECT_FALSE(object_inspector->isTabVisible(1));
+  EXPECT_TRUE(object_inspector->isTabVisible(3));
   EXPECT_TRUE(object_path->text().contains(QStringLiteral("/dataset_2")));
   EXPECT_TRUE(inspect->isEnabled());
 
   inspect->trigger();
   application.processEvents();
-  EXPECT_EQ(object_inspector->currentIndex(), 4);
-  EXPECT_EQ(attributes->columnCount(), 4);
-  EXPECT_EQ(attributes->rowCount(), 0);
-  EXPECT_TRUE(attributes_status->text().contains(QStringLiteral("semantic collection"), Qt::CaseInsensitive));
+  EXPECT_EQ(object_inspector->currentIndex(), 3);
   const auto* image_summary = find_named_widget<QPlainTextEdit>(window, {"imageSummary"});
   ASSERT_NE(image_summary, nullptr);
   EXPECT_TRUE(image_summary->toPlainText().contains(QStringLiteral("MetaAttributes: none")));
@@ -2163,10 +2141,10 @@ TEST(KSpaceJetViewerWindow, SelectsSemanticObjectsBeforeExplicitInspectOpensThei
   ASSERT_EQ(tree->topLevelItemCount(), 1);
   EXPECT_TRUE(tree->topLevelItem(0)->text(0).contains(QStringLiteral("No ISMRMRD source open")));
   EXPECT_FALSE(close_source->isEnabled());
-  EXPECT_EQ(object_inspector->currentIndex(), 1);
+  EXPECT_EQ(object_inspector->currentIndex(), 0);
+  EXPECT_FALSE(object_inspector->isTabVisible(1));
   EXPECT_FALSE(object_inspector->isTabVisible(2));
   EXPECT_FALSE(object_inspector->isTabVisible(3));
-  EXPECT_FALSE(object_inspector->isTabVisible(4));
 
   window.close();
   application.processEvents();
@@ -2279,13 +2257,13 @@ TEST(KSpaceJetViewerWindow, BrowsesObservedCartesianDimensionsWithArrShowControl
   tree->setCurrentItem(acquisitions);
   application.processEvents();
   ASSERT_TRUE(inspect->isEnabled());
-  EXPECT_EQ(object_inspector->indexOf(find_named_widget<QWidget>(window, {"kspacePage"})), 2);
-  EXPECT_TRUE(object_inspector->isTabVisible(2));
+  EXPECT_EQ(object_inspector->indexOf(find_named_widget<QWidget>(window, {"kspacePage"})), 1);
+  EXPECT_TRUE(object_inspector->isTabVisible(1));
   inspect->trigger();
   application.processEvents();
 
-  EXPECT_EQ(object_inspector->currentIndex(), 2);
-  EXPECT_EQ(object_inspector->tabText(2), QStringLiteral("K-space"));
+  EXPECT_EQ(object_inspector->currentIndex(), 1);
+  EXPECT_EQ(object_inspector->tabText(1), QStringLiteral("K-space"));
   EXPECT_EQ(acquisition_type->parentWidget(), display_controls_row);
   EXPECT_EQ(component->parentWidget(), display_controls_row);
   EXPECT_EQ(kspace_window_persistence->parentWidget(), display_controls_row);
@@ -2747,7 +2725,7 @@ TEST(KSpaceJetViewerWindow, DefaultsAnAuxiliaryOnlyContainerToItsFirstRenderable
   inspect->trigger();
   application.processEvents();
 
-  EXPECT_EQ(object_inspector->currentIndex(), 2);
+  EXPECT_EQ(object_inspector->currentIndex(), 1);
   EXPECT_TRUE(acquisition_type->isEnabled());
   ASSERT_EQ(acquisition_type->currentData().toInt(),
             static_cast<int>(ksj::viewer::CartesianKspaceAcquisitionKind::noise_measurement));
