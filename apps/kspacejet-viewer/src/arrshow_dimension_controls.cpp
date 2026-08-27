@@ -49,6 +49,17 @@ void repolish(QWidget* widget) {
   widget->update();
 }
 
+void configure_centered_dimension_text_cell(QToolButton* cell) {
+  if (cell == nullptr) {
+    return;
+  }
+  // Qt's text-only tool-button label is drawn with AlignCenter. Set this
+  // explicitly on every row so an icon-oriented platform default cannot
+  // alter the compact column geometry.
+  cell->setToolButtonStyle(Qt::ToolButtonTextOnly);
+  cell->setProperty("arrShowDimensionTextCell", true);
+}
+
 [[nodiscard]] bool is_visible_dimension(const ksj::viewer::ArrShowDimensionSpec& dimension) {
   return !dimension.identifier.isEmpty() &&
          (dimension.selection_tag != ksj::viewer::ArrShowDimensionSelectionTag::none ||
@@ -151,20 +162,21 @@ public:
     layout->setSpacing(0);
 
     abbreviation_ = new QToolButton(this);
-    abbreviation_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    configure_centered_dimension_text_cell(abbreviation_);
     abbreviation_->setObjectName(object_name_prefix_ + QStringLiteral("DimensionAbbreviation"));
     abbreviation_->setProperty("arrShowDimensionAbbreviation", true);
     abbreviation_->setToolTip(tr("Show the full name of this arrShow-style dimension."));
     layout->addWidget(abbreviation_);
 
     increment_button_ = new QToolButton(this);
+    configure_centered_dimension_text_cell(increment_button_);
     increment_button_->setText(QStringLiteral("+"));
     increment_button_->setObjectName(object_name_prefix_ + QStringLiteral("DimensionIncrement"));
     increment_button_->setToolTip(tr("Increase this observed dimension value."));
     layout->addWidget(increment_button_);
 
     value_ = new QLineEdit(this);
-    value_->setAlignment(Qt::AlignCenter);
+    value_->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
     value_->setObjectName(object_name_prefix_ + QStringLiteral("DimensionValue"));
     value_->setProperty("arrShowDimensionValue", true);
     value_->installEventFilter(this);
@@ -172,13 +184,14 @@ public:
     layout->addWidget(value_);
 
     decrement_button_ = new QToolButton(this);
+    configure_centered_dimension_text_cell(decrement_button_);
     decrement_button_->setText(QStringLiteral("−"));
     decrement_button_->setObjectName(object_name_prefix_ + QStringLiteral("DimensionDecrement"));
     decrement_button_->setToolTip(tr("Decrease this observed dimension value."));
     layout->addWidget(decrement_button_);
 
     dimension_label_ = new QToolButton(this);
-    dimension_label_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    configure_centered_dimension_text_cell(dimension_label_);
     dimension_label_->setObjectName(object_name_prefix_ + QStringLiteral("DimensionLabel"));
     dimension_label_->setProperty("arrShowDimensionLabel", true);
     dimension_label_->setToolTip(

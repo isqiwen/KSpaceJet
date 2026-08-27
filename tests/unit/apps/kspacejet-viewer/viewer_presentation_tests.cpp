@@ -31,6 +31,7 @@
 #include <QJsonParseError>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMouseEvent>
@@ -870,6 +871,33 @@ TEST(KSpaceJetViewerTheme, UsesWhiteOnlyForEditableFixedIndexDimensionCells) {
   ASSERT_FALSE(average_value->isReadOnly());
   EXPECT_FALSE(readout_value->property("arrShowDimensionFixedIndexInput").toBool());
   EXPECT_TRUE(coil_value->property("arrShowDimensionFixedIndexInput").toBool());
+  EXPECT_EQ(readout_value->alignment(), Qt::Alignment{Qt::AlignCenter});
+  EXPECT_EQ(coil_value->alignment(), Qt::Alignment{Qt::AlignCenter});
+  EXPECT_EQ(average_value->alignment(), Qt::Alignment{Qt::AlignCenter});
+  const auto expect_centered_text_cell = [](const QToolButton* cell) {
+    ASSERT_NE(cell, nullptr);
+    EXPECT_EQ(cell->toolButtonStyle(), Qt::ToolButtonTextOnly);
+    EXPECT_TRUE(cell->property("arrShowDimensionTextCell").toBool());
+  };
+  expect_centered_text_cell(readout_abbreviation);
+  expect_centered_text_cell(readout_increment);
+  expect_centered_text_cell(readout_decrement);
+  expect_centered_text_cell(readout_extent);
+  expect_centered_text_cell(average_abbreviation);
+  expect_centered_text_cell(average_extent);
+  const auto expect_full_cell_width = [](const QWidget* cell) {
+    ASSERT_NE(cell, nullptr);
+    ASSERT_NE(cell->parentWidget(), nullptr);
+    const auto* layout = cell->parentWidget()->layout();
+    ASSERT_NE(layout, nullptr);
+    EXPECT_EQ(cell->geometry().x(), layout->contentsRect().x());
+    EXPECT_EQ(cell->geometry().width(), layout->contentsRect().width());
+  };
+  expect_full_cell_width(readout_abbreviation);
+  expect_full_cell_width(readout_increment);
+  expect_full_cell_width(readout_value);
+  expect_full_cell_width(readout_decrement);
+  expect_full_cell_width(readout_extent);
 
   QImage rendered(controls_surface.size(), QImage::Format_ARGB32_Premultiplied);
   rendered.fill(Qt::transparent);
