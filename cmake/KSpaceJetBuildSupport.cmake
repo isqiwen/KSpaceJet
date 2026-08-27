@@ -78,9 +78,9 @@ function(ksj_collect_imported_target_runtime_dirs output_variable)
       PARENT_SCOPE)
 endfunction()
 
-# CMakeDeps exposes package binary directories through variables such as "foo_BIN_DIRS_RELEASE".  On Windows an imported
+# CMakeDeps exposes package binary directories through variables such as "foo_BIN_DIRS_RELEASE". On Windows an imported
 # target can point at an import library instead of its DLL, so the package bindir is the reliable search root for
-# file(GET_RUNTIME_DEPENDENCIES).  Walk the known directory tree because packages may be found from an application
+# file(GET_RUNTIME_DEPENDENCIES). Walk the known directory tree because packages may be found from an application
 # subdirectory.
 function(_ksj_collect_directory_conan_runtime_dirs output_variable directory_path)
   set(_ksj_runtime_dirs)
@@ -116,6 +116,47 @@ endfunction()
 
 function(ksj_collect_conan_runtime_dirs output_variable)
   _ksj_collect_directory_conan_runtime_dirs(_ksj_runtime_dirs "${CMAKE_SOURCE_DIR}")
+  set(${output_variable}
+      "${_ksj_runtime_dirs}"
+      PARENT_SCOPE)
+endfunction()
+
+# Linux Conan packages expose shared-object search roots through *_LIB_DIRS variables. Keep this separate from the
+# Windows DLL helper above so established Windows runtime deployment continues to use package bin/ directories only.
+function(_ksj_collect_directory_conan_library_runtime_dirs output_variable directory_path)
+  set(_ksj_runtime_dirs)
+
+  get_directory_property(_ksj_directory_variables DIRECTORY "${directory_path}" VARIABLES)
+  foreach(_ksj_variable IN LISTS _ksj_directory_variables)
+    if(NOT _ksj_variable MATCHES "_LIB_DIRS(_[A-Z0-9_]+)?$")
+      continue()
+    endif()
+
+    get_directory_property(_ksj_variable_value DIRECTORY "${directory_path}" DEFINITION "${_ksj_variable}")
+    if(_ksj_variable_value)
+      list(APPEND _ksj_runtime_dirs ${_ksj_variable_value})
+    endif()
+  endforeach()
+
+  get_property(
+    _ksj_subdirectories
+    DIRECTORY "${directory_path}"
+    PROPERTY SUBDIRECTORIES)
+  foreach(_ksj_subdirectory IN LISTS _ksj_subdirectories)
+    _ksj_collect_directory_conan_library_runtime_dirs(_ksj_subdirectory_runtime_dirs "${_ksj_subdirectory}")
+    list(APPEND _ksj_runtime_dirs ${_ksj_subdirectory_runtime_dirs})
+  endforeach()
+
+  if(_ksj_runtime_dirs)
+    list(REMOVE_DUPLICATES _ksj_runtime_dirs)
+  endif()
+  set(${output_variable}
+      "${_ksj_runtime_dirs}"
+      PARENT_SCOPE)
+endfunction()
+
+function(ksj_collect_conan_library_runtime_dirs output_variable)
+  _ksj_collect_directory_conan_library_runtime_dirs(_ksj_runtime_dirs "${CMAKE_SOURCE_DIR}")
   set(${output_variable}
       "${_ksj_runtime_dirs}"
       PARENT_SCOPE)
@@ -189,8 +230,9 @@ function(ksj_install_thirdparty_runtime_dependencies dependency_set_name)
     return()
   endif()
 
+  ksj_collect_conan_library_runtime_dirs(_ksj_conan_runtime_dirs)
   ksj_get_intel_runtime_dirs(_ksj_intel_runtime_dirs)
-  set(_ksj_runtime_dirs ${_ksj_intel_runtime_dirs})
+  set(_ksj_runtime_dirs ${_ksj_conan_runtime_dirs} ${_ksj_intel_runtime_dirs})
   foreach(_ksj_runtime_dir IN LISTS _ksj_runtime_dirs)
     if(IS_DIRECTORY "${_ksj_runtime_dir}")
       list(APPEND _ksj_existing_runtime_dirs "${_ksj_runtime_dir}")
@@ -634,9 +676,126 @@ function(ksj_stage_thirdparty_runtime_dlls target_name)
 endfunction()
 
 # Qt platform plugins are loaded dynamically and therefore do not appear in CMake's normal DLL dependency scan. Keep the
-# deployment policy in one project helper: the viewer calls Qt's official windeployqt tool after each build and during
-# installation, while all other applications remain unaware of Qt.
+# deployment policy in one project helper: Linux stages the explicitly required platform-plugin/runtime closure, while
+# Windows calls Qt's official windeployqt tool. All other applications remain unaware of Qt.
 function(ksj_deploy_qt_widgets_runtime target_name)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(NOT TARGET ${target_name})
+      message(FATAL_ERROR "ksj_deploy_qt_widgets_runtime() requires an existing target: ${target_name}")
+    endif()
+    if(NOT TARGET Qt6::Core)
+      message(FATAL_ERROR "ksj_deploy_qt_widgets_runtime() requires Qt6::Core from the Qt package")
+    endif()
+
+    # Qt's compiled-in plugin path points at the Conan package. CMakeDeps exposes that package root for the active
+    # third-party configuration; imported Qt module targets are interface forwarding targets in this graph and do not
+    # necessarily carry an IMPORTED_LOCATION themselves.
+    set(_ksj_qt_platform_plugin_dir)
+    set(_ksj_qt_thirdparty_config "${KSJ_THIRDPARTY_CONFIG}")
+    if(_ksj_qt_thirdparty_config STREQUAL "")
+      # The pre-commit configure supplies the release Conan toolchain directly rather than through a preset, so it does
+      # not set KSJ_THIRDPARTY_CONFIG explicitly. Its single-config build type names the same CMakeDeps suffix.
+      set(_ksj_qt_thirdparty_config "${CMAKE_BUILD_TYPE}")
+    endif()
+    if(_ksj_qt_thirdparty_config STREQUAL "")
+      set(_ksj_qt_thirdparty_config "Release")
+    endif()
+    string(TOUPPER "${_ksj_qt_thirdparty_config}" _ksj_qt_thirdparty_config_upper)
+    set(_ksj_qt_package_folder_variable "qt_PACKAGE_FOLDER_${_ksj_qt_thirdparty_config_upper}")
+    if(DEFINED ${_ksj_qt_package_folder_variable})
+      set(_ksj_qt_package_prefix "${${_ksj_qt_package_folder_variable}}")
+      if(IS_DIRECTORY "${_ksj_qt_package_prefix}/plugins/platforms")
+        set(_ksj_qt_platform_plugin_dir "${_ksj_qt_package_prefix}/plugins/platforms")
+      endif()
+    endif()
+    if(NOT _ksj_qt_platform_plugin_dir)
+      ksj_collect_imported_target_runtime_dirs(_ksj_qt_core_runtime_dirs Qt6::Core)
+      foreach(_ksj_qt_core_runtime_dir IN LISTS _ksj_qt_core_runtime_dirs)
+        get_filename_component(_ksj_qt_package_prefix "${_ksj_qt_core_runtime_dir}" DIRECTORY)
+        if(IS_DIRECTORY "${_ksj_qt_package_prefix}/plugins/platforms")
+          set(_ksj_qt_platform_plugin_dir "${_ksj_qt_package_prefix}/plugins/platforms")
+          break()
+        endif()
+      endforeach()
+    endif()
+    if(NOT _ksj_qt_platform_plugin_dir)
+      message(FATAL_ERROR "Qt6::Core does not expose a platforms plugin directory.")
+    endif()
+
+    set(_ksj_qt_platform_plugins)
+    foreach(_ksj_qt_platform_plugin_name IN ITEMS libqxcb.so libqoffscreen.so)
+      set(_ksj_qt_platform_plugin "${_ksj_qt_platform_plugin_dir}/${_ksj_qt_platform_plugin_name}")
+      if(NOT EXISTS "${_ksj_qt_platform_plugin}")
+        message(FATAL_ERROR "Required Qt platform plugin is missing: ${_ksj_qt_platform_plugin}")
+      endif()
+      list(APPEND _ksj_qt_platform_plugins "${_ksj_qt_platform_plugin}")
+    endforeach()
+
+    ksj_collect_conan_library_runtime_dirs(_ksj_conan_runtime_dirs)
+    ksj_get_intel_runtime_dirs(_ksj_intel_runtime_dirs)
+    set(_ksj_linux_runtime_dirs ${_ksj_conan_runtime_dirs} ${_ksj_intel_runtime_dirs})
+    set(_ksj_existing_linux_runtime_dirs)
+    foreach(_ksj_linux_runtime_dir IN LISTS _ksj_linux_runtime_dirs)
+      if(IS_DIRECTORY "${_ksj_linux_runtime_dir}")
+        list(APPEND _ksj_existing_linux_runtime_dirs "${_ksj_linux_runtime_dir}")
+      endif()
+    endforeach()
+    if(NOT _ksj_existing_linux_runtime_dirs)
+      message(FATAL_ERROR "ksj_deploy_qt_widgets_runtime() found no Conan or Intel runtime directories.")
+    endif()
+    list(REMOVE_DUPLICATES _ksj_existing_linux_runtime_dirs)
+    string(REPLACE ";" "|" _ksj_linux_runtime_dirs_argument "${_ksj_existing_linux_runtime_dirs}")
+    string(REPLACE ";" "|" _ksj_qt_platform_plugins_argument "${_ksj_qt_platform_plugins}")
+
+    set(_ksj_qt_conf "${CMAKE_BINARY_DIR}/bin/qt.conf")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+    file(
+      GENERATE
+      OUTPUT "${_ksj_qt_conf}"
+      CONTENT "[Paths]\nPrefix = ..\nPlugins = plugins\nLibraries = lib\n")
+
+    set(_ksj_linux_runtime_stage_script "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/KSpaceJetStageLinuxRuntime.cmake")
+    if(NOT EXISTS "${_ksj_linux_runtime_stage_script}")
+      message(FATAL_ERROR "Linux runtime stage script is missing: ${_ksj_linux_runtime_stage_script}")
+    endif()
+    add_custom_command(
+      TARGET ${target_name}
+      POST_BUILD
+      COMMAND
+        ${CMAKE_COMMAND} "-DKSJ_RUNTIME_EXECUTABLE=$<TARGET_FILE:${target_name}>"
+        "-DKSJ_RUNTIME_OUTPUT_DIR=${CMAKE_BINARY_DIR}/lib"
+        "-DKSJ_RUNTIME_DIRECTORIES=${_ksj_linux_runtime_dirs_argument}"
+        "-DKSJ_RUNTIME_MODULES=${_ksj_qt_platform_plugins_argument}"
+        "-DKSJ_RUNTIME_MODULE_OUTPUT_DIR=${CMAKE_BINARY_DIR}/plugins/platforms" -P "${_ksj_linux_runtime_stage_script}"
+      VERBATIM)
+
+    if(KSJ_ENABLE_INSTALL_RULES)
+      # qt.conf deliberately describes the same bin/lib/plugins layout used by both the build and install trees.
+      install(FILES "${_ksj_qt_conf}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+      install(FILES ${_ksj_qt_platform_plugins} DESTINATION "plugins/platforms")
+
+      # platform plugins are dynamically loaded, so they are not members of the executable RuntimeDependencySet. Resolve
+      # their Conan/Intel closure at install time after the executable and modules are in place.
+      string(
+        CONCAT
+          _ksj_qt_linux_deploy_install_code
+          "execute_process(\n"
+          "  COMMAND \"${CMAKE_COMMAND}\"\n"
+          "          \"-DKSJ_RUNTIME_OUTPUT_DIR=\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}\"\n"
+          "          \"-DKSJ_RUNTIME_DIRECTORIES=${_ksj_linux_runtime_dirs_argument}\"\n"
+          "          \"-DKSJ_RUNTIME_MODULES=${_ksj_qt_platform_plugins_argument}\"\n"
+          "          -P \"${_ksj_linux_runtime_stage_script}\"\n"
+          "  RESULT_VARIABLE _ksj_qt_linux_deploy_result\n"
+          "  OUTPUT_VARIABLE _ksj_qt_linux_deploy_output\n"
+          "  ERROR_VARIABLE _ksj_qt_linux_deploy_error)\n"
+          "if(NOT _ksj_qt_linux_deploy_result EQUAL 0)\n"
+          "  message(FATAL_ERROR \"Linux Qt deployment for ${target_name} failed: \${_ksj_qt_linux_deploy_error}\")\n"
+          "endif()\n")
+      install(CODE "${_ksj_qt_linux_deploy_install_code}")
+    endif()
+    return()
+  endif()
+
   if(NOT WIN32)
     return()
   endif()

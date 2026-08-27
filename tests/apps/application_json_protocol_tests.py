@@ -14,6 +14,13 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def require_core_log(name: str, result: subprocess.CompletedProcess[str], level: str) -> None:
+    require(
+        f"[{level}]" in result.stderr,
+        f"{name} did not record a core {level} diagnostic on stderr: {result.stderr!r}",
+    )
+
+
 def parse_json_stdout(name: str, result: subprocess.CompletedProcess[str]) -> dict[str, object]:
     try:
         report = json.loads(result.stdout)
@@ -23,6 +30,7 @@ def parse_json_stdout(name: str, result: subprocess.CompletedProcess[str]) -> di
         ) from error
     require(isinstance(report, dict), f"{name} JSON report is not an object")
     require(result.stderr, f"{name} did not initialize the core diagnostic logger on stderr")
+    require_core_log(name, result, "INFO")
     return report
 
 
@@ -37,6 +45,7 @@ def run_json_failure(
     )
     require(result.returncode != 0, f"{name} unexpectedly succeeded")
     report = parse_json_stdout(name, result)
+    require_core_log(name, result, "WARN")
     if expected_code is not None:
         require(report.get("schema") == "ksj.error", f"{name} did not write an error report")
         require(report.get("code") == expected_code, f"{name} wrote the wrong error code: {report!r}")
@@ -95,6 +104,7 @@ def run_recon_removed_metadata_failure(recon: pathlib.Path) -> None:
     )
     require(result.returncode == 2, f"ksj-recon legacy metadata option returned {result.returncode}, expected 2")
     report = parse_json_stdout("ksj-recon legacy metadata option", result)
+    require_core_log("ksj-recon legacy metadata option", result, "WARN")
     require(
         report.get("schema") == "kspacejet.cartesian-rss-result",
         f"ksj-recon legacy metadata option schema drifted: {report!r}",
@@ -125,6 +135,25 @@ def run_viewer_protocol(viewer: pathlib.Path) -> None:
         report.get("operations") == "metadata,k-space,image,pipeline,visualization-derivative-export",
         f"ksj-viewer operation surface drifted: {report!r}",
     )
+
+    invalid_result = subprocess.run(
+        [str(viewer), "--ui-smoke", "--export-smoke", "--format", "json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    require(
+        invalid_result.returncode == 2,
+        f"ksj-viewer mutually exclusive smoke flags returned {invalid_result.returncode}, expected 2",
+    )
+    invalid_report = parse_json_stdout("ksj-viewer mutually exclusive smoke flags", invalid_result)
+    require(invalid_report.get("schema") == "ksj.error", f"ksj-viewer error schema drifted: {invalid_report!r}")
+    require(
+        invalid_report.get("code") == "invalid_argument",
+        f"ksj-viewer error code drifted: {invalid_report!r}",
+    )
+    require_core_log("ksj-viewer mutually exclusive smoke flags", invalid_result, "WARN")
 
 
 def run_pipeline_validation_protocol(ksj: pathlib.Path) -> None:
@@ -164,6 +193,7 @@ def run_pipeline_validation_protocol(ksj: pathlib.Path) -> None:
     )
     require(invalid_result.returncode == 3, f"invalid pipeline returned {invalid_result.returncode}, expected 3")
     invalid_report = parse_json_stdout("ksj pipeline validate invalid", invalid_result)
+    require_core_log("ksj pipeline validate invalid", invalid_result, "WARN")
     require(invalid_report.get("schema") == "kspacejet.pipeline-validation-report", "invalid pipeline schema drifted")
     require(invalid_report.get("valid") is False, f"invalid pipeline unexpectedly reported success: {invalid_report!r}")
     diagnostics = invalid_report.get("diagnostics")

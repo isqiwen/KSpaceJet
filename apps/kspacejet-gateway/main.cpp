@@ -97,6 +97,7 @@ void print_version(const OutputFormat format) {
 }
 
 void print_error(const OutputFormat format, const std::string_view code, const std::string_view message) {
+  KSJ_LOG_WARN("gateway request [{}] rejected: {}", code, message);
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"ksj.error\",\"code\":";
     print_json_string(std::cout, code);
@@ -105,8 +106,6 @@ void print_error(const OutputFormat format, const std::string_view code, const s
     std::cout << "}\n";
     return;
   }
-
-  std::cerr << code << ": " << message << '\n';
 }
 
 } // namespace

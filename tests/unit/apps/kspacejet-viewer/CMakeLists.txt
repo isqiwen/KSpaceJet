@@ -10,6 +10,12 @@ ksj_add_gtest(
   apps.kspacejet-viewer
   SOURCES
   viewer_presentation_tests.cpp
+  "${KSJ_VIEWER_SOURCE_DIR}/arrshow_dimension_controls.cpp"
+  "${KSJ_VIEWER_SOURCE_DIR}/arrshow_dimension_controls.hpp"
+  "${KSJ_VIEWER_SOURCE_DIR}/arrshow_display.cpp"
+  "${KSJ_VIEWER_SOURCE_DIR}/arrshow_display.hpp"
+  "${KSJ_VIEWER_SOURCE_DIR}/inspection_canvas.cpp"
+  "${KSJ_VIEWER_SOURCE_DIR}/inspection_canvas.hpp"
   "${KSJ_VIEWER_SOURCE_DIR}/inspection_session.cpp"
   "${KSJ_VIEWER_SOURCE_DIR}/viewer_presentation.cpp"
   "${KSJ_VIEWER_SOURCE_DIR}/visualization_derivative_export.cpp"

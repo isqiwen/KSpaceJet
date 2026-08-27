@@ -8,12 +8,15 @@
 #include <CLI/CLI.hpp>
 
 #include <QApplication>
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QImage>
 #include <QImageReader>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QtGlobal>
 
+#include <cstddef>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -121,6 +124,11 @@ void print_version(const OutputFormat format) {
 }
 
 void print_error(const OutputFormat format, const std::string_view code, const std::string_view message) {
+  if (code == "invalid_argument") {
+    KSJ_LOG_WARN("viewer request [{}] rejected: {}", code, message);
+  } else {
+    KSJ_LOG_ERROR("viewer operation [{}] failed: {}", code, message);
+  }
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"ksj.error\",\"code\":";
     write_json_string(std::cout, code);
@@ -129,8 +137,33 @@ void print_error(const OutputFormat format, const std::string_view code, const s
     std::cout << "}\n";
     return;
   }
+}
 
-  std::cerr << code << ": " << message << '\n';
+void log_qt_message(const QtMsgType type, const QMessageLogContext& context, const QString& message) noexcept {
+  try {
+    const auto message_utf8 = message.toUtf8();
+    const std::string_view category =
+      context.category == nullptr ? std::string_view{"default"} : std::string_view{context.category};
+    const std::string_view text{message_utf8.constData(), static_cast<std::size_t>(message_utf8.size())};
+    const auto level = [&] {
+      switch (type) {
+        case QtDebugMsg:
+          return ksj::logging::Level::Debug;
+        case QtInfoMsg:
+          return ksj::logging::Level::Info;
+        case QtWarningMsg:
+          return ksj::logging::Level::Warn;
+        case QtCriticalMsg:
+          return ksj::logging::Level::Error;
+        case QtFatalMsg:
+          return ksj::logging::Level::Critical;
+      }
+      return ksj::logging::Level::Error;
+    }();
+    ksj::logging::LogFormatted(level, context.file, context.line, context.function, "Qt [{}]: {}", category, text);
+  } catch (...) {
+    KSJ_LOG_CRITICAL("viewer could not relay a Qt diagnostic to the core logger");
+  }
 }
 
 void print_ui_smoke_result(const OutputFormat format) {
@@ -200,7 +233,7 @@ void print_export_smoke_result(const OutputFormat format) {
   ksj::viewer::apply_viewer_theme(application);
 
   ksj::viewer::ViewerWindow window;
-  window.show();
+  window.showMaximized();
 
   if (export_smoke) {
     QString error;
@@ -231,6 +264,7 @@ void print_export_smoke_result(const OutputFormat format) {
 
 int main(int argc, char* argv[]) {
   (void)ksj::logging::ConfigureDefaultConsole(kProgramName);
+  qInstallMessageHandler(log_qt_message);
   KSJ_LOG_INFO("{} started", kProgramName);
 
   bool show_help = false;

@@ -137,14 +137,13 @@ void print_version(const OutputFormat format) {
 }
 
 void print_cli_error(const OutputFormat format, const std::string_view message) {
+  KSJ_LOG_WARN("command-line request rejected: {}", message);
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"ksj.error\",\"code\":\"invalid_argument\",\"message\":";
     write_json_string(std::cout, message);
     std::cout << "}\n";
     return;
   }
-
-  std::cerr << "invalid_argument: " << message << '\n';
 }
 
 [[nodiscard]] std::string_view suggestion_for(const ksj::base::StatusCode code) noexcept {
@@ -167,6 +166,8 @@ void print_validation_error(const OutputFormat format, const std::string_view in
                             const ksj::base::Status& status) {
   const auto code = ksj::base::to_string(status.code());
   const auto suggestion = suggestion_for(status.code());
+  KSJ_LOG_WARN("PipelineDefinition validation failed: input=[{}], code=[{}], message=[{}], suggestion=[{}]", input_path,
+               code, status.message(), suggestion);
 
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"kspacejet.pipeline-validation-report\",\"valid\":false,\"input\":";
@@ -180,12 +181,6 @@ void print_validation_error(const OutputFormat format, const std::string_view in
     std::cout << "}]}\n";
     return;
   }
-
-  std::cerr << "PipelineDefinition validation failed\n"
-            << "  input: " << input_path << '\n'
-            << "  code: " << code << '\n'
-            << "  message: " << status.message() << '\n'
-            << "  suggestion: " << suggestion << '\n';
 }
 
 void print_validation_success(const OutputFormat format, const std::string_view input_path,
@@ -270,14 +265,12 @@ void print_validation_success(const OutputFormat format, const std::string_view 
 
   auto document = read_pipeline_file(input_path);
   if (!document.ok()) {
-    KSJ_LOG_WARN("pipeline validation failed for [{}]: {}", input_path, document.status());
     print_validation_error(format, input_path, document.status());
     return document.status().code() == ksj::base::StatusCode::invalid_argument ? kExitUsage : kExitInvalidPipeline;
   }
 
   auto definition = ksj::recon::graph::PipelineDefinition::parse_json(document.value());
   if (!definition.ok()) {
-    KSJ_LOG_WARN("pipeline validation failed for [{}]: {}", input_path, definition.status());
     print_validation_error(format, input_path, definition.status());
     return kExitInvalidPipeline;
   }
@@ -287,7 +280,10 @@ void print_validation_success(const OutputFormat format, const std::string_view 
 }
 
 void print_provider_init_error(const OutputFormat format, const std::string_view provider_slug,
-                               const std::string_view operator_id, const std::string_view message) {
+                               const std::string_view operator_id, const std::string_view message,
+                               const ksj::logging::Level diagnostic_level) {
+  KSJ_LOG(diagnostic_level, "Provider initialization failed: provider=[{}], operator=[{}], message=[{}]", provider_slug,
+          operator_id, message);
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"kspacejet.provider-init-report\",\"created\":false,\"provider_slug\":";
     write_json_string(std::cout, provider_slug);
@@ -298,9 +294,6 @@ void print_provider_init_error(const OutputFormat format, const std::string_view
     std::cout << "}}\n";
     return;
   }
-
-  std::cerr << "Provider initialization failed\n"
-            << "  message: " << message << '\n';
 }
 
 void print_provider_init_success(const OutputFormat format, const std::string_view provider_slug,
@@ -329,7 +322,8 @@ void print_provider_init_success(const OutputFormat format, const std::string_vi
                                     const std::string_view output_parent, const OutputFormat format) {
   if (provider_slug.empty() || operator_id.empty() || output_parent.empty()) {
     print_provider_init_error(format, provider_slug, operator_id,
-                              "Use: ksj provider init <provider-slug> <operator-id> --output <parent-dir>.");
+                              "Use: ksj provider init <provider-slug> <operator-id> --output <parent-dir>.",
+                              ksj::logging::Level::Warn);
     return kExitUsage;
   }
 
@@ -345,16 +339,15 @@ void print_provider_init_success(const OutputFormat format, const std::string_vi
       return kExitSuccess;
     }
 
-    if (result.outcome != ksj::cli::ProviderInitOutcome::invalid_request) {
-      KSJ_LOG_ERROR("Provider scaffold creation failed for [{}]/[{}]: {}", provider_slug, operator_id, result.message);
-    }
-    print_provider_init_error(format, provider_slug, operator_id, result.message);
+    const auto diagnostic_level = result.outcome == ksj::cli::ProviderInitOutcome::invalid_request
+                                    ? ksj::logging::Level::Warn
+                                    : ksj::logging::Level::Error;
+    print_provider_init_error(format, provider_slug, operator_id, result.message, diagnostic_level);
     return result.outcome == ksj::cli::ProviderInitOutcome::invalid_request ? kExitUsage : kExitProviderInitFailure;
   } catch (const std::exception& error) {
-    KSJ_LOG_ERROR("Provider scaffold creation raised an unexpected exception for [{}]/[{}]: {}", provider_slug,
-                  operator_id, error.what());
     print_provider_init_error(format, provider_slug, operator_id,
-                              std::string("unexpected Provider scaffold failure: ") + error.what());
+                              std::string("unexpected Provider scaffold failure: ") + error.what(),
+                              ksj::logging::Level::Error);
     return kExitProviderInitFailure;
   }
 }

@@ -132,6 +132,91 @@ void apply_viewer_theme(QApplication& application) {
       color: #8b8b8b;
     }
 
+    /* arrShow-compatible changer: abbreviation / + / value / − / extent. */
+    QWidget[arrShowDimension="true"] {
+      background: #f8f8f8;
+      border: 1px solid #a9a9a9;
+    }
+
+    QWidget[arrShowDimension="true"][arrShowDimensionActive="true"] {
+      background: #e3edf6;
+      border-color: #6d9fbe;
+    }
+
+    QWidget[arrShowDimension="true"] QToolButton {
+      background: #f1f1f1;
+      border: none;
+      border-bottom: 1px solid #c4c4c4;
+      border-radius: 0;
+      font-family: "Consolas", "Microsoft YaHei UI", monospace;
+      font-size: 8pt;
+      min-height: 14px;
+      max-height: 16px;
+      padding: 0;
+    }
+
+    QWidget[arrShowDimension="true"] QToolButton:hover {
+      background: #dbeaf5;
+      border-color: #c4c4c4;
+    }
+
+    QWidget[arrShowDimension="true"] QToolButton:disabled {
+      background: #f1f1f1;
+      border-bottom: 1px solid #d4d4d4;
+      color: #777777;
+    }
+
+    QLineEdit[arrShowDimensionValue="true"] {
+      background: #ffffff;
+      border: none;
+      border-bottom: 1px solid #c4c4c4;
+      border-radius: 0;
+      font-family: "Consolas", "Microsoft YaHei UI", monospace;
+      font-size: 9pt;
+      min-height: 16px;
+      max-height: 18px;
+      padding: 0;
+    }
+
+    QLineEdit[arrShowDimensionValue="true"]:focus {
+      border: 1px solid #6697b8;
+      padding: 0;
+    }
+
+    QWidget[arrShowDimension="true"][arrShowDimensionActive="true"] QLineEdit[arrShowDimensionValue="true"] {
+      background: #1c5fa8;
+      color: #ffffff;
+      selection-background-color: #d9e8f5;
+      selection-color: #1e2f3d;
+    }
+
+    QToolButton[arrShowDimensionLabel="true"] {
+      background: #f7f7f7;
+      border-bottom: none;
+      color: #303030;
+      font-size: 8pt;
+    }
+
+    /* The two arrShow tags select a plane; column order, not colour, defines X/Y. */
+    QToolButton[arrShowDimensionLabel="true"][arrShowDimensionSelectionTag="first"],
+    QToolButton[arrShowDimensionAbbreviation="true"][arrShowDimensionSelectionTag="first"] {
+      color: #1c5fa8;
+      font-weight: 700;
+    }
+
+    QToolButton[arrShowDimensionLabel="true"][arrShowDimensionSelectionTag="second"],
+    QToolButton[arrShowDimensionAbbreviation="true"][arrShowDimensionSelectionTag="second"] {
+      color: #b63a31;
+      font-weight: 700;
+    }
+
+    QToolButton[arrShowDimensionAbbreviation="true"] {
+      background: #e7eef4;
+      color: #1e4e72;
+      font-size: 7pt;
+      font-weight: 600;
+    }
+
     QFrame#viewerFileBar {
       background: #f6f6f6;
       border: none;
@@ -202,7 +287,7 @@ void apply_viewer_theme(QApplication& application) {
       padding: 1px 3px;
     }
 
-    QPlainTextEdit, QTextEdit, QLineEdit, QAbstractSpinBox, QComboBox {
+    QPlainTextEdit, QTextEdit, QLineEdit {
       background: #ffffff;
       border: 1px solid #c5c5c5;
       border-radius: 0;
@@ -217,9 +302,43 @@ void apply_viewer_theme(QApplication& application) {
       padding: 3px;
     }
 
-    QLineEdit:focus, QAbstractSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {
+    QLabel#metadataXmlSummary {
+      background: #f5f8fa;
+      border: 1px solid #d7e0e7;
+      color: #40505d;
+      font-family: "Consolas", "Microsoft YaHei UI", monospace;
+      font-size: 8pt;
+      padding: 3px 5px;
+    }
+
+    QTreeWidget#metadataXmlOutline, QPlainTextEdit#metadataXmlPreview {
+      background: #fbfcfd;
+      border: 1px solid #cbd5dd;
+      color: #26333d;
+      font-family: "Consolas", "Microsoft YaHei UI", monospace;
+      font-size: 8pt;
+    }
+
+    QTreeWidget#metadataXmlOutline::item {
+      min-height: 18px;
+    }
+
+    QTreeWidget#metadataXmlOutline::item:selected {
+      background: #dbeaf5;
+      color: #1e2f3d;
+    }
+
+    QSplitter#metadataXmlSplitter::handle {
+      background: #d7dfe5;
+      width: 1px;
+    }
+
+    QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {
       border: 1px solid #83aeca;
     }
+
+    /* Keep complex selectors and steppers fully native to Fusion. Styling
+       only a QComboBox/SpinBox subcontrol suppresses its other affordances. */
 
     QWidget#objectIdentityInfo QLabel {
       background: #eeeeee;
@@ -233,12 +352,6 @@ void apply_viewer_theme(QApplication& application) {
       font-size: 10pt;
       min-height: 19px;
       padding: 1px 4px;
-    }
-
-    QComboBox::drop-down {
-      border: none;
-      border-left: 1px solid #d2d2d2;
-      width: 18px;
     }
 
     QComboBox QAbstractItemView {
@@ -358,6 +471,15 @@ void apply_viewer_theme(QApplication& application) {
       border: 1px solid #777777;
       border-radius: 0;
       color: #dfe3e6;
+    }
+
+    QLabel[textRole="canvasProbe"] {
+      background: #111519;
+      border: 1px solid #52616c;
+      color: #c5d5df;
+      font-family: "Consolas", "Microsoft YaHei UI", monospace;
+      font-size: 8pt;
+      padding: 3px 6px;
     }
 
     QCheckBox, QRadioButton {

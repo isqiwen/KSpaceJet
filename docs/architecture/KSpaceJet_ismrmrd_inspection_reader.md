@@ -76,7 +76,8 @@ payload iteration. It invokes its consumer with an owned
 same named-field preflight, but never materializes that acquisition's samples
 or trajectory. A consumer can stop the traversal normally, and can retain
 records only within its own explicit bounds. `ksj-viewer` uses this path to
-select a raw Cartesian frame before it requests any callback-scoped payload.
+discover a bounded catalog of renderable raw Cartesian coordinates before it
+requests any callback-scoped payload.
 
 Each reader receives `InspectionReadLimits`. Before materializing a payload,
 the implementation checks standard HDF5 rank, record count, named fixed-header
@@ -139,6 +140,15 @@ the logical byte sequence is x-fastest:
 x + X * (y + Y * (z + Z * channel))
 ```
 
+The Viewer shares its arrShow display and dimension-strip base between image
+and raw K-space presentation, but standard image geometry is intentionally
+not an arbitrary plane browser: native `x` and `y` are the first two fixed
+`:` columns, in that order. `z`, `channel`, and any later visible image
+dimension are fixed-coordinate selectors only and cannot be promoted to `:`.
+This preserves the standard meaning of an ISMRMRD image while still providing
+the same active-dimension, `+`/`-`, and wheel navigation mechanics used for
+fixed K-space coordinates.
+
 The implementation validates the standard physical HDF5 image layout
 `[record, channel, z, y, x]` against the selected image header before the
 binding reads pixels. `ImageDataType` preserves the standard ISMRMRD data-type
@@ -150,53 +160,103 @@ The reader itself does not render K-space. Its header-only and payload callback
 boundaries allow `ksj-viewer` to build one bounded raw **Cartesian** display
 plane without creating a second MRI format or retaining source payloads.
 
-The Viewer selects one reference acquisition and parses the container's
-standard ISMRMRD XML encoding. It requires both a Cartesian XML trajectory and
-zero `trajectory_dimensions`; it rejects non-Cartesian samples rather than
+The Viewer parses the container's standard ISMRMRD XML encoding and discovers
+a bounded catalog of actual compatible Cartesian source coordinates for the
+selected acquisition type. The **Data** selector lists only types with such a
+catalog. It defaults to **Imaging data** when renderable, otherwise to the
+first renderable standard auxiliary flag-membership type: Noise measurement,
+Parallel calibration, Navigation, Phase correction, High-performance feedback,
+Real-time feedback, Dummy scan, Surface-coil correction, Phase-stabilization
+reference, or Phase stabilization. It requires both a Cartesian XML trajectory
+and zero `trajectory_dimensions`; it rejects non-Cartesian samples rather than
 misrepresenting radial, spiral, or other trajectory-space data as a Cartesian
-matrix. The reference fixes this complete frame key:
+matrix.
 
-- `encoding_space_ref`, `idx.kspace_encode_step_2`, `idx.average`,
-  `idx.slice`, `idx.contrast`, `idx.phase`, `idx.repetition`, `idx.set`, and
-  `idx.segment`;
-- the eight `idx.user` counters; and
-- zero trajectory dimensions and a consistent active-channel count across
-  matching acquisitions.
+Imaging data means a record with no auxiliary membership; it retains
+`parallel_calibration_and_imaging`, while a calibration-only record belongs to
+Parallel calibration. Each auxiliary choice is an independent standard-flag
+membership predicate, so a record carrying multiple flags, such as Navigation
+and Surface-coil correction, deliberately appears in each relevant explicit
+choice and option counts can overlap. Header discovery, bounded catalog
+aggregation, and the payload callback all apply the same selected-type
+predicate. A selected container with no renderable Imaging coordinate instead
+defaults to the first renderable auxiliary type, so the active Data entry is
+always real data rather than an empty category. An Imaging record outside the
+declared XML encoding limit for any mapped acquisition counter is ineligible:
+`kspace_encode_step_1`, `kspace_encode_step_2`, average, slice, contrast,
+phase, repetition, set, segment, and `user_0`–`user_7`. Readout, raw coil, and
+encoding-space reference are not inferred from an unrelated XML limit. An
+explicitly selected auxiliary type uses its observed phase-encode range because
+its indices may legitimately lie outside the imaging limit.
 
-The Viewer intentionally leaves `idx.kspace_encode_step_1` out of the frame
-key because it supplies the vertical raw K-space axis. It obtains matching
-headers first, then reads only those acquisition payloads one at a time. The
-horizontal raw coordinate is `sample - center_sample`; source samples covered
-by `discard_pre` or `discard_post` are excluded. The vertical range is the
-standard XML `kspace_encode_step_1` limit when supplied, otherwise the observed
-matching range. Thus the selected `kspace_encode_step_2` is fixed while the
-display represents the complete selected `kspace_encode_step_1` plane.
+The Viewer presents the catalog through an arrShow-style dimension strip, not
+a source-record or plane-list selector. Exactly two distinct dimensions carry
+the `:` selection tags. The initial selections are **Readout** × **Phase
+encode**; left-clicking a column's lower extent chooses or replaces the blue
+tag and right-clicking chooses or replaces the red tag. Tag colour identifies
+the replacement target even when the selected columns have moved. The Viewer derives
+geometry only afterwards: it scans the displayed columns from left to right,
+so the first selected column is X and the second is Y. The displaced selection
+becomes a fixed observed value. Any varying observed
+dimension may take either role: **Raw coil**, **Encoding space**,
+**Partition**, **Average**, **Slice**, **Contrast**, **Physiological phase**,
+**Repetition**, **Set**, **Segment**, and source-defined **User 0** through
+**User 7** are not a separate plane model. A non-axis field appears only when
+it has more than one observed value and shows `+`, its current zero-based
+source value, `-`, and its observed-value count. Axis fields remain visible
+and show `:`. Every changer has a concise top label—**RO**, **PE**, **Co**,
+**Enc**, **Par**, **Avg**, **Slc**, **Con**, **Pha**, **Rep**, **Set**, **Seg**,
+or **U0**–**U7**—while its full ISMRMRD meaning is in the tooltip.
 
-For each source coordinate, the Viewer either sums squared complex magnitude
-over all active coils (RSS mode) or uses one selected coil. It then takes the
-RMS over every raw contribution that maps to a display cell. Repeated raw
-coordinates and coordinates grouped by display downsampling therefore have
-defined RMS aggregation instead of last-write-wins behavior. Empty cells are
-zero and are counted explicitly. The displayed grayscale value is
-`log10(1 + RMS magnitude)`; it is a visualization derivative only, never an
-inverse transform, reconstructed image, or MRD artifact.
+The catalog contains only actual observed and renderable coordinates with zero
+trajectory dimensions; it never derives a Cartesian product from XML limits.
+When a user selects a fixed value or changes a `:` selection tag, the Viewer resolves
+to an actual compatible sparse coordinate and resynchronizes the other fixed
+fields if needed. It never exposes a source record, ordinal, or Frame. Normal
+wheel and `+`/`-` step the active fixed dimension without wrapping; `Left` and
+`Right` choose another fixed dimension; `Ctrl` + wheel remains canvas zoom. If
+the two axis columns are the only visible dimensions, no active browsing
+dimension exists.
+
+Each display axis maps directly to raw source data: **Readout** is
+`sample - center_sample` after excluding `discard_pre`/`discard_post` samples;
+**Phase encode** is `idx.kspace_encode_step_1`; **Raw coil** is the payload
+channel; and every remaining dimension is a standard acquisition-header
+field. Thus **Readout** × **Raw coil** with **Phase encode** fixed to `0`
+actually reads the raw samples/channels for that coordinate. If coil is fixed,
+exactly one raw channel is read; if coil is an axis, participating channels are
+separate axis values. A one-to-one display cell contains its raw complex
+sample; repeated raw coordinates and source coordinates grouped by bounded
+downsampling use an explicit complex arithmetic mean rather than
+last-write-wins behavior. Empty cells are complex zero and are counted
+explicitly. When Phase encode is a display axis, imaging uses every coordinate
+in the declared XML imaging range and auxiliary data uses the inclusive
+observed range, so a missing acquired line remains an empty bin rather than
+shifting neighboring lines. The bounded real and imaginary planes then enter the shared
+app-local `ArrShowDisplay` renderer: Magnitude, Real, Imaginary, Complex or
+Phase, with the applicable `Gray(256)` or `martin_phase(256)` C/W mapping. It
+never applies RSS, a logarithmic intensity transform, Fourier transform,
+gridding, or reconstruction. The result is a visualization derivative only,
+never a reconstructed image or MRD artifact.
 
 The current presentation applies independent hard bounds: at most 16,384
-matching acquisition lines, 32 Mi complex source values, 2,048 pixels along
-each output axis, and 2 Mi output cells. It reports source/display geometry,
-frame key, coil mode, empty cells, and multi-contribution cells in its local
-JSON derivative. CSV uses display-bin coordinate ranges and contribution counts
-and is also bounded. Limit overflow, a malformed payload, inconsistent matching
-headers, or a non-finite source sample fails deterministically rather than
-silently discarding raw information.
+matching acquisition lines, 32 Mi complex source values, 16,384 observed
+values per source/display dimension, 2,048 pixels along each output axis, and
+2 Mi output cells. It reports dynamic X/Y axes, source/display geometry,
+fixed observed coordinates, coil mode, empty cells, and multi-contribution
+cells in its local JSON derivative. CSV uses bounded display-bin X/Y coordinate
+ranges and contribution counts. Limit overflow, a malformed payload, a source
+change during read, or a non-finite source sample fails deterministically
+rather than silently discarding raw information.
 
 ## Qt boundary and KSpaceJet extensions
 
 `ksj-viewer` builds an explicitly bounded, UI-owned display conversion inside a
-reader callback. Image cine and auto/manual window-level trigger another
+reader callback. Image cine and arrShow-style C/W changes trigger another
 bounded read of the selected standard image; they do not retain source pixels.
-That conversion is a visualization derivative, not a new MRI artifact. Its
-presentation layer separately parses a public
+Normal-value and phase C/W remain independent, and the next plane can reset
+C/W, retain it relatively, or retain it absolutely. That conversion is a
+visualization derivative, not a new MRI artifact. Its presentation layer separately parses a public
 `PipelineDefinition`; it does not resolve, load, compile, or execute it.
 
 The Qt hierarchy has a separate selection and activation boundary. Opening an
@@ -212,8 +272,14 @@ Explicit `Inspect`
 or `Open As…` activates the selected verified object and may then request a
 header-only acquisition record, build a bounded Cartesian K-space header index,
 or request one bounded image-plane callback. The XML typed view opens only for
-an explicitly inspected Header/XML object; there is no file-level metadata or
-image-series dashboard. Image series remain an
+an explicitly inspected standard Header/XML object. Its default **XML Tree**
+mode renders that owned, bounded header as a hierarchical element view with a
+compact header summary. An explicit mode switch replaces that same content
+area with **XML Text**, a syntax-highlighted read-only textual XML
+presentation; the tree and text are not simultaneous side-by-side panes. Text
+indentation may be normalized for presentation only: it never rewrites or
+writes source XML, and this is not an arbitrary HDF5/XML browser. There is no file-level
+metadata or image-series dashboard. Image series remain an
 **Images** semantic object and a raw acquisition source may correctly have no
 reconstructed image series. In that case, and when no standard waveform storage
 is discovered, the semantic tree omits the respective child rather than showing

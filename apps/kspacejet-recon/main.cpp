@@ -182,6 +182,11 @@ void print_all_usage() {
 }
 
 void print_error(const OutputFormat format, const std::string_view command, const ksj::base::Status& status) {
+  if (status.code() == ksj::base::StatusCode::invalid_argument) {
+    KSJ_LOG_WARN("{} reconstruction request rejected: {}", command, status);
+  } else {
+    KSJ_LOG_ERROR("{} reconstruction failed: {}", command, status);
+  }
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"kspacejet." << command << "-result\",\"ok\":false,\"code\":";
     write_json_string(std::cout, ksj::base::to_string(status.code()));
@@ -190,9 +195,6 @@ void print_error(const OutputFormat format, const std::string_view command, cons
     std::cout << "}\n";
     return;
   }
-  std::cerr << command << " reconstruction failed\n"
-            << "  code: " << ksj::base::to_string(status.code()) << '\n'
-            << "  message: " << status.message() << '\n';
 }
 
 void print_cartesian_success(const OutputFormat format, const CartesianRssInvocation& invocation,
@@ -487,9 +489,6 @@ require_provider_selection(const bool requested, const ksj::recon::runtime::Cart
   }
   const auto result = ksj::recon::runtime::reconstruct_cartesian_rss_hdf5(invocation.config);
   if (!result.ok()) {
-    if (result.status().code() != ksj::base::StatusCode::invalid_argument) {
-      KSJ_LOG_ERROR("cartesian-rss reconstruction failed: {}", result.status());
-    }
     print_error(invocation.output_format, "cartesian-rss", result.status());
     return result.status().code() == ksj::base::StatusCode::invalid_argument ? kExitUsage : kExitReconstructionFailure;
   }
@@ -508,9 +507,6 @@ require_provider_selection(const bool requested, const ksj::recon::runtime::Cart
   }
   const auto result = ksj::recon::runtime::reconstruct_noncartesian_rss_hdf5(invocation.config);
   if (!result.ok()) {
-    if (result.status().code() != ksj::base::StatusCode::invalid_argument) {
-      KSJ_LOG_ERROR("noncartesian-rss reconstruction failed: {}", result.status());
-    }
     print_error(invocation.output_format, "noncartesian-rss", result.status());
     return result.status().code() == ksj::base::StatusCode::invalid_argument ? kExitUsage : kExitReconstructionFailure;
   }
@@ -537,9 +533,6 @@ radial_trajectory_units_from(const std::string_view requested_units) noexcept {
   invocation.config.input_trajectory_units = radial_trajectory_units_from(state.requested_trajectory_units);
   const auto result = ksj::recon::runtime::reconstruct_radial_rss_hdf5(invocation.config);
   if (!result.ok()) {
-    if (result.status().code() != ksj::base::StatusCode::invalid_argument) {
-      KSJ_LOG_ERROR("radial-rss reconstruction failed: {}", result.status());
-    }
     print_error(invocation.output_format, "radial-rss", result.status());
     return result.status().code() == ksj::base::StatusCode::invalid_argument ? kExitUsage : kExitReconstructionFailure;
   }

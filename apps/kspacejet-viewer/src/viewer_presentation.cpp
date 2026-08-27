@@ -17,7 +17,9 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <numbers>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -38,6 +40,193 @@ constexpr std::size_t kImageMaximumPixels = 2U * 1024U * 1024U;
 constexpr std::size_t kMaximumExportRows = 4'096U;
 constexpr qsizetype kMaximumXmlPreviewCharacters = 128U * 1024U;
 constexpr qsizetype kMaximumMetadataValuePreviewCharacters = 256U;
+
+// ISMRMRD acquisition flag values are one-based bit positions in the standard
+// header. Keep this private to the inspection-only default-view predicate: the
+// Viewer never changes an acquisition's flags or uses this as runtime routing.
+enum class StandardAcquisitionFlag : std::uint8_t {
+  noise_measurement = 19U,
+  parallel_calibration = 20U,
+  parallel_calibration_and_imaging = 21U,
+  navigation = 23U,
+  phase_correction = 24U,
+  high_performance_feedback = 26U,
+  dummy_scan = 27U,
+  realtime_feedback = 28U,
+  surface_coil_correction = 29U,
+  phase_stabilization_reference = 30U,
+  phase_stabilization = 31U,
+};
+
+[[nodiscard]] constexpr std::uint64_t standard_acquisition_flag_mask(const StandardAcquisitionFlag flag) noexcept {
+  return std::uint64_t{1U} << (static_cast<std::uint8_t>(flag) - 1U);
+}
+
+[[nodiscard]] constexpr bool has_standard_acquisition_flag(const std::uint64_t flags,
+                                                           const StandardAcquisitionFlag flag) noexcept {
+  return (flags & standard_acquisition_flag_mask(flag)) != 0U;
+}
+
+using CartesianKspaceAcquisitionKind = ksj::viewer::CartesianKspaceAcquisitionKind;
+
+[[nodiscard]] constexpr bool
+cartesian_kspace_acquisition_kind_is_imaging(const CartesianKspaceAcquisitionKind kind) noexcept {
+  return kind == CartesianKspaceAcquisitionKind::imaging;
+}
+
+// This is deliberately a flag-membership predicate rather than a priority
+// bucket. A standard acquisition that carries both navigation and
+// surface-coil-correction flags belongs to both explicit auxiliary views, but
+// never to the default Imaging data view.
+[[nodiscard]] bool cartesian_kspace_acquisition_kind_matches(const ksj::ismrmrd::AcquisitionHeader& header,
+                                                             const CartesianKspaceAcquisitionKind kind) noexcept {
+  const auto flags = header.flags;
+  const auto combined_calibration_and_imaging =
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::parallel_calibration_and_imaging);
+  const auto calibration_only = !combined_calibration_and_imaging &&
+                                has_standard_acquisition_flag(flags, StandardAcquisitionFlag::parallel_calibration);
+  const auto has_auxiliary_membership =
+    calibration_only || has_standard_acquisition_flag(flags, StandardAcquisitionFlag::noise_measurement) ||
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::navigation) ||
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::phase_correction) ||
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::high_performance_feedback) ||
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::realtime_feedback) ||
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::dummy_scan) ||
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::surface_coil_correction) ||
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::phase_stabilization_reference) ||
+    has_standard_acquisition_flag(flags, StandardAcquisitionFlag::phase_stabilization);
+
+  switch (kind) {
+    case CartesianKspaceAcquisitionKind::imaging:
+      return !has_auxiliary_membership;
+    case CartesianKspaceAcquisitionKind::noise_measurement:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::noise_measurement);
+    case CartesianKspaceAcquisitionKind::parallel_calibration:
+      return calibration_only;
+    case CartesianKspaceAcquisitionKind::navigation:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::navigation);
+    case CartesianKspaceAcquisitionKind::phase_correction:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::phase_correction);
+    case CartesianKspaceAcquisitionKind::high_performance_feedback:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::high_performance_feedback);
+    case CartesianKspaceAcquisitionKind::realtime_feedback:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::realtime_feedback);
+    case CartesianKspaceAcquisitionKind::dummy_scan:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::dummy_scan);
+    case CartesianKspaceAcquisitionKind::surface_coil_correction:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::surface_coil_correction);
+    case CartesianKspaceAcquisitionKind::phase_stabilization_reference:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::phase_stabilization_reference);
+    case CartesianKspaceAcquisitionKind::phase_stabilization:
+      return has_standard_acquisition_flag(flags, StandardAcquisitionFlag::phase_stabilization);
+    case CartesianKspaceAcquisitionKind::count:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] QString cartesian_kspace_acquisition_kind_label(const CartesianKspaceAcquisitionKind kind) {
+  switch (kind) {
+    case CartesianKspaceAcquisitionKind::imaging:
+      return QStringLiteral("Imaging data");
+    case CartesianKspaceAcquisitionKind::noise_measurement:
+      return QStringLiteral("Noise measurement");
+    case CartesianKspaceAcquisitionKind::parallel_calibration:
+      return QStringLiteral("Parallel calibration");
+    case CartesianKspaceAcquisitionKind::navigation:
+      return QStringLiteral("Navigation");
+    case CartesianKspaceAcquisitionKind::phase_correction:
+      return QStringLiteral("Phase correction");
+    case CartesianKspaceAcquisitionKind::high_performance_feedback:
+      return QStringLiteral("High-performance feedback");
+    case CartesianKspaceAcquisitionKind::realtime_feedback:
+      return QStringLiteral("Real-time feedback");
+    case CartesianKspaceAcquisitionKind::dummy_scan:
+      return QStringLiteral("Dummy scan");
+    case CartesianKspaceAcquisitionKind::surface_coil_correction:
+      return QStringLiteral("Surface-coil correction");
+    case CartesianKspaceAcquisitionKind::phase_stabilization_reference:
+      return QStringLiteral("Phase-stabilization reference");
+    case CartesianKspaceAcquisitionKind::phase_stabilization:
+      return QStringLiteral("Phase stabilization");
+    case CartesianKspaceAcquisitionKind::count:
+      break;
+  }
+  return QStringLiteral("Acquisition data");
+}
+
+[[nodiscard]] QString cartesian_kspace_acquisition_kind_identifier(const CartesianKspaceAcquisitionKind kind) {
+  switch (kind) {
+    case CartesianKspaceAcquisitionKind::imaging:
+      return QStringLiteral("imaging");
+    case CartesianKspaceAcquisitionKind::noise_measurement:
+      return QStringLiteral("noise_measurement");
+    case CartesianKspaceAcquisitionKind::parallel_calibration:
+      return QStringLiteral("parallel_calibration");
+    case CartesianKspaceAcquisitionKind::navigation:
+      return QStringLiteral("navigation");
+    case CartesianKspaceAcquisitionKind::phase_correction:
+      return QStringLiteral("phase_correction");
+    case CartesianKspaceAcquisitionKind::high_performance_feedback:
+      return QStringLiteral("high_performance_feedback");
+    case CartesianKspaceAcquisitionKind::realtime_feedback:
+      return QStringLiteral("realtime_feedback");
+    case CartesianKspaceAcquisitionKind::dummy_scan:
+      return QStringLiteral("dummy_scan");
+    case CartesianKspaceAcquisitionKind::surface_coil_correction:
+      return QStringLiteral("surface_coil_correction");
+    case CartesianKspaceAcquisitionKind::phase_stabilization_reference:
+      return QStringLiteral("phase_stabilization_reference");
+    case CartesianKspaceAcquisitionKind::phase_stabilization:
+      return QStringLiteral("phase_stabilization");
+    case CartesianKspaceAcquisitionKind::count:
+      break;
+  }
+  return QStringLiteral("acquisition_data");
+}
+
+struct CartesianKspaceAcquisitionKindSummary final {
+  std::array<std::size_t, static_cast<std::size_t>(CartesianKspaceAcquisitionKind::count)> counts{};
+
+  void record(const ksj::ismrmrd::AcquisitionHeader& header) noexcept {
+    for (std::size_t index = 0U; index < counts.size(); ++index) {
+      const auto kind = static_cast<CartesianKspaceAcquisitionKind>(index);
+      if (cartesian_kspace_acquisition_kind_matches(header, kind)) {
+        ++counts[index];
+      }
+    }
+  }
+
+  [[nodiscard]] std::size_t count(const CartesianKspaceAcquisitionKind kind) const noexcept {
+    return counts.at(static_cast<std::size_t>(kind));
+  }
+
+  [[nodiscard]] QString description_excluding(const CartesianKspaceAcquisitionKind selected_kind) const {
+    QStringList parts;
+    for (std::size_t index = 0U; index < counts.size(); ++index) {
+      const auto kind = static_cast<CartesianKspaceAcquisitionKind>(index);
+      const auto matching_count = counts.at(index);
+      if (kind == selected_kind || matching_count == 0U) {
+        continue;
+      }
+      parts.append(QStringLiteral("%1 (%2)")
+                     .arg(cartesian_kspace_acquisition_kind_label(kind))
+                     .arg(static_cast<qulonglong>(matching_count)));
+    }
+    return parts.join(QStringLiteral(", "));
+  }
+
+  [[nodiscard]] QJsonObject json_excluding(const CartesianKspaceAcquisitionKind selected_kind) const {
+    QJsonObject result;
+    for (std::size_t index = 0U; index < counts.size(); ++index) {
+      const auto kind = static_cast<CartesianKspaceAcquisitionKind>(index);
+      if (kind != selected_kind) {
+        result.insert(cartesian_kspace_acquisition_kind_identifier(kind), static_cast<int>(counts.at(index)));
+      }
+    }
+    return result;
+  }
+};
 
 struct DisplayExtent {
   int width = 0;
@@ -117,39 +306,148 @@ struct DisplayExtent {
   return true;
 }
 
-struct CartesianFrameKey final {
-  std::uint16_t encoding_space_ref{0U};
-  std::uint16_t kspace_encode_step_2{0U};
-  std::uint16_t average{0U};
-  std::uint16_t slice{0U};
-  std::uint16_t contrast{0U};
-  std::uint16_t phase{0U};
-  std::uint16_t repetition{0U};
-  std::uint16_t set{0U};
-  std::uint16_t segment{0U};
-  std::array<std::uint16_t, 8U> user{};
+using CartesianKspaceAxes = ksj::viewer::CartesianKspaceAxes;
+using CartesianKspaceCatalog = ksj::viewer::CartesianKspaceCatalog;
+using CartesianKspaceCatalogEntry = ksj::viewer::CartesianKspaceCatalogEntry;
+using CartesianKspaceCoordinate = ksj::viewer::CartesianKspaceCoordinate;
+using CartesianKspaceDimension = ksj::viewer::CartesianKspaceDimension;
 
-  friend constexpr bool operator==(const CartesianFrameKey&, const CartesianFrameKey&) noexcept = default;
+constexpr std::array kCartesianKspaceDimensions{
+  CartesianKspaceDimension::readout,
+  CartesianKspaceDimension::phase_encode,
+  CartesianKspaceDimension::coil,
+  CartesianKspaceDimension::encoding_space,
+  CartesianKspaceDimension::partition,
+  CartesianKspaceDimension::average,
+  CartesianKspaceDimension::slice,
+  CartesianKspaceDimension::contrast,
+  CartesianKspaceDimension::physiological_phase,
+  CartesianKspaceDimension::repetition,
+  CartesianKspaceDimension::set,
+  CartesianKspaceDimension::segment,
+  CartesianKspaceDimension::user_0,
+  CartesianKspaceDimension::user_1,
+  CartesianKspaceDimension::user_2,
+  CartesianKspaceDimension::user_3,
+  CartesianKspaceDimension::user_4,
+  CartesianKspaceDimension::user_5,
+  CartesianKspaceDimension::user_6,
+  CartesianKspaceDimension::user_7,
 };
 
-struct CartesianKspaceLine final {
-  std::uint32_t ordinal{0U};
-  ksj::ismrmrd::AcquisitionHeader header;
+constexpr std::size_t kKspaceMaximumObservedValues = 16'384U;
+
+[[nodiscard]] constexpr bool is_known_cartesian_kspace_dimension(const CartesianKspaceDimension dimension) noexcept {
+  return static_cast<std::size_t>(dimension) < ksj::viewer::kCartesianKspaceDimensionCount;
+}
+
+[[nodiscard]] bool is_display_axis(const CartesianKspaceAxes axes, const CartesianKspaceDimension dimension) noexcept {
+  return axes.x == dimension || axes.y == dimension;
+}
+
+[[nodiscard]] int cartesian_header_dimension_value(const ksj::ismrmrd::AcquisitionHeader& header,
+                                                   const CartesianKspaceDimension dimension) noexcept {
+  switch (dimension) {
+    case CartesianKspaceDimension::phase_encode:
+      return static_cast<int>(header.index.kspace_encode_step_1);
+    case CartesianKspaceDimension::encoding_space:
+      return static_cast<int>(header.encoding_space_ref);
+    case CartesianKspaceDimension::partition:
+      return static_cast<int>(header.index.kspace_encode_step_2);
+    case CartesianKspaceDimension::average:
+      return static_cast<int>(header.index.average);
+    case CartesianKspaceDimension::slice:
+      return static_cast<int>(header.index.slice);
+    case CartesianKspaceDimension::contrast:
+      return static_cast<int>(header.index.contrast);
+    case CartesianKspaceDimension::physiological_phase:
+      return static_cast<int>(header.index.phase);
+    case CartesianKspaceDimension::repetition:
+      return static_cast<int>(header.index.repetition);
+    case CartesianKspaceDimension::set:
+      return static_cast<int>(header.index.set);
+    case CartesianKspaceDimension::segment:
+      return static_cast<int>(header.index.segment);
+    case CartesianKspaceDimension::user_0:
+    case CartesianKspaceDimension::user_1:
+    case CartesianKspaceDimension::user_2:
+    case CartesianKspaceDimension::user_3:
+    case CartesianKspaceDimension::user_4:
+    case CartesianKspaceDimension::user_5:
+    case CartesianKspaceDimension::user_6:
+    case CartesianKspaceDimension::user_7:
+      return static_cast<int>(header.index.user.at(
+        static_cast<std::size_t>(static_cast<int>(dimension) - static_cast<int>(CartesianKspaceDimension::user_0))));
+    case CartesianKspaceDimension::readout:
+    case CartesianKspaceDimension::coil:
+    case CartesianKspaceDimension::count:
+      return 0;
+  }
+  return 0;
+}
+
+[[nodiscard]] CartesianKspaceCoordinate
+cartesian_header_coordinate(const ksj::ismrmrd::AcquisitionHeader& header) noexcept {
+  CartesianKspaceCoordinate coordinate;
+  for (const auto dimension : kCartesianKspaceDimensions) {
+    if (dimension != CartesianKspaceDimension::readout && dimension != CartesianKspaceDimension::coil) {
+      ksj::viewer::set_cartesian_kspace_coordinate_value(coordinate, dimension,
+                                                         cartesian_header_dimension_value(header, dimension));
+    }
+  }
+  return coordinate;
+}
+
+struct CartesianHeaderLimitBinding final {
+  ksj::recon::EncodingLimitDimension dimension;
+  const char* standard_name;
 };
 
-[[nodiscard]] CartesianFrameKey cartesian_frame_key(const ksj::ismrmrd::AcquisitionHeader& header) noexcept {
-  return {
-    .encoding_space_ref = header.encoding_space_ref,
-    .kspace_encode_step_2 = header.index.kspace_encode_step_2,
-    .average = header.index.average,
-    .slice = header.index.slice,
-    .contrast = header.index.contrast,
-    .phase = header.index.phase,
-    .repetition = header.index.repetition,
-    .set = header.index.set,
-    .segment = header.index.segment,
-    .user = header.index.user,
-  };
+[[nodiscard]] constexpr std::optional<CartesianHeaderLimitBinding>
+cartesian_header_limit_binding(const CartesianKspaceDimension dimension) noexcept {
+  using EncodingLimitDimension = ksj::recon::EncodingLimitDimension;
+  switch (dimension) {
+    case CartesianKspaceDimension::phase_encode:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::kspace_encode_step_1, "kspace_encode_step_1"};
+    case CartesianKspaceDimension::partition:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::kspace_encode_step_2, "kspace_encode_step_2"};
+    case CartesianKspaceDimension::average:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::average, "average"};
+    case CartesianKspaceDimension::slice:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::slice, "slice"};
+    case CartesianKspaceDimension::contrast:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::contrast, "contrast"};
+    case CartesianKspaceDimension::physiological_phase:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::phase, "phase"};
+    case CartesianKspaceDimension::repetition:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::repetition, "repetition"};
+    case CartesianKspaceDimension::set:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::set, "set"};
+    case CartesianKspaceDimension::segment:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::segment, "segment"};
+    case CartesianKspaceDimension::user_0:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::user_0, "user_0"};
+    case CartesianKspaceDimension::user_1:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::user_1, "user_1"};
+    case CartesianKspaceDimension::user_2:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::user_2, "user_2"};
+    case CartesianKspaceDimension::user_3:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::user_3, "user_3"};
+    case CartesianKspaceDimension::user_4:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::user_4, "user_4"};
+    case CartesianKspaceDimension::user_5:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::user_5, "user_5"};
+    case CartesianKspaceDimension::user_6:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::user_6, "user_6"};
+    case CartesianKspaceDimension::user_7:
+      return CartesianHeaderLimitBinding{EncodingLimitDimension::user_7, "user_7"};
+    case CartesianKspaceDimension::readout:
+    case CartesianKspaceDimension::coil:
+    case CartesianKspaceDimension::encoding_space:
+    case CartesianKspaceDimension::count:
+      return std::nullopt;
+  }
+  return std::nullopt;
 }
 
 [[nodiscard]] bool cartesian_readout_range(const ksj::ismrmrd::AcquisitionHeader& header,
@@ -173,6 +471,185 @@ struct CartesianKspaceLine final {
   return first_coordinate <= last_coordinate;
 }
 
+[[nodiscard]] bool cartesian_header_is_renderable(const ksj::ismrmrd::AcquisitionHeader& header,
+                                                  const std::vector<ksj::recon::EncodingDescriptor>& encodings,
+                                                  const CartesianKspaceAcquisitionKind acquisition_kind,
+                                                  std::int32_t& readout_minimum, std::int32_t& readout_maximum,
+                                                  QString& error) {
+  if (header.trajectory_dimensions != 0U) {
+    error = QStringLiteral("a selected Cartesian acquisition contains trajectory coordinates");
+    return false;
+  }
+  const auto encoding_index = static_cast<std::size_t>(header.encoding_space_ref);
+  if (encoding_index >= encodings.size()) {
+    error = QStringLiteral("a Cartesian acquisition encoding_space_ref is not declared by the standard ISMRMRD XML");
+    return false;
+  }
+  const auto& encoding = encodings.at(encoding_index);
+  if (encoding.trajectory() != ksj::recon::TrajectoryType::cartesian) {
+    error = QStringLiteral("a selected acquisition is not Cartesian in the standard ISMRMRD XML");
+    return false;
+  }
+  if (cartesian_kspace_acquisition_kind_is_imaging(acquisition_kind)) {
+    for (const auto dimension : kCartesianKspaceDimensions) {
+      const auto binding = cartesian_header_limit_binding(dimension);
+      if (!binding.has_value()) {
+        continue;
+      }
+      const auto& limit = encoding.limits().at(binding->dimension);
+      if (!limit.has_value()) {
+        continue;
+      }
+      if (limit->minimum() > std::numeric_limits<std::uint16_t>::max() ||
+          limit->maximum() > std::numeric_limits<std::uint16_t>::max()) {
+        error = QStringLiteral("the standard ISMRMRD Cartesian %1 limit is outside the acquisition header range")
+                  .arg(QLatin1String(binding->standard_name));
+        return false;
+      }
+      const auto value = cartesian_header_dimension_value(header, dimension);
+      if (value < static_cast<int>(limit->minimum()) || value > static_cast<int>(limit->maximum())) {
+        error = QStringLiteral("a Cartesian acquisition %1 is outside the XML encoding limit")
+                  .arg(QLatin1String(binding->standard_name));
+        return false;
+      }
+    }
+  }
+  return cartesian_readout_range(header, readout_minimum, readout_maximum, error);
+}
+
+[[nodiscard]] bool append_observed_value(std::set<int>& values, const int value, QString& error) {
+  values.insert(value);
+  if (values.size() > kKspaceMaximumObservedValues) {
+    error = QStringLiteral("a Cartesian K-space dimension exceeds the bounded observed-coordinate limit (%1)")
+              .arg(static_cast<qulonglong>(kKspaceMaximumObservedValues));
+    return false;
+  }
+  return true;
+}
+
+struct CartesianCatalogDiscovery final {
+  CartesianKspaceCatalog catalog;
+  CartesianKspaceAcquisitionKindSummary kind_summary;
+  QString first_unrenderable_error;
+};
+
+[[nodiscard]] bool discover_cartesian_kspace_catalog(ksj::viewer::InspectionSession& session,
+                                                     const std::vector<ksj::recon::EncodingDescriptor>& encodings,
+                                                     const CartesianKspaceAcquisitionKind acquisition_kind,
+                                                     CartesianCatalogDiscovery& discovery, QString& error) {
+  discovery = {};
+  error.clear();
+  std::array<std::set<int>, ksj::viewer::kCartesianKspaceDimensionCount> observed_values;
+  std::size_t source_complex_values = 0U;
+  QString limit_error;
+  std::string reader_error;
+  const auto iteration = session.reader().for_each_acquisition_header(
+    [&](const ksj::ismrmrd::InspectionAcquisitionHeaderRecord& record) {
+      discovery.kind_summary.record(record.header);
+      if (!cartesian_kspace_acquisition_kind_matches(record.header, acquisition_kind)) {
+        return true;
+      }
+      std::int32_t readout_minimum = 0;
+      std::int32_t readout_maximum = 0;
+      QString candidate_error;
+      if (!cartesian_header_is_renderable(record.header, encodings, acquisition_kind, readout_minimum, readout_maximum,
+                                          candidate_error)) {
+        if (discovery.first_unrenderable_error.isEmpty()) {
+          discovery.first_unrenderable_error = candidate_error;
+        }
+        return true;
+      }
+      if (discovery.catalog.entries.size() >= static_cast<qsizetype>(kKspaceMaximumSourceLines)) {
+        limit_error = QStringLiteral("the selected Cartesian K-space data exceeds the bounded acquisition line limit");
+        return false;
+      }
+      const auto usable_samples = static_cast<std::size_t>(readout_maximum - readout_minimum + 1);
+      std::size_t line_complex_values = 0U;
+      std::size_t next_complex_values = 0U;
+      if (!checked_multiply(usable_samples, static_cast<std::size_t>(record.header.active_channels),
+                            line_complex_values) ||
+          !checked_add(source_complex_values, line_complex_values, next_complex_values) ||
+          next_complex_values > kKspaceMaximumSourceComplexValues) {
+        limit_error =
+          QStringLiteral("the selected Cartesian K-space data exceeds the bounded source complex-value limit");
+        return false;
+      }
+      source_complex_values = next_complex_values;
+
+      auto coordinate = cartesian_header_coordinate(record.header);
+      for (std::int32_t value = readout_minimum; value <= readout_maximum; ++value) {
+        if (!append_observed_value(
+              observed_values.at(ksj::viewer::cartesian_kspace_dimension_index(CartesianKspaceDimension::readout)),
+              value, limit_error)) {
+          return false;
+        }
+      }
+      for (std::uint16_t channel = 0U; channel < record.header.active_channels; ++channel) {
+        if (!append_observed_value(
+              observed_values.at(ksj::viewer::cartesian_kspace_dimension_index(CartesianKspaceDimension::coil)),
+              static_cast<int>(channel), limit_error)) {
+          return false;
+        }
+      }
+      for (const auto dimension : kCartesianKspaceDimensions) {
+        if (dimension == CartesianKspaceDimension::readout || dimension == CartesianKspaceDimension::coil) {
+          continue;
+        }
+        if (!append_observed_value(observed_values.at(ksj::viewer::cartesian_kspace_dimension_index(dimension)),
+                                   ksj::viewer::cartesian_kspace_coordinate_value(coordinate, dimension),
+                                   limit_error)) {
+          return false;
+        }
+      }
+      discovery.catalog.entries.append({.coordinate = coordinate,
+                                        .readout_minimum = readout_minimum,
+                                        .readout_maximum = readout_maximum,
+                                        .active_channel_count = record.header.active_channels,
+                                        .source_ordinal = record.ordinal});
+      return true;
+    },
+    reader_error);
+  if (!limit_error.isEmpty()) {
+    error = limit_error;
+    return false;
+  }
+  if (iteration != ksj::ismrmrd::InspectionIterationResult::completed) {
+    error = reader_error.empty() ? QStringLiteral("Cartesian K-space header discovery did not complete")
+                                 : to_qstring(reader_error);
+    return false;
+  }
+  if (discovery.catalog.entries.isEmpty()) {
+    if (!discovery.first_unrenderable_error.isEmpty()) {
+      error = QStringLiteral("the selected %1 data has no renderable Cartesian acquisition: %2")
+                .arg(cartesian_kspace_acquisition_kind_label(acquisition_kind), discovery.first_unrenderable_error);
+    } else if (discovery.kind_summary.count(acquisition_kind) == 0U) {
+      error = QStringLiteral("the active standard ISMRMRD container has no %1 acquisitions")
+                .arg(cartesian_kspace_acquisition_kind_label(acquisition_kind));
+    } else {
+      error = QStringLiteral("the selected %1 data has no renderable Cartesian acquisition")
+                .arg(cartesian_kspace_acquisition_kind_label(acquisition_kind));
+    }
+    return false;
+  }
+  for (const auto dimension : kCartesianKspaceDimensions) {
+    QList<int> values;
+    values.reserve(
+      static_cast<qsizetype>(observed_values.at(ksj::viewer::cartesian_kspace_dimension_index(dimension)).size()));
+    for (const auto value : observed_values.at(ksj::viewer::cartesian_kspace_dimension_index(dimension))) {
+      values.append(value);
+    }
+    discovery.catalog.dimensions.append({.dimension = dimension, .observed_values = std::move(values)});
+  }
+  discovery.catalog.initial_coordinate = discovery.catalog.entries.front().coordinate;
+  ksj::viewer::set_cartesian_kspace_coordinate_value(discovery.catalog.initial_coordinate,
+                                                     CartesianKspaceDimension::readout,
+                                                     discovery.catalog.entries.front().readout_minimum);
+  ksj::viewer::set_cartesian_kspace_coordinate_value(discovery.catalog.initial_coordinate,
+                                                     CartesianKspaceDimension::coil, 0);
+  discovery.catalog.matching_acquisition_count = discovery.kind_summary.count(acquisition_kind);
+  return true;
+}
+
 [[nodiscard]] std::size_t display_bin_for_source_coordinate(const std::size_t source_offset,
                                                             const std::size_t source_count, const int display_count) {
   if (source_count <= 1U || display_count <= 1) {
@@ -182,129 +659,94 @@ struct CartesianKspaceLine final {
   return std::min(result, static_cast<std::size_t>(display_count - 1));
 }
 
-[[nodiscard]] std::int32_t source_coordinate_bin_start(const int display_index, const int display_count,
-                                                       const std::int32_t source_minimum,
-                                                       const std::size_t source_count) {
-  const auto offset = static_cast<std::size_t>(display_index) * source_count / static_cast<std::size_t>(display_count);
-  return source_minimum + static_cast<std::int32_t>(offset);
+[[nodiscard]] const QList<int>* catalog_dimension_values(const CartesianKspaceCatalog& catalog,
+                                                         const CartesianKspaceDimension dimension) {
+  const auto found =
+    std::find_if(catalog.dimensions.cbegin(), catalog.dimensions.cend(), [dimension](const auto& item) {
+      return item.dimension == dimension;
+    });
+  return found == catalog.dimensions.cend() ? nullptr : &found->observed_values;
 }
 
-[[nodiscard]] std::int32_t source_coordinate_bin_end(const int display_index, const int display_count,
-                                                     const std::int32_t source_minimum,
-                                                     const std::size_t source_count) {
-  const auto exclusive_offset =
-    static_cast<std::size_t>(display_index + 1) * source_count / static_cast<std::size_t>(display_count);
-  return source_minimum + static_cast<std::int32_t>(exclusive_offset - 1U);
-}
-
-[[nodiscard]] QJsonObject cartesian_frame_details(const CartesianFrameKey& key) {
-  QJsonObject result;
-  result.insert(QStringLiteral("encoding_space_ref"), static_cast<int>(key.encoding_space_ref));
-  result.insert(QStringLiteral("kspace_encode_step_2"), static_cast<int>(key.kspace_encode_step_2));
-  result.insert(QStringLiteral("average"), static_cast<int>(key.average));
-  result.insert(QStringLiteral("slice"), static_cast<int>(key.slice));
-  result.insert(QStringLiteral("contrast"), static_cast<int>(key.contrast));
-  result.insert(QStringLiteral("phase"), static_cast<int>(key.phase));
-  result.insert(QStringLiteral("repetition"), static_cast<int>(key.repetition));
-  result.insert(QStringLiteral("set"), static_cast<int>(key.set));
-  result.insert(QStringLiteral("segment"), static_cast<int>(key.segment));
-  QJsonArray user;
-  for (const auto value : key.user) {
-    user.append(static_cast<int>(value));
+[[nodiscard]] bool entry_supports_coordinate(const CartesianKspaceCatalogEntry& entry, const CartesianKspaceAxes axes,
+                                             const CartesianKspaceCoordinate& requested) noexcept {
+  for (const auto dimension : kCartesianKspaceDimensions) {
+    if (is_display_axis(axes, dimension)) {
+      continue;
+    }
+    const auto value = ksj::viewer::cartesian_kspace_coordinate_value(requested, dimension);
+    if (dimension == CartesianKspaceDimension::readout) {
+      if (value < entry.readout_minimum || value > entry.readout_maximum) {
+        return false;
+      }
+    } else if (dimension == CartesianKspaceDimension::coil) {
+      if (value < 0 || value >= static_cast<int>(entry.active_channel_count)) {
+        return false;
+      }
+    } else if (ksj::viewer::cartesian_kspace_coordinate_value(entry.coordinate, dimension) != value) {
+      return false;
+    }
   }
-  result.insert(QStringLiteral("user"), user);
+  return true;
+}
+
+[[nodiscard]] bool entry_supports_dimension_value(const CartesianKspaceCatalogEntry& entry,
+                                                  const CartesianKspaceDimension dimension, const int value) noexcept {
+  if (dimension == CartesianKspaceDimension::readout) {
+    return value >= entry.readout_minimum && value <= entry.readout_maximum;
+  }
+  if (dimension == CartesianKspaceDimension::coil) {
+    return value >= 0 && value < static_cast<int>(entry.active_channel_count);
+  }
+  return ksj::viewer::cartesian_kspace_coordinate_value(entry.coordinate, dimension) == value;
+}
+
+[[nodiscard]] CartesianKspaceCoordinate resolved_coordinate_from_entry(const CartesianKspaceCatalogEntry& entry,
+                                                                       const CartesianKspaceAxes axes,
+                                                                       CartesianKspaceCoordinate requested) {
+  for (const auto dimension : kCartesianKspaceDimensions) {
+    if (is_display_axis(axes, dimension)) {
+      continue;
+    }
+    if (dimension == CartesianKspaceDimension::readout) {
+      const auto requested_value = ksj::viewer::cartesian_kspace_coordinate_value(requested, dimension);
+      if (requested_value < entry.readout_minimum || requested_value > entry.readout_maximum) {
+        ksj::viewer::set_cartesian_kspace_coordinate_value(requested, dimension, entry.readout_minimum);
+      }
+    } else if (dimension == CartesianKspaceDimension::coil) {
+      const auto requested_value = ksj::viewer::cartesian_kspace_coordinate_value(requested, dimension);
+      if (requested_value < 0 || requested_value >= static_cast<int>(entry.active_channel_count)) {
+        ksj::viewer::set_cartesian_kspace_coordinate_value(requested, dimension, 0);
+      }
+    } else {
+      ksj::viewer::set_cartesian_kspace_coordinate_value(
+        requested, dimension, ksj::viewer::cartesian_kspace_coordinate_value(entry.coordinate, dimension));
+    }
+  }
+  return requested;
+}
+
+[[nodiscard]] QJsonObject cartesian_coordinate_json(const CartesianKspaceCoordinate& coordinate,
+                                                    const CartesianKspaceAxes axes, const bool include_axes) {
+  QJsonObject result;
+  for (const auto dimension : kCartesianKspaceDimensions) {
+    if (!include_axes && is_display_axis(axes, dimension)) {
+      continue;
+    }
+    result.insert(ksj::viewer::cartesian_kspace_dimension_identifier(dimension),
+                  is_display_axis(axes, dimension)
+                    ? QJsonValue(QStringLiteral(":"))
+                    : QJsonValue(ksj::viewer::cartesian_kspace_coordinate_value(coordinate, dimension)));
+  }
   return result;
 }
 
-struct DisplayWindow {
-  double center{0.0};
-  double width{0.0};
-};
-
-struct AppliedDisplayWindow {
-  double source_minimum{0.0};
-  double source_maximum{0.0};
-  double center{0.0};
-  double width{0.0};
-};
-
-[[nodiscard]] QImage render_magnitudes(const std::vector<double>& magnitudes, const DisplayExtent extent,
-                                       const std::optional<DisplayWindow> requested_window,
-                                       AppliedDisplayWindow* applied_window, QString& error) {
-  error.clear();
-  std::size_t expected_count = 0U;
-  if (extent.width <= 0 || extent.height <= 0 ||
-      !checked_multiply(static_cast<std::size_t>(extent.width), static_cast<std::size_t>(extent.height),
-                        expected_count) ||
-      magnitudes.size() != expected_count) {
-    error = QStringLiteral("display magnitude projection has an invalid bounded extent");
-    return {};
+[[nodiscard]] QJsonArray axis_values_json(const std::vector<int>& values) {
+  QJsonArray result;
+  for (const auto value : values) {
+    result.append(value);
   }
-
-  QImage image(extent.width, extent.height, QImage::Format_Grayscale8);
-  if (image.isNull()) {
-    error = QStringLiteral("Qt could not allocate the bounded grayscale display image");
-    return {};
-  }
-
-  double minimum = std::numeric_limits<double>::infinity();
-  double maximum = -std::numeric_limits<double>::infinity();
-  for (const auto magnitude : magnitudes) {
-    if (std::isfinite(magnitude)) {
-      minimum = std::min(minimum, magnitude);
-      maximum = std::max(maximum, magnitude);
-    }
-  }
-  const auto has_finite_values = std::isfinite(minimum) && std::isfinite(maximum);
-  const auto has_range = has_finite_values && maximum > minimum;
-  auto window_center = 0.0;
-  auto window_width = 0.0;
-  auto low = 0.0;
-  auto high = 0.0;
-  if (requested_window.has_value()) {
-    window_center = requested_window->center;
-    window_width = requested_window->width;
-    if (!std::isfinite(window_center) || !std::isfinite(window_width) || window_width <= 0.0) {
-      error = QStringLiteral("image window width must be finite and greater than zero");
-      return {};
-    }
-    const auto half_width = window_width * 0.5;
-    low = window_center - half_width;
-    high = window_center + half_width;
-    if (!std::isfinite(low) || !std::isfinite(high) || high <= low) {
-      error = QStringLiteral("image window center and width are outside the supported display range");
-      return {};
-    }
-  } else if (has_finite_values) {
-    window_center = minimum + (maximum - minimum) * 0.5;
-    window_width = maximum - minimum;
-    low = minimum;
-    high = maximum;
-  }
-
-  if (applied_window != nullptr) {
-    *applied_window = {.source_minimum = has_finite_values ? minimum : 0.0,
-                       .source_maximum = has_finite_values ? maximum : 0.0,
-                       .center = window_center,
-                       .width = window_width};
-  }
-
-  for (int y = 0; y < extent.height; ++y) {
-    auto* line = image.scanLine(y);
-    for (int x = 0; x < extent.width; ++x) {
-      const auto index =
-        static_cast<std::size_t>(y) * static_cast<std::size_t>(extent.width) + static_cast<std::size_t>(x);
-      const auto magnitude = magnitudes[index];
-      auto normalized = 0.0;
-      if (std::isfinite(magnitude) && high > low) {
-        normalized = (magnitude - low) / (high - low);
-      } else if (std::isfinite(magnitude) && !requested_window.has_value() && maximum > 0.0) {
-        normalized = 1.0;
-      }
-      line[x] = static_cast<uchar>(std::clamp(normalized, 0.0, 1.0) * 255.0);
-    }
-  }
-  return image;
+  return result;
 }
 
 [[nodiscard]] const char* image_data_type_name(const ImageDataType data_type) noexcept {
@@ -327,6 +769,10 @@ struct AppliedDisplayWindow {
       return "complex128";
   }
   return "unknown";
+}
+
+[[nodiscard]] bool image_data_type_is_complex(const ImageDataType data_type) noexcept {
+  return data_type == ImageDataType::complex_32 || data_type == ImageDataType::complex_64;
 }
 
 [[nodiscard]] std::size_t image_value_bytes(const ImageDataType data_type) noexcept {
@@ -357,26 +803,45 @@ template <typename Value> [[nodiscard]] Value read_image_value(const ImagePixels
   return value;
 }
 
-[[nodiscard]] double image_magnitude(const ImagePixelsView& view, const std::size_t index) {
+struct ImageSampleComponents final {
+  double magnitude{0.0};
+  double real{0.0};
+  double imaginary{0.0};
+  double phase{0.0};
+};
+
+[[nodiscard]] ImageSampleComponents image_sample_components(const ImagePixelsView& view, const std::size_t index) {
+  const auto from_real_value = [](const double value) {
+    return ImageSampleComponents{.magnitude = std::abs(value), .real = value, .imaginary = 0.0, .phase = 0.0};
+  };
+  const auto from_complex_value = [](const auto value) {
+    const auto real = static_cast<double>(value.real());
+    const auto imaginary = static_cast<double>(value.imag());
+    return ImageSampleComponents{.magnitude = static_cast<double>(std::abs(value)),
+                                 .real = real,
+                                 .imaginary = imaginary,
+                                 .phase = std::atan2(imaginary, real)};
+  };
+
   switch (view.data_type) {
     case ImageDataType::unsigned_integer_16:
-      return static_cast<double>(read_image_value<std::uint16_t>(view, index));
+      return from_real_value(static_cast<double>(read_image_value<std::uint16_t>(view, index)));
     case ImageDataType::signed_integer_16:
-      return std::abs(static_cast<double>(read_image_value<std::int16_t>(view, index)));
+      return from_real_value(static_cast<double>(read_image_value<std::int16_t>(view, index)));
     case ImageDataType::unsigned_integer_32:
-      return static_cast<double>(read_image_value<std::uint32_t>(view, index));
+      return from_real_value(static_cast<double>(read_image_value<std::uint32_t>(view, index)));
     case ImageDataType::signed_integer_32:
-      return std::abs(static_cast<double>(read_image_value<std::int32_t>(view, index)));
+      return from_real_value(static_cast<double>(read_image_value<std::int32_t>(view, index)));
     case ImageDataType::real_32:
-      return std::abs(static_cast<double>(read_image_value<float>(view, index)));
+      return from_real_value(static_cast<double>(read_image_value<float>(view, index)));
     case ImageDataType::real_64:
-      return std::abs(read_image_value<double>(view, index));
+      return from_real_value(read_image_value<double>(view, index));
     case ImageDataType::complex_32:
-      return static_cast<double>(std::abs(read_image_value<std::complex<float>>(view, index)));
+      return from_complex_value(read_image_value<std::complex<float>>(view, index));
     case ImageDataType::complex_64:
-      return std::abs(read_image_value<std::complex<double>>(view, index));
+      return from_complex_value(read_image_value<std::complex<double>>(view, index));
   }
-  return 0.0;
+  return {};
 }
 
 [[nodiscard]] QJsonArray dimensions_to_json(const std::array<std::uint16_t, 4>& dimensions) {
@@ -387,9 +852,86 @@ template <typename Value> [[nodiscard]] Value read_image_value(const ImagePixels
   return result;
 }
 
+constexpr std::array<ksj::viewer::ImageDimension, ksj::viewer::kImageDimensionCount> kImageDimensions{
+  ksj::viewer::ImageDimension::x,
+  ksj::viewer::ImageDimension::y,
+  ksj::viewer::ImageDimension::z,
+  ksj::viewer::ImageDimension::channel,
+};
+
+[[nodiscard]] bool image_axis_is_selected(const ksj::viewer::ImageAxes axes,
+                                          const ksj::viewer::ImageDimension dimension) noexcept {
+  return axes.x == dimension || axes.y == dimension;
+}
+
+[[nodiscard]] bool image_axes_are_valid(const ksj::viewer::ImageAxes axes) noexcept {
+  return axes.x != axes.y && ksj::viewer::image_dimension_index(axes.x) < ksj::viewer::kImageDimensionCount &&
+         ksj::viewer::image_dimension_index(axes.y) < ksj::viewer::kImageDimensionCount;
+}
+
+[[nodiscard]] QString image_dimension_identifier_text(const ksj::viewer::ImageDimension dimension) {
+  switch (dimension) {
+    case ksj::viewer::ImageDimension::x:
+      return QStringLiteral("x");
+    case ksj::viewer::ImageDimension::y:
+      return QStringLiteral("y");
+    case ksj::viewer::ImageDimension::z:
+      return QStringLiteral("z");
+    case ksj::viewer::ImageDimension::channel:
+      return QStringLiteral("channel");
+    case ksj::viewer::ImageDimension::count:
+      break;
+  }
+  return {};
+}
+
+[[nodiscard]] std::size_t image_linear_index(const std::array<std::uint16_t, 4>& dimensions,
+                                             const ksj::viewer::ImageCoordinate& coordinate) {
+  const auto x =
+    static_cast<std::size_t>(ksj::viewer::image_coordinate_value(coordinate, ksj::viewer::ImageDimension::x));
+  const auto y =
+    static_cast<std::size_t>(ksj::viewer::image_coordinate_value(coordinate, ksj::viewer::ImageDimension::y));
+  const auto z =
+    static_cast<std::size_t>(ksj::viewer::image_coordinate_value(coordinate, ksj::viewer::ImageDimension::z));
+  const auto channel =
+    static_cast<std::size_t>(ksj::viewer::image_coordinate_value(coordinate, ksj::viewer::ImageDimension::channel));
+  return x + static_cast<std::size_t>(dimensions[0]) *
+               (y + static_cast<std::size_t>(dimensions[1]) * (z + static_cast<std::size_t>(dimensions[2]) * channel));
+}
+
+[[nodiscard]] QJsonObject image_coordinate_json(const ksj::viewer::ImageCoordinate& coordinate,
+                                                const ksj::viewer::ImageAxes axes, const bool include_axes) {
+  QJsonObject result;
+  for (const auto dimension : kImageDimensions) {
+    if (!include_axes && image_axis_is_selected(axes, dimension)) {
+      continue;
+    }
+    result.insert(image_dimension_identifier_text(dimension),
+                  include_axes && image_axis_is_selected(axes, dimension)
+                    ? QJsonValue(QStringLiteral(":"))
+                    : QJsonValue(static_cast<int>(ksj::viewer::image_coordinate_value(coordinate, dimension))));
+  }
+  return result;
+}
+
+[[nodiscard]] QString image_fixed_coordinates_text(const ksj::viewer::ImageCoordinate& coordinate,
+                                                   const ksj::viewer::ImageAxes axes) {
+  QStringList values;
+  for (const auto dimension : kImageDimensions) {
+    if (!image_axis_is_selected(axes, dimension)) {
+      values.append(QStringLiteral("%1=%2")
+                      .arg(image_dimension_identifier_text(dimension))
+                      .arg(ksj::viewer::image_coordinate_value(coordinate, dimension)));
+    }
+  }
+  return values.isEmpty() ? QStringLiteral("none") : values.join(QStringLiteral(", "));
+}
+
 [[nodiscard]] QJsonObject image_details(const ksj::ismrmrd::InspectionImageRecord& record,
-                                        const std::array<std::uint16_t, 4>& dimensions, const std::uint16_t z_index,
-                                        const std::uint16_t channel_index, const QString& source) {
+                                        const std::array<std::uint16_t, 4>& dimensions,
+                                        const ksj::viewer::ImageAxes axes,
+                                        const ksj::viewer::ImageCoordinate& coordinate,
+                                        const ksj::viewer::ArrShowDisplayComponent component, const QString& source) {
   QJsonObject result;
   result.insert(QStringLiteral("artifact_kind"), QStringLiteral("visualization-derivative"));
   result.insert(QStringLiteral("view"), QStringLiteral("image"));
@@ -397,9 +939,13 @@ template <typename Value> [[nodiscard]] Value read_image_value(const ImagePixels
   result.insert(QStringLiteral("series_id"), to_qstring(record.locator.series_id));
   result.insert(QStringLiteral("ordinal"), static_cast<int>(record.locator.ordinal));
   result.insert(QStringLiteral("data_type"), QString::fromLatin1(image_data_type_name(record.header.data_type)));
+  result.insert(QStringLiteral("display_component"), ksj::viewer::arrshow_display_component_identifier(component));
+  result.insert(QStringLiteral("component_semantics"), ksj::viewer::arrshow_display_component_semantics(component));
   result.insert(QStringLiteral("dimensions"), dimensions_to_json(dimensions));
-  result.insert(QStringLiteral("z_index"), static_cast<int>(z_index));
-  result.insert(QStringLiteral("channel_index"), static_cast<int>(channel_index));
+  result.insert(QStringLiteral("axis_x"), image_dimension_identifier_text(axes.x));
+  result.insert(QStringLiteral("axis_y"), image_dimension_identifier_text(axes.y));
+  result.insert(QStringLiteral("plane_coordinates"), image_coordinate_json(coordinate, axes, true));
+  result.insert(QStringLiteral("fixed_coordinates"), image_coordinate_json(coordinate, axes, false));
   result.insert(QStringLiteral("image_index"), static_cast<int>(record.header.image_index));
   result.insert(QStringLiteral("image_series_index"), static_cast<int>(record.header.image_series_index));
 
@@ -419,8 +965,9 @@ template <typename Value> [[nodiscard]] Value read_image_value(const ImagePixels
 }
 
 [[nodiscard]] QString image_summary(const ksj::ismrmrd::InspectionImageRecord& record,
-                                    const std::array<std::uint16_t, 4>& dimensions, const std::uint16_t z_index,
-                                    const std::uint16_t channel_index) {
+                                    const std::array<std::uint16_t, 4>& dimensions, const ksj::viewer::ImageAxes axes,
+                                    const ksj::viewer::ImageCoordinate& coordinate,
+                                    const ksj::viewer::ArrShowDisplayComponent component) {
   QStringList lines;
   lines << QStringLiteral("ISMRMRD image: series %1, storage ordinal %2")
              .arg(to_qstring(record.locator.series_id))
@@ -431,11 +978,14 @@ template <typename Value> [[nodiscard]] Value read_image_value(const ImagePixels
              .arg(dimensions[1])
              .arg(dimensions[2])
              .arg(dimensions[3])
-        << QStringLiteral("Displayed plane: z=%1, channel=%2; image index=%3, series index=%4")
-             .arg(z_index)
-             .arg(channel_index)
+        << QStringLiteral("Displayed plane: x=%1, y=%2; fixed coordinates: %3; image index=%4, series index=%5")
+             .arg(image_dimension_identifier_text(axes.x), image_dimension_identifier_text(axes.y),
+                  image_fixed_coordinates_text(coordinate, axes))
              .arg(record.header.image_index)
-             .arg(record.header.image_series_index);
+             .arg(record.header.image_series_index)
+        << QStringLiteral("Display component: %1; %2.")
+             .arg(ksj::viewer::arrshow_display_component_label(component),
+                  ksj::viewer::arrshow_display_component_semantics(component));
   if (record.meta_attributes.empty()) {
     lines << QStringLiteral("MetaAttributes: none");
   } else {
@@ -466,9 +1016,58 @@ template <typename Value> [[nodiscard]] Value read_image_value(const ImagePixels
   return QStringLiteral("unknown");
 }
 
+[[nodiscard]] QString pipeline_graph_node_key(const QString& prefix, const std::string_view id) {
+  return prefix + QLatin1Char(':') + to_qstring(id);
+}
+
+[[nodiscard]] QString pipeline_graph_node_kind_name(const ksj::viewer::PipelineGraphNodeKind kind) {
+  using ksj::viewer::PipelineGraphNodeKind;
+  switch (kind) {
+    case PipelineGraphNodeKind::ingress:
+      return QStringLiteral("ingress");
+    case PipelineGraphNodeKind::operator_node:
+      return QStringLiteral("operator");
+    case PipelineGraphNodeKind::egress:
+      return QStringLiteral("egress");
+  }
+  return QStringLiteral("unknown");
+}
+
+[[nodiscard]] QString pipeline_graph_edge_kind_name(const ksj::viewer::PipelineGraphEdgeKind kind) {
+  using ksj::viewer::PipelineGraphEdgeKind;
+  switch (kind) {
+    case PipelineGraphEdgeKind::ingress:
+      return QStringLiteral("ingress");
+    case PipelineGraphEdgeKind::data:
+      return QStringLiteral("data");
+    case PipelineGraphEdgeKind::egress:
+      return QStringLiteral("egress");
+    case PipelineGraphEdgeKind::calibration:
+      return QStringLiteral("calibration");
+  }
+  return QStringLiteral("unknown");
+}
+
 } // namespace
 
 namespace ksj::viewer {
+
+bool image_arrshow_component_supported(const ArrShowDisplayComponent component,
+                                       const ksj::ismrmrd::ImageDataType data_type) noexcept {
+  switch (component) {
+    case ArrShowDisplayComponent::magnitude:
+    case ArrShowDisplayComponent::real:
+    case ArrShowDisplayComponent::imaginary:
+    case ArrShowDisplayComponent::complex:
+    case ArrShowDisplayComponent::phase:
+      return !arrshow_display_component_requires_complex(component) || image_data_type_is_complex(data_type);
+  }
+  return false;
+}
+
+QString image_dimension_identifier(const ImageDimension dimension) {
+  return image_dimension_identifier_text(dimension);
+}
 
 MetadataPresentation make_metadata_presentation(const InspectionSession& session) {
   MetadataPresentation presentation;
@@ -506,12 +1105,54 @@ MetadataPresentation make_metadata_presentation(const InspectionSession& session
   return presentation;
 }
 
-bool make_cartesian_kspace_presentation(InspectionSession& session, const CartesianKspaceRequest request,
-                                        KspacePresentation& presentation, QString& error) {
-  presentation = {};
+QString cartesian_kspace_dimension_identifier(const CartesianKspaceDimension dimension) {
+  switch (dimension) {
+    case CartesianKspaceDimension::readout:
+      return QStringLiteral("readout");
+    case CartesianKspaceDimension::phase_encode:
+      return QStringLiteral("phase-encode");
+    case CartesianKspaceDimension::coil:
+      return QStringLiteral("coil");
+    case CartesianKspaceDimension::encoding_space:
+      return QStringLiteral("encoding-space");
+    case CartesianKspaceDimension::partition:
+      return QStringLiteral("partition");
+    case CartesianKspaceDimension::average:
+      return QStringLiteral("average");
+    case CartesianKspaceDimension::slice:
+      return QStringLiteral("slice");
+    case CartesianKspaceDimension::contrast:
+      return QStringLiteral("contrast");
+    case CartesianKspaceDimension::physiological_phase:
+      return QStringLiteral("physiological-phase");
+    case CartesianKspaceDimension::repetition:
+      return QStringLiteral("repetition");
+    case CartesianKspaceDimension::set:
+      return QStringLiteral("set");
+    case CartesianKspaceDimension::segment:
+      return QStringLiteral("segment");
+    case CartesianKspaceDimension::user_0:
+    case CartesianKspaceDimension::user_1:
+    case CartesianKspaceDimension::user_2:
+    case CartesianKspaceDimension::user_3:
+    case CartesianKspaceDimension::user_4:
+    case CartesianKspaceDimension::user_5:
+    case CartesianKspaceDimension::user_6:
+    case CartesianKspaceDimension::user_7:
+      return QStringLiteral("user-%1").arg(static_cast<int>(dimension) -
+                                           static_cast<int>(CartesianKspaceDimension::user_0));
+    case CartesianKspaceDimension::count:
+      break;
+  }
+  return {};
+}
+
+bool cartesian_kspace_catalog(InspectionSession& session, const CartesianKspaceAcquisitionKind acquisition_kind,
+                              CartesianKspaceCatalog& catalog, QString& error) {
+  catalog = {};
   error.clear();
   if (!session.is_open()) {
-    error = QStringLiteral("open a standard ISMRMRD dataset before rendering Cartesian k-space");
+    error = QStringLiteral("open a standard ISMRMRD dataset before inspecting Cartesian K-space");
     return false;
   }
   const auto& metadata = session.metadata();
@@ -519,176 +1160,311 @@ bool make_cartesian_kspace_presentation(InspectionSession& session, const Cartes
     error = QStringLiteral("the active standard ISMRMRD container has no acquisitions");
     return false;
   }
-  if (request.reference_acquisition_ordinal >= metadata.acquisition_count) {
-    error = QStringLiteral("the Cartesian k-space reference acquisition ordinal is outside the dataset");
-    return false;
-  }
-  if (request.coil_channel < -1) {
-    error = QStringLiteral("the Cartesian k-space coil selector is invalid");
-    return false;
-  }
-
-  ksj::ismrmrd::AcquisitionHeader reference_header;
-  std::string reader_error;
-  if (!session.reader().read_acquisition_header(request.reference_acquisition_ordinal, reference_header,
-                                                reader_error)) {
-    error = reader_error.empty()
-              ? QStringLiteral("the Cartesian k-space reference acquisition header could not be read")
-              : to_qstring(reader_error);
-    return false;
-  }
-  if (reference_header.trajectory_dimensions != 0U) {
-    error = QStringLiteral("the selected acquisition has a trajectory; Cartesian k-space view does not render "
-                           "non-Cartesian samples as a grid");
-    return false;
-  }
-  if (request.coil_channel >= static_cast<std::int32_t>(reference_header.active_channels)) {
-    error = QStringLiteral("the selected coil is outside the reference acquisition active channel count");
-    return false;
-  }
-
-  auto scan = ksj::recon::ScanDescriptor::parse_ismrmrd_xml(metadata.xml_header);
+  const auto scan = ksj::recon::ScanDescriptor::parse_ismrmrd_xml(metadata.xml_header);
   if (!scan.ok()) {
-    error = QStringLiteral("the standard ISMRMRD XML header cannot describe a Cartesian k-space view: %1")
+    error = QStringLiteral("the standard ISMRMRD XML header cannot describe a Cartesian K-space view: %1")
               .arg(to_qstring(scan.status().message()));
     return false;
   }
-  const auto& encodings = scan.value().encodings();
-  const auto encoding_index = static_cast<std::size_t>(reference_header.encoding_space_ref);
-  if (encoding_index >= encodings.size()) {
-    error = QStringLiteral("the reference acquisition encoding_space_ref is not declared by the standard ISMRMRD XML");
+  CartesianCatalogDiscovery discovery;
+  if (!discover_cartesian_kspace_catalog(session, scan.value().encodings(), acquisition_kind, discovery, error)) {
     return false;
   }
-  const auto& encoding = encodings.at(encoding_index);
-  if (encoding.trajectory() != ksj::recon::TrajectoryType::cartesian) {
-    error = QStringLiteral("the selected ISMRMRD encoding is not Cartesian; trajectory-space viewing is a separate "
-                           "mode and is not rendered as a Cartesian grid");
+  catalog = std::move(discovery.catalog);
+  return true;
+}
+
+bool cartesian_kspace_acquisition_kind_options(InspectionSession& session,
+                                               QList<CartesianKspaceAcquisitionKindOption>& options, QString& error) {
+  options.clear();
+  error.clear();
+  if (!session.is_open()) {
+    error = QStringLiteral("open a standard ISMRMRD dataset before inspecting Cartesian K-space");
     return false;
   }
-
-  std::optional<std::uint16_t> declared_ky_minimum;
-  std::optional<std::uint16_t> declared_ky_maximum;
-  const auto& ky_limit = encoding.limits().at(ksj::recon::EncodingLimitDimension::kspace_encode_step_1);
-  if (ky_limit.has_value()) {
-    if (ky_limit->minimum() > std::numeric_limits<std::uint16_t>::max() ||
-        ky_limit->maximum() > std::numeric_limits<std::uint16_t>::max()) {
-      error = QStringLiteral("the standard ISMRMRD Cartesian k-space_encode_step_1 limit is outside the acquisition "
-                             "header range");
-      return false;
-    }
-    declared_ky_minimum = static_cast<std::uint16_t>(ky_limit->minimum());
-    declared_ky_maximum = static_cast<std::uint16_t>(ky_limit->maximum());
-  }
-
-  const auto frame_key = cartesian_frame_key(reference_header);
-  std::vector<CartesianKspaceLine> lines;
-  lines.reserve(std::min<std::size_t>(metadata.acquisition_count, kKspaceMaximumSourceLines));
-  std::int32_t readout_minimum = std::numeric_limits<std::int32_t>::max();
-  std::int32_t readout_maximum = std::numeric_limits<std::int32_t>::min();
-  std::uint16_t observed_ky_minimum = std::numeric_limits<std::uint16_t>::max();
-  std::uint16_t observed_ky_maximum = 0U;
-  std::size_t source_complex_values = 0U;
-  QString header_error;
-  const auto header_iteration = session.reader().for_each_acquisition_header(
-    [&](const ksj::ismrmrd::InspectionAcquisitionHeaderRecord& record) {
-      if (cartesian_frame_key(record.header) != frame_key) {
-        return true;
-      }
-      if (record.header.trajectory_dimensions != 0U) {
-        header_error = QStringLiteral("matching acquisitions disagree about Cartesian trajectory dimensions");
-        return false;
-      }
-      if (record.header.active_channels != reference_header.active_channels) {
-        header_error = QStringLiteral("matching Cartesian acquisitions have inconsistent active channel counts");
-        return false;
-      }
-      if (declared_ky_minimum.has_value() && (record.header.index.kspace_encode_step_1 < declared_ky_minimum.value() ||
-                                              record.header.index.kspace_encode_step_1 > declared_ky_maximum.value())) {
-        header_error = QStringLiteral("a Cartesian acquisition kspace_encode_step_1 is outside the XML encoding limit");
-        return false;
-      }
-      std::int32_t line_readout_minimum = 0;
-      std::int32_t line_readout_maximum = 0;
-      if (!cartesian_readout_range(record.header, line_readout_minimum, line_readout_maximum, header_error)) {
-        return false;
-      }
-      const auto usable_samples = static_cast<std::size_t>(line_readout_maximum - line_readout_minimum + 1);
-      std::size_t line_complex_values = 0U;
-      std::size_t next_complex_values = 0U;
-      if (!checked_multiply(usable_samples, static_cast<std::size_t>(record.header.active_channels),
-                            line_complex_values) ||
-          !checked_add(source_complex_values, line_complex_values, next_complex_values) ||
-          next_complex_values > kKspaceMaximumSourceComplexValues) {
-        header_error = QStringLiteral("the selected Cartesian k-space plane exceeds the bounded source sample limit");
-        return false;
-      }
-      if (lines.size() >= kKspaceMaximumSourceLines) {
-        header_error =
-          QStringLiteral("the selected Cartesian k-space plane exceeds the bounded acquisition line limit");
-        return false;
-      }
-      source_complex_values = next_complex_values;
-      lines.push_back({.ordinal = record.ordinal, .header = record.header});
-      readout_minimum = std::min(readout_minimum, line_readout_minimum);
-      readout_maximum = std::max(readout_maximum, line_readout_maximum);
-      observed_ky_minimum = std::min(observed_ky_minimum, record.header.index.kspace_encode_step_1);
-      observed_ky_maximum = std::max(observed_ky_maximum, record.header.index.kspace_encode_step_1);
+  CartesianKspaceAcquisitionKindSummary summary;
+  std::string reader_error;
+  const auto iteration = session.reader().for_each_acquisition_header(
+    [&summary](const ksj::ismrmrd::InspectionAcquisitionHeaderRecord& record) {
+      summary.record(record.header);
       return true;
     },
     reader_error);
-  if (!header_error.isEmpty()) {
-    error = header_error;
-    return false;
-  }
-  if (header_iteration != ksj::ismrmrd::InspectionIterationResult::completed) {
-    error = reader_error.empty() ? QStringLiteral("Cartesian k-space header indexing did not complete")
+  if (iteration != ksj::ismrmrd::InspectionIterationResult::completed) {
+    error = reader_error.empty() ? QStringLiteral("Cartesian K-space acquisition-type discovery did not complete")
                                  : to_qstring(reader_error);
     return false;
   }
-  if (lines.empty()) {
-    error = QStringLiteral("no Cartesian acquisitions match the selected ISMRMRD frame counters");
+  for (std::size_t index = 0U; index < static_cast<std::size_t>(CartesianKspaceAcquisitionKind::count); ++index) {
+    const auto kind = static_cast<CartesianKspaceAcquisitionKind>(index);
+    if (summary.count(kind) == 0U) {
+      continue;
+    }
+    CartesianKspaceCatalog catalog;
+    QString catalog_error;
+    if (!cartesian_kspace_catalog(session, kind, catalog, catalog_error)) {
+      continue;
+    }
+    options.append({.kind = kind,
+                    .label = cartesian_kspace_acquisition_kind_label(kind),
+                    .matching_acquisition_count = summary.count(kind)});
+  }
+  if (options.isEmpty()) {
+    error = QStringLiteral("the active standard ISMRMRD container has no renderable Cartesian acquisition data");
+    return false;
+  }
+  return true;
+}
+
+bool resolve_cartesian_kspace_coordinate(const CartesianKspaceCatalog& catalog, const CartesianKspaceAxes axes,
+                                         const CartesianKspaceCoordinate requested,
+                                         const std::optional<CartesianKspaceDimension> changed_dimension,
+                                         CartesianKspaceCoordinate& resolved, QString& error) {
+  resolved = {};
+  error.clear();
+  if (!is_known_cartesian_kspace_dimension(axes.x) || !is_known_cartesian_kspace_dimension(axes.y)) {
+    error = QStringLiteral("choose known Cartesian K-space display dimensions");
+    return false;
+  }
+  if (axes.x == axes.y) {
+    error = QStringLiteral("choose two distinct Cartesian K-space display dimensions");
+    return false;
+  }
+  if (catalog.entries.isEmpty()) {
+    error = QStringLiteral("the Cartesian K-space coordinate catalog is empty");
+    return false;
+  }
+  if (changed_dimension.has_value()) {
+    if (is_display_axis(axes, changed_dimension.value())) {
+      error = QStringLiteral("a display axis uses ':' and cannot be selected as a fixed coordinate");
+      return false;
+    }
+    const auto* values = catalog_dimension_values(catalog, changed_dimension.value());
+    const auto requested_value = cartesian_kspace_coordinate_value(requested, changed_dimension.value());
+    if (values == nullptr || !values->contains(requested_value)) {
+      error = QStringLiteral("the requested Cartesian K-space coordinate is not observed in this acquisition type");
+      return false;
+    }
+  }
+
+  const CartesianKspaceCatalogEntry* selected = nullptr;
+  for (const auto& entry : catalog.entries) {
+    if (entry_supports_coordinate(entry, axes, requested)) {
+      selected = &entry;
+      break;
+    }
+  }
+  if (selected == nullptr) {
+    std::size_t best_similarity = 0U;
+    for (const auto& entry : catalog.entries) {
+      if (changed_dimension.has_value() &&
+          !entry_supports_dimension_value(entry, changed_dimension.value(),
+                                          cartesian_kspace_coordinate_value(requested, changed_dimension.value()))) {
+        continue;
+      }
+      std::size_t similarity = 0U;
+      for (const auto dimension : kCartesianKspaceDimensions) {
+        if (is_display_axis(axes, dimension)) {
+          continue;
+        }
+        if (entry_supports_dimension_value(entry, dimension, cartesian_kspace_coordinate_value(requested, dimension))) {
+          ++similarity;
+        }
+      }
+      if (selected == nullptr || similarity > best_similarity) {
+        selected = &entry;
+        best_similarity = similarity;
+      }
+    }
+  }
+  if (selected == nullptr) {
+    error = QStringLiteral("no observed Cartesian K-space acquisition supports the requested sparse coordinate");
+    return false;
+  }
+  resolved = resolved_coordinate_from_entry(*selected, axes, requested);
+  return true;
+}
+
+bool make_cartesian_kspace_presentation(InspectionSession& session, const CartesianKspaceRequest request,
+                                        KspacePresentation& presentation, QString& error) {
+  presentation = {};
+  error.clear();
+  if (!is_known_cartesian_kspace_dimension(request.axes.x) || !is_known_cartesian_kspace_dimension(request.axes.y)) {
+    error = QStringLiteral("choose known Cartesian K-space display dimensions");
+    return false;
+  }
+  if (request.axes.x == request.axes.y) {
+    error = QStringLiteral("choose two distinct Cartesian K-space display dimensions");
+    return false;
+  }
+  CartesianKspaceCatalog catalog;
+  if (!cartesian_kspace_catalog(session, request.acquisition_kind, catalog, error)) {
+    return false;
+  }
+  CartesianKspaceCoordinate coordinate;
+  if (!resolve_cartesian_kspace_coordinate(catalog, request.axes, request.coordinate, std::nullopt, coordinate,
+                                           error)) {
+    return false;
+  }
+  const auto scan = ksj::recon::ScanDescriptor::parse_ismrmrd_xml(session.metadata().xml_header);
+  if (!scan.ok()) {
+    error = QStringLiteral("the standard ISMRMRD XML header cannot describe a Cartesian K-space view: %1")
+              .arg(to_qstring(scan.status().message()));
     return false;
   }
 
-  const auto ky_minimum = declared_ky_minimum.value_or(observed_ky_minimum);
-  const auto ky_maximum = declared_ky_maximum.value_or(observed_ky_maximum);
-  const auto source_width = static_cast<std::size_t>(readout_maximum - readout_minimum + 1);
-  const auto source_height =
-    static_cast<std::size_t>(static_cast<std::uint32_t>(ky_maximum) - static_cast<std::uint32_t>(ky_minimum) + 1U);
-  const auto extent = make_display_extent(source_width, source_height, kKspaceMaximumDimension, kKspaceMaximumPixels);
+  std::vector<const CartesianKspaceCatalogEntry*> lines;
+  lines.reserve(static_cast<std::size_t>(catalog.entries.size()));
+  std::set<int> axis_x_values_set;
+  std::set<int> axis_y_values_set;
+  const auto append_axis_values = [&error, &request, &scan](std::set<int>& values,
+                                                            const CartesianKspaceCatalogEntry& entry,
+                                                            const CartesianKspaceDimension dimension) {
+    const auto append = [&values, &error](const int value) {
+      values.insert(value);
+      if (values.size() > kKspaceMaximumObservedValues) {
+        error = QStringLiteral("a Cartesian K-space display axis exceeds the bounded observed-coordinate limit (%1)")
+                  .arg(static_cast<qulonglong>(kKspaceMaximumObservedValues));
+        return false;
+      }
+      return true;
+    };
+    if (dimension == CartesianKspaceDimension::readout) {
+      for (std::int32_t value = entry.readout_minimum; value <= entry.readout_maximum; ++value) {
+        if (!append(value)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (dimension == CartesianKspaceDimension::coil) {
+      for (std::uint16_t channel = 0U; channel < entry.active_channel_count; ++channel) {
+        if (!append(static_cast<int>(channel))) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (dimension == CartesianKspaceDimension::phase_encode &&
+        cartesian_kspace_acquisition_kind_is_imaging(request.acquisition_kind)) {
+      const auto encoding_index = static_cast<std::size_t>(
+        cartesian_kspace_coordinate_value(entry.coordinate, CartesianKspaceDimension::encoding_space));
+      if (encoding_index >= scan.value().encodings().size()) {
+        error =
+          QStringLiteral("a Cartesian acquisition encoding_space_ref is not declared by the standard ISMRMRD XML");
+        return false;
+      }
+      const auto& limit = scan.value()
+                            .encodings()
+                            .at(encoding_index)
+                            .limits()
+                            .at(ksj::recon::EncodingLimitDimension::kspace_encode_step_1);
+      if (limit.has_value()) {
+        if (limit->minimum() > std::numeric_limits<std::uint16_t>::max() ||
+            limit->maximum() > std::numeric_limits<std::uint16_t>::max()) {
+          error = QStringLiteral("the standard ISMRMRD Cartesian kspace_encode_step_1 limit is outside the acquisition "
+                                 "header range");
+          return false;
+        }
+        const auto minimum = static_cast<int>(limit->minimum());
+        const auto maximum = static_cast<int>(limit->maximum());
+        for (auto value = minimum; value <= maximum; ++value) {
+          if (!append(value)) {
+            return false;
+          }
+        }
+        return true;
+      }
+    }
+    return append(cartesian_kspace_coordinate_value(entry.coordinate, dimension));
+  };
+  for (const auto& entry : catalog.entries) {
+    if (!entry_supports_coordinate(entry, request.axes, coordinate)) {
+      continue;
+    }
+    lines.push_back(&entry);
+    if (!append_axis_values(axis_x_values_set, entry, request.axes.x) ||
+        !append_axis_values(axis_y_values_set, entry, request.axes.y)) {
+      return false;
+    }
+  }
+  const auto expand_phase_encode_axis = [&error](std::set<int>& values) {
+    if (values.empty()) {
+      return true;
+    }
+    const auto minimum = *values.cbegin();
+    const auto maximum = *values.crbegin();
+    const auto extent = static_cast<std::size_t>(maximum - minimum) + 1U;
+    if (extent > kKspaceMaximumObservedValues) {
+      error = QStringLiteral("a Cartesian K-space phase-encode display axis exceeds the bounded coordinate limit (%1)")
+                .arg(static_cast<qulonglong>(kKspaceMaximumObservedValues));
+      return false;
+    }
+    for (auto value = minimum; value <= maximum; ++value) {
+      values.insert(value);
+    }
+    return true;
+  };
+  if ((request.axes.x == CartesianKspaceDimension::phase_encode && !expand_phase_encode_axis(axis_x_values_set)) ||
+      (request.axes.y == CartesianKspaceDimension::phase_encode && !expand_phase_encode_axis(axis_y_values_set))) {
+    return false;
+  }
+  if (lines.empty() || axis_x_values_set.empty() || axis_y_values_set.empty()) {
+    error = QStringLiteral("no Cartesian acquisitions match the selected sparse coordinate and display axes");
+    return false;
+  }
+  const std::vector<int> axis_x_values(axis_x_values_set.cbegin(), axis_x_values_set.cend());
+  const std::vector<int> axis_y_values(axis_y_values_set.cbegin(), axis_y_values_set.cend());
+  const auto extent =
+    make_display_extent(axis_x_values.size(), axis_y_values.size(), kKspaceMaximumDimension, kKspaceMaximumPixels);
   if (!extent.has_value()) {
-    error = QStringLiteral("the Cartesian k-space plane cannot produce a bounded display extent");
+    error = QStringLiteral("the Cartesian K-space plane cannot produce a bounded display extent");
     return false;
   }
   std::size_t display_cells = 0U;
   if (!checked_multiply(static_cast<std::size_t>(extent->width), static_cast<std::size_t>(extent->height),
                         display_cells)) {
-    error = QStringLiteral("the Cartesian k-space display cell count overflows");
+    error = QStringLiteral("the Cartesian K-space display cell count overflows");
     return false;
   }
-
-  std::vector<double> squared_sums(display_cells, 0.0);
+  std::vector<double> real_sums(display_cells, 0.0);
+  std::vector<double> imaginary_sums(display_cells, 0.0);
   std::vector<std::uint32_t> contribution_counts(display_cells, 0U);
+  const auto axis_source_index = [](const std::vector<int>& values, const int value) -> std::optional<std::size_t> {
+    const auto found = std::lower_bound(values.cbegin(), values.cend(), value);
+    return found == values.cend() || *found != value
+             ? std::nullopt
+             : std::optional<std::size_t>{static_cast<std::size_t>(std::distance(values.cbegin(), found))};
+  };
+  const auto sample_dimension_value = [](const ksj::ismrmrd::AcquisitionHeader& header,
+                                         const CartesianKspaceDimension dimension, const int readout, const int coil) {
+    if (dimension == CartesianKspaceDimension::readout) {
+      return readout;
+    }
+    if (dimension == CartesianKspaceDimension::coil) {
+      return coil;
+    }
+    return cartesian_header_dimension_value(header, dimension);
+  };
+  std::size_t source_complex_values = 0U;
   QString payload_error;
-  for (const auto& line : lines) {
+  std::string reader_error;
+  for (const auto* line : lines) {
     reader_error.clear();
     const auto payload_iteration = session.reader().visit_acquisition(
-      line.ordinal,
+      line->source_ordinal,
       [&](const ksj::ismrmrd::InspectionAcquisitionView& acquisition) {
-        if (cartesian_frame_key(acquisition.header) != frame_key || acquisition.header.trajectory_dimensions != 0U ||
-            acquisition.header.active_channels != reference_header.active_channels) {
-          payload_error = QStringLiteral("the ISMRMRD source changed while the Cartesian k-space plane was read");
-          return false;
-        }
-        std::int32_t line_readout_minimum = 0;
-        std::int32_t line_readout_maximum = 0;
-        if (!cartesian_readout_range(acquisition.header, line_readout_minimum, line_readout_maximum, payload_error)) {
-          return false;
-        }
-        if (line_readout_minimum < readout_minimum || line_readout_maximum > readout_maximum ||
-            acquisition.header.index.kspace_encode_step_1 < ky_minimum ||
-            acquisition.header.index.kspace_encode_step_1 > ky_maximum) {
-          payload_error = QStringLiteral("a Cartesian acquisition does not fit the indexed display geometry");
+        std::int32_t readout_minimum = 0;
+        std::int32_t readout_maximum = 0;
+        QString header_error;
+        if (!cartesian_kspace_acquisition_kind_matches(acquisition.header, request.acquisition_kind) ||
+            !cartesian_header_is_renderable(acquisition.header, scan.value().encodings(), request.acquisition_kind,
+                                            readout_minimum, readout_maximum, header_error) ||
+            cartesian_header_coordinate(acquisition.header) != line->coordinate ||
+            readout_minimum != line->readout_minimum || readout_maximum != line->readout_maximum ||
+            acquisition.header.active_channels != line->active_channel_count ||
+            !entry_supports_coordinate(*line, request.axes, coordinate)) {
+          payload_error = QStringLiteral("the ISMRMRD source changed while the Cartesian K-space plane was read");
           return false;
         }
         const auto sample_count = static_cast<std::size_t>(acquisition.header.number_of_samples);
@@ -699,43 +1475,61 @@ bool make_cartesian_kspace_presentation(InspectionSession& session, const Cartes
           payload_error = QStringLiteral("a Cartesian acquisition payload does not match its sample/channel header");
           return false;
         }
+        const auto first_channel =
+          request.axes.x == CartesianKspaceDimension::coil || request.axes.y == CartesianKspaceDimension::coil
+            ? std::size_t{0U}
+            : static_cast<std::size_t>(cartesian_kspace_coordinate_value(coordinate, CartesianKspaceDimension::coil));
+        const auto past_last_channel =
+          request.axes.x == CartesianKspaceDimension::coil || request.axes.y == CartesianKspaceDimension::coil
+            ? channel_count
+            : first_channel + 1U;
+        if (past_last_channel > channel_count) {
+          payload_error = QStringLiteral("the selected raw coil is outside a matching acquisition's active channels");
+          return false;
+        }
         for (auto sample = static_cast<std::size_t>(acquisition.header.discard_pre);
              sample < sample_count - static_cast<std::size_t>(acquisition.header.discard_post); ++sample) {
-          const auto coordinate =
-            static_cast<std::int32_t>(sample) - static_cast<std::int32_t>(acquisition.header.center_sample);
-          const auto source_x = static_cast<std::size_t>(coordinate - readout_minimum);
-          const auto source_y = static_cast<std::size_t>(acquisition.header.index.kspace_encode_step_1 - ky_minimum);
-          const auto display_x = display_bin_for_source_coordinate(source_x, source_width, extent->width);
-          const auto display_y = display_bin_for_source_coordinate(source_y, source_height, extent->height);
-          const auto display_index = display_y * static_cast<std::size_t>(extent->width) + display_x;
-
-          double squared_magnitude = 0.0;
-          const auto first_channel =
-            request.coil_channel < 0 ? std::size_t{0U} : static_cast<std::size_t>(request.coil_channel);
-          const auto one_past_channel = request.coil_channel < 0 ? channel_count : first_channel + 1U;
-          for (auto channel = first_channel; channel < one_past_channel; ++channel) {
+          const auto readout = static_cast<int>(sample) - static_cast<int>(acquisition.header.center_sample);
+          if (!is_display_axis(request.axes, CartesianKspaceDimension::readout) &&
+              readout != cartesian_kspace_coordinate_value(coordinate, CartesianKspaceDimension::readout)) {
+            continue;
+          }
+          for (auto channel = first_channel; channel < past_last_channel; ++channel) {
+            const auto x_value =
+              sample_dimension_value(acquisition.header, request.axes.x, readout, static_cast<int>(channel));
+            const auto y_value =
+              sample_dimension_value(acquisition.header, request.axes.y, readout, static_cast<int>(channel));
+            const auto x_source = axis_source_index(axis_x_values, x_value);
+            const auto y_source = axis_source_index(axis_y_values, y_value);
+            if (!x_source.has_value() || !y_source.has_value()) {
+              payload_error = QStringLiteral("a Cartesian acquisition does not fit the indexed display geometry");
+              return false;
+            }
+            const auto display_x =
+              display_bin_for_source_coordinate(x_source.value(), axis_x_values.size(), extent->width);
+            const auto display_y =
+              display_bin_for_source_coordinate(y_source.value(), axis_y_values.size(), extent->height);
+            const auto display_index = display_y * static_cast<std::size_t>(extent->width) + display_x;
             const auto value = acquisition.samples[sample + channel * sample_count];
             const auto real = static_cast<double>(value.real());
             const auto imaginary = static_cast<double>(value.imag());
-            if (!std::isfinite(real) || !std::isfinite(imaginary)) {
-              payload_error = QStringLiteral("a Cartesian acquisition contains a non-finite complex sample");
+            if (!std::isfinite(real) || !std::isfinite(imaginary) ||
+                contribution_counts[display_index] == std::numeric_limits<std::uint32_t>::max() ||
+                !std::isfinite(real_sums[display_index] + real) ||
+                !std::isfinite(imaginary_sums[display_index] + imaginary)) {
+              payload_error = QStringLiteral("Cartesian K-space display aggregation exceeds its bounded numeric range");
               return false;
             }
-            const auto component_squared = real * real + imaginary * imaginary;
-            if (!std::isfinite(component_squared) || !std::isfinite(squared_magnitude + component_squared)) {
-              payload_error =
-                QStringLiteral("a Cartesian acquisition magnitude is outside the supported display range");
+            real_sums[display_index] += real;
+            imaginary_sums[display_index] += imaginary;
+            ++contribution_counts[display_index];
+            std::size_t next_source_complex_values = 0U;
+            if (!checked_add(source_complex_values, 1U, next_source_complex_values)) {
+              payload_error = QStringLiteral("the selected Cartesian K-space source value count overflows");
               return false;
             }
-            squared_magnitude += component_squared;
+            source_complex_values = next_source_complex_values;
           }
-          if (contribution_counts[display_index] == std::numeric_limits<std::uint32_t>::max() ||
-              !std::isfinite(squared_sums[display_index] + squared_magnitude)) {
-            payload_error = QStringLiteral("Cartesian k-space display aggregation exceeds its bounded numeric range");
-            return false;
-          }
-          squared_sums[display_index] += squared_magnitude;
-          ++contribution_counts[display_index];
         }
         return true;
       },
@@ -745,146 +1539,175 @@ bool make_cartesian_kspace_presentation(InspectionSession& session, const Cartes
       return false;
     }
     if (payload_iteration != ksj::ismrmrd::InspectionIterationResult::completed) {
-      error = reader_error.empty() ? QStringLiteral("Cartesian k-space payload reading did not complete")
+      error = reader_error.empty() ? QStringLiteral("Cartesian K-space payload reading did not complete")
                                    : to_qstring(reader_error);
       return false;
     }
   }
 
-  std::vector<double> log_magnitudes;
-  log_magnitudes.reserve(display_cells);
+  std::vector<double> real_values;
+  std::vector<double> imaginary_values;
+  std::vector<double> magnitudes;
+  std::vector<double> phase_degrees;
+  real_values.reserve(display_cells);
+  imaginary_values.reserve(display_cells);
+  magnitudes.reserve(display_cells);
+  phase_degrees.reserve(display_cells);
   std::size_t occupied_display_cells = 0U;
   std::size_t duplicate_display_cells = 0U;
   for (std::size_t index = 0U; index < display_cells; ++index) {
     const auto contributions = contribution_counts[index];
-    if (contributions == 0U) {
-      log_magnitudes.push_back(0.0);
-      continue;
-    }
-    ++occupied_display_cells;
-    if (contributions > 1U) {
-      ++duplicate_display_cells;
-    }
-    const auto rms_magnitude = std::sqrt(squared_sums[index] / static_cast<double>(contributions));
-    if (!std::isfinite(rms_magnitude)) {
-      error = QStringLiteral("Cartesian k-space aggregation produced a non-finite magnitude");
+    const auto real = contributions == 0U ? 0.0 : real_sums[index] / static_cast<double>(contributions);
+    const auto imaginary = contributions == 0U ? 0.0 : imaginary_sums[index] / static_cast<double>(contributions);
+    const auto magnitude = std::hypot(real, imaginary);
+    if (!std::isfinite(real) || !std::isfinite(imaginary) || !std::isfinite(magnitude)) {
+      error = QStringLiteral("Cartesian K-space display aggregation produced a non-finite complex value");
       return false;
     }
-    log_magnitudes.push_back(std::log10(1.0 + rms_magnitude));
+    if (contributions != 0U) {
+      ++occupied_display_cells;
+      duplicate_display_cells += contributions > 1U ? 1U : 0U;
+    }
+    real_values.push_back(real);
+    imaginary_values.push_back(imaginary);
+    magnitudes.push_back(magnitude);
+    phase_degrees.push_back(std::atan2(imaginary, real) * 180.0 / std::numbers::pi_v<double>);
   }
-
   QString render_error;
-  presentation.image = render_magnitudes(log_magnitudes, *extent, std::nullopt, nullptr, render_error);
-  if (presentation.image.isNull()) {
+  ArrShowDisplayResult display_result;
+  if (!render_arrshow_display(real_values, imaginary_values, extent->width, extent->height, request.display_settings,
+                              display_result, render_error)) {
     error = render_error;
     return false;
   }
+  presentation.image = display_result.image;
 
+  const auto axis_bin_value = [](const std::vector<int>& values, const int display_index, const int display_count,
+                                 const bool upper) {
+    const auto source_count = values.size();
+    const auto ceiling_divide = [](const std::size_t numerator, const std::size_t denominator) {
+      return numerator / denominator + (numerator % denominator == 0U ? 0U : 1U);
+    };
+    const auto lower =
+      ceiling_divide(static_cast<std::size_t>(display_index) * source_count, static_cast<std::size_t>(display_count));
+    const auto upper_exclusive = ceiling_divide(static_cast<std::size_t>(display_index + 1) * source_count,
+                                                static_cast<std::size_t>(display_count));
+    const auto offset = upper ? upper_exclusive - 1U : lower;
+    return values.at(std::min(offset, source_count - 1U));
+  };
   presentation.csv_columns = {QStringLiteral("display_x"),
                               QStringLiteral("display_y"),
-                              QStringLiteral("readout_coordinate_min"),
-                              QStringLiteral("readout_coordinate_max"),
-                              QStringLiteral("kspace_encode_step_1_min"),
-                              QStringLiteral("kspace_encode_step_1_max"),
-                              QStringLiteral("rms_magnitude"),
+                              QStringLiteral("axis_x_coordinate_min"),
+                              QStringLiteral("axis_x_coordinate_max"),
+                              QStringLiteral("axis_y_coordinate_min"),
+                              QStringLiteral("axis_y_coordinate_max"),
+                              QStringLiteral("real"),
+                              QStringLiteral("imaginary"),
+                              QStringLiteral("magnitude"),
+                              QStringLiteral("phase_degrees"),
                               QStringLiteral("contribution_count")};
-  for (int display_y = 0; display_y < extent->height; ++display_y) {
-    const auto ky_start =
-      source_coordinate_bin_start(display_y, extent->height, static_cast<std::int32_t>(ky_minimum), source_height);
-    const auto ky_end =
-      source_coordinate_bin_end(display_y, extent->height, static_cast<std::int32_t>(ky_minimum), source_height);
-    for (int display_x = 0; display_x < extent->width; ++display_x) {
+  if (request.display_settings.component == ArrShowDisplayComponent::complex ||
+      request.display_settings.component == ArrShowDisplayComponent::phase) {
+    presentation.csv_columns.append({QStringLiteral("red"), QStringLiteral("green"), QStringLiteral("blue")});
+  }
+  for (int display_y = 0; display_y < extent->height && presentation.csv_rows.size() < kMaximumExportRows;
+       ++display_y) {
+    for (int display_x = 0; display_x < extent->width && presentation.csv_rows.size() < kMaximumExportRows;
+         ++display_x) {
       const auto display_index = static_cast<std::size_t>(display_y) * static_cast<std::size_t>(extent->width) +
                                  static_cast<std::size_t>(display_x);
-      if (presentation.csv_rows.size() >= static_cast<qsizetype>(kMaximumExportRows)) {
-        break;
+      QStringList row{QString::number(display_x),
+                      QString::number(display_y),
+                      QString::number(axis_bin_value(axis_x_values, display_x, extent->width, false)),
+                      QString::number(axis_bin_value(axis_x_values, display_x, extent->width, true)),
+                      QString::number(axis_bin_value(axis_y_values, display_y, extent->height, false)),
+                      QString::number(axis_bin_value(axis_y_values, display_y, extent->height, true)),
+                      QString::number(real_values[display_index], 'g', 12),
+                      QString::number(imaginary_values[display_index], 'g', 12),
+                      QString::number(magnitudes[display_index], 'g', 12),
+                      QString::number(phase_degrees[display_index], 'g', 12),
+                      QString::number(contribution_counts[display_index])};
+      if (request.display_settings.component == ArrShowDisplayComponent::complex ||
+          request.display_settings.component == ArrShowDisplayComponent::phase) {
+        const auto colour = presentation.image.pixel(display_x, display_y);
+        row.append({QString::number(qRed(colour)), QString::number(qGreen(colour)), QString::number(qBlue(colour))});
       }
-      const auto readout_start = source_coordinate_bin_start(display_x, extent->width, readout_minimum, source_width);
-      const auto readout_end = source_coordinate_bin_end(display_x, extent->width, readout_minimum, source_width);
-      const auto contributions = contribution_counts[display_index];
-      const auto rms_magnitude =
-        contributions == 0U ? 0.0 : std::sqrt(squared_sums[display_index] / static_cast<double>(contributions));
-      presentation.csv_rows.append({QString::number(display_x), QString::number(display_y),
-                                    QString::number(readout_start), QString::number(readout_end),
-                                    QString::number(ky_start), QString::number(ky_end),
-                                    QString::number(rms_magnitude, 'g', 12), QString::number(contributions)});
-    }
-    if (presentation.csv_rows.size() >= static_cast<qsizetype>(kMaximumExportRows)) {
-      break;
+      presentation.csv_rows.append(row);
     }
   }
 
-  const auto coil_description = request.coil_channel < 0
-                                  ? QStringLiteral("RSS across %1 active coils").arg(reference_header.active_channels)
-                                  : QStringLiteral("coil %1").arg(request.coil_channel);
+  const auto axis_x_name = cartesian_kspace_dimension_identifier(request.axes.x);
+  const auto axis_y_name = cartesian_kspace_dimension_identifier(request.axes.y);
+  QStringList fixed_coordinates;
+  for (const auto dimension : kCartesianKspaceDimensions) {
+    if (!is_display_axis(request.axes, dimension)) {
+      fixed_coordinates.append(QStringLiteral("%1=%2")
+                                 .arg(cartesian_kspace_dimension_identifier(dimension))
+                                 .arg(cartesian_kspace_coordinate_value(coordinate, dimension)));
+    }
+  }
+  const auto acquisition_kind_label = cartesian_kspace_acquisition_kind_label(request.acquisition_kind);
   presentation.summary =
-    QStringLiteral(
-      "Raw Cartesian K-space plane from %1 matching acquisition(s); reference ordinal %2.\n"
-      "Frame: encoding=%3, kz=%4, average=%5, slice=%6, contrast=%7, phase=%8, repetition=%9, set=%10, "
-      "segment=%11.\n"
-      "Axes: centered readout [%12, %13] × k-space encode step 1 [%14, %15]; source grid %16 × %17, "
-      "display grid %18 × %19.\n"
-      "Coil display: %20. Each display cell is RMS over its raw grid contributions; %21 occupied, %22 empty, "
-      "%23 with multiple contributions. Intensity is log10(1 + RMS magnitude).\n"
-      "This is raw Cartesian k-space, not a reconstructed image.")
+    QStringLiteral("Selected ISMRMRD acquisition type: %1.\nRaw Cartesian K-space from %2 matching acquisition(s).\n"
+                   "Axes: %3 × %4; source grid %5 × %6, display grid %7 × %8.\n"
+                   "Fixed observed coordinates: %9.\n"
+                   "Display: %10. %11 occupied, %12 empty, %13 with multiple contributions; a one-to-one display cell "
+                   "is its raw complex sample, while a repeated/bounded-downsampled cell is the disclosed complex "
+                   "arithmetic mean.\nNo FFT, gridding, RSS, log-intensity transform, or reconstruction is applied.")
+      .arg(acquisition_kind_label)
       .arg(static_cast<qulonglong>(lines.size()))
-      .arg(request.reference_acquisition_ordinal)
-      .arg(frame_key.encoding_space_ref)
-      .arg(frame_key.kspace_encode_step_2)
-      .arg(frame_key.average)
-      .arg(frame_key.slice)
-      .arg(frame_key.contrast)
-      .arg(frame_key.phase)
-      .arg(frame_key.repetition)
-      .arg(frame_key.set)
-      .arg(frame_key.segment)
-      .arg(readout_minimum)
-      .arg(readout_maximum)
-      .arg(ky_minimum)
-      .arg(ky_maximum)
-      .arg(static_cast<qulonglong>(source_width))
-      .arg(static_cast<qulonglong>(source_height))
+      .arg(axis_x_name, axis_y_name)
+      .arg(static_cast<qulonglong>(axis_x_values.size()))
+      .arg(static_cast<qulonglong>(axis_y_values.size()))
       .arg(extent->width)
       .arg(extent->height)
-      .arg(coil_description)
+      .arg(fixed_coordinates.join(QStringLiteral(", ")))
+      .arg(arrshow_display_component_label(request.display_settings.component))
       .arg(static_cast<qulonglong>(occupied_display_cells))
       .arg(static_cast<qulonglong>(display_cells - occupied_display_cells))
       .arg(static_cast<qulonglong>(duplicate_display_cells));
+  presentation.summary.append(cartesian_kspace_acquisition_kind_is_imaging(request.acquisition_kind)
+                                ? QStringLiteral("\nThe standard XML imaging phase-encode limit is enforced before "
+                                                 "any axis projection.")
+                                : QStringLiteral("\nThis is explicitly selected auxiliary raw data; its phase-encode "
+                                                 "coordinates are observed rather than limited by an imaging range."));
 
   QJsonObject source_grid;
-  source_grid.insert(QStringLiteral("readout_coordinate_min"), readout_minimum);
-  source_grid.insert(QStringLiteral("readout_coordinate_max"), readout_maximum);
-  source_grid.insert(QStringLiteral("kspace_encode_step_1_min"), static_cast<int>(ky_minimum));
-  source_grid.insert(QStringLiteral("kspace_encode_step_1_max"), static_cast<int>(ky_maximum));
-  source_grid.insert(QStringLiteral("width"), static_cast<int>(source_width));
-  source_grid.insert(QStringLiteral("height"), static_cast<int>(source_height));
+  source_grid.insert(QStringLiteral("axis_x_dimension"), axis_x_name);
+  source_grid.insert(QStringLiteral("axis_y_dimension"), axis_y_name);
+  source_grid.insert(QStringLiteral("width"), static_cast<int>(axis_x_values.size()));
+  source_grid.insert(QStringLiteral("height"), static_cast<int>(axis_y_values.size()));
+  source_grid.insert(QStringLiteral("axis_x_values"), axis_values_json(axis_x_values));
+  source_grid.insert(QStringLiteral("axis_y_values"), axis_values_json(axis_y_values));
   QJsonObject display_grid;
   display_grid.insert(QStringLiteral("width"), extent->width);
   display_grid.insert(QStringLiteral("height"), extent->height);
-  display_grid.insert(QStringLiteral("downsampled"), extent->width != static_cast<int>(source_width) ||
-                                                       extent->height != static_cast<int>(source_height));
-  QJsonObject declared_encoding;
-  declared_encoding.insert(QStringLiteral("index"), static_cast<int>(encoding_index));
-  declared_encoding.insert(QStringLiteral("encoded_matrix_x"),
-                           QString::number(static_cast<qulonglong>(encoding.encoded_matrix().x)));
-  declared_encoding.insert(QStringLiteral("encoded_matrix_y"),
-                           QString::number(static_cast<qulonglong>(encoding.encoded_matrix().y)));
-  declared_encoding.insert(QStringLiteral("encoded_matrix_z"),
-                           QString::number(static_cast<qulonglong>(encoding.encoded_matrix().z)));
-
+  display_grid.insert(QStringLiteral("downsampled"), extent->width != static_cast<int>(axis_x_values.size()) ||
+                                                       extent->height != static_cast<int>(axis_y_values.size()));
   presentation.details.insert(QStringLiteral("artifact_kind"), QStringLiteral("visualization-derivative"));
   presentation.details.insert(QStringLiteral("view"), QStringLiteral("cartesian-k-space"));
-  presentation.details.insert(
-    QStringLiteral("representation"),
-    QStringLiteral("raw Cartesian ISMRMRD acquisition grid; log10(1 + RMS magnitude); not reconstructed image"));
+  presentation.details.insert(QStringLiteral("representation"),
+                              QStringLiteral("raw Cartesian ISMRMRD complex grid along two selected dimensions; no "
+                                             "FFT, gridding, RSS, log-intensity transform, or reconstruction"));
   presentation.details.insert(QStringLiteral("source"), source_description(session));
-  presentation.details.insert(QStringLiteral("container_path"), to_qstring(metadata.group));
-  presentation.details.insert(QStringLiteral("reference_acquisition_ordinal"),
-                              static_cast<int>(request.reference_acquisition_ordinal));
-  presentation.details.insert(QStringLiteral("frame"), cartesian_frame_details(frame_key));
-  presentation.details.insert(QStringLiteral("declared_encoding"), declared_encoding);
+  presentation.details.insert(QStringLiteral("container_path"), to_qstring(session.metadata().group));
+  presentation.details.insert(QStringLiteral("axis_x"), axis_x_name);
+  presentation.details.insert(QStringLiteral("axis_y"), axis_y_name);
+  presentation.details.insert(QStringLiteral("fixed_coordinates"),
+                              cartesian_coordinate_json(coordinate, request.axes, false));
+  presentation.details.insert(QStringLiteral("coordinate_roles"),
+                              cartesian_coordinate_json(coordinate, request.axes, true));
   presentation.details.insert(QStringLiteral("source_grid"), source_grid);
   presentation.details.insert(QStringLiteral("display_grid"), display_grid);
+  presentation.details.insert(QStringLiteral("acquisition_kind"),
+                              cartesian_kspace_acquisition_kind_identifier(request.acquisition_kind));
+  presentation.details.insert(QStringLiteral("acquisition_kind_label"), acquisition_kind_label);
+  presentation.details.insert(QStringLiteral("acquisition_kind_is_imaging"),
+                              cartesian_kspace_acquisition_kind_is_imaging(request.acquisition_kind));
+  presentation.details.insert(QStringLiteral("phase_encode_range_source"),
+                              cartesian_kspace_acquisition_kind_is_imaging(request.acquisition_kind)
+                                ? QStringLiteral("xml_imaging_encoding_limit")
+                                : QStringLiteral("observed_selected_acquisition_kind"));
   presentation.details.insert(QStringLiteral("matching_acquisition_count"), static_cast<int>(lines.size()));
   presentation.details.insert(QStringLiteral("source_complex_values"), static_cast<int>(source_complex_values));
   presentation.details.insert(QStringLiteral("csv_rows_returned"), static_cast<int>(presentation.csv_rows.size()));
@@ -894,18 +1717,57 @@ bool make_cartesian_kspace_presentation(InspectionSession& session, const Cartes
                               static_cast<int>(display_cells - occupied_display_cells));
   presentation.details.insert(QStringLiteral("multi_contribution_display_cells"),
                               static_cast<int>(duplicate_display_cells));
-  presentation.details.insert(QStringLiteral("coil_mode"),
-                              request.coil_channel < 0 ? QStringLiteral("rss") : QStringLiteral("single-coil"));
-  presentation.details.insert(QStringLiteral("coil_channel"), request.coil_channel);
-  presentation.details.insert(QStringLiteral("active_channels"), static_cast<int>(reference_header.active_channels));
+  presentation.details.insert(QStringLiteral("display_component"),
+                              arrshow_display_component_identifier(request.display_settings.component));
+  presentation.details.insert(QStringLiteral("component_semantics"),
+                              arrshow_display_component_semantics(request.display_settings.component));
+  presentation.details.insert(QStringLiteral("display_engine"), QStringLiteral("arrshow-port"));
+  presentation.details.insert(QStringLiteral("range_calculation"),
+                              arrshow_range_calculation_identifier(request.display_settings.range_calculation));
+  presentation.details.insert(QStringLiteral("range_percentile"), request.display_settings.percentile);
+  presentation.details.insert(QStringLiteral("phase_representation"),
+                              arrshow_phase_representation_identifier(request.display_settings.phase_representation));
+  presentation.details.insert(QStringLiteral("coil_mode"), is_display_axis(request.axes, CartesianKspaceDimension::coil)
+                                                             ? QStringLiteral("axis")
+                                                             : QStringLiteral("single-coil"));
+  if (!is_display_axis(request.axes, CartesianKspaceDimension::coil)) {
+    presentation.details.insert(QStringLiteral("coil_channel"),
+                                cartesian_kspace_coordinate_value(coordinate, CartesianKspaceDimension::coil));
+  }
+  presentation.details.insert(QStringLiteral("source_minimum"), display_result.source_minimum);
+  presentation.details.insert(QStringLiteral("source_maximum"), display_result.source_maximum);
+  presentation.details.insert(QStringLiteral("window_mode"),
+                              arrshow_window_persistence_identifier(display_result.window_persistence));
+  presentation.details.insert(QStringLiteral("window_center"), display_result.applied_window_center);
+  presentation.details.insert(QStringLiteral("window_width"), display_result.applied_window_width);
   presentation.details.insert(QStringLiteral("aggregation"),
-                              QStringLiteral("RSS or selected-coil squared magnitude, then RMS per display cell"));
+                              QStringLiteral("complex arithmetic mean only for repeated or bounded-downsampled display "
+                                             "cells"));
+  if (request.display_settings.component == ArrShowDisplayComponent::complex ||
+      request.display_settings.component == ArrShowDisplayComponent::phase) {
+    presentation.details.insert(QStringLiteral("phase_colormap"), QStringLiteral("arrshow-martin-phase-256"));
+    presentation.details.insert(
+      QStringLiteral("csv_colour_columns"),
+      QStringLiteral("C/W-dependent RGB visualization derivative; raw complex CSV columns remain source values"));
+  }
+  if (request.display_settings.component == ArrShowDisplayComponent::phase) {
+    presentation.details.insert(QStringLiteral("phase_unit"),
+                                arrshow_phase_representation_identifier(request.display_settings.phase_representation));
+  }
+  presentation.component = request.display_settings.component;
+  presentation.display_settings = request.display_settings;
+  arrshow_set_active_window_value(presentation.display_settings, display_result.source_minimum,
+                                  display_result.source_maximum, display_result.applied_window_center,
+                                  display_result.applied_window_width);
+  presentation.source_minimum = display_result.source_minimum;
+  presentation.source_maximum = display_result.source_maximum;
+  presentation.applied_window_center = display_result.applied_window_center;
+  presentation.applied_window_width = display_result.applied_window_width;
+  presentation.window_persistence = display_result.window_persistence;
   return true;
 }
 
-bool make_image_presentation(InspectionSession& session, const QString& series_id, const std::uint32_t ordinal,
-                             const std::uint16_t z_index, const std::uint16_t channel_index,
-                             const ImageDisplaySettings display_settings, ImagePresentation& presentation,
+bool make_image_presentation(InspectionSession& session, ImageRequest request, ImagePresentation& presentation,
                              QString& error) {
   presentation = {};
   error.clear();
@@ -913,37 +1775,39 @@ bool make_image_presentation(InspectionSession& session, const QString& series_i
     error = QStringLiteral("open a standard ISMRMRD dataset before inspecting an image");
     return false;
   }
-  if (series_id.trimmed().isEmpty()) {
+  if (request.series_id.trimmed().isEmpty()) {
     error = QStringLiteral("an ISMRMRD image series is required");
     return false;
   }
-  if (!display_settings.auto_window &&
-      (!std::isfinite(display_settings.window_center) || !std::isfinite(display_settings.window_width) ||
-       display_settings.window_width <= 0.0)) {
-    error = QStringLiteral("image window width must be finite and greater than zero");
+  if (!image_axes_are_valid(request.axes) || request.axes.x != ImageDimension::x ||
+      request.axes.y != ImageDimension::y) {
+    error = QStringLiteral("the standard image viewer fixes its native X and Y dimensions as the display plane");
     return false;
   }
 
-  const auto utf8_series = series_id.trimmed().toUtf8();
+  const auto utf8_series = request.series_id.trimmed().toUtf8();
   const ksj::ismrmrd::ImageLocator locator{
     .series_id = std::string(utf8_series.constData(), static_cast<std::size_t>(utf8_series.size())),
-    .ordinal = ordinal};
-  const auto requested_window = display_settings.auto_window
-                                  ? std::optional<DisplayWindow>{}
-                                  : std::optional<DisplayWindow>{{.center = display_settings.window_center,
-                                                                  .width = display_settings.window_width}};
+    .ordinal = request.ordinal};
 
   QString callback_error;
   std::string reader_error;
   const auto result = session.reader().with_image_pixels(
     locator,
-    [&session, z_index, channel_index, requested_window, &presentation,
-     &callback_error](const ksj::ismrmrd::InspectionImageRecord& record, const ImagePixelsView& pixels) {
+    [&session, request, &presentation, &callback_error](const ksj::ismrmrd::InspectionImageRecord& record,
+                                                        const ImagePixelsView& pixels) {
       const auto dimensions = pixels.dimensions;
-      if (dimensions[0] == 0U || dimensions[1] == 0U || dimensions[2] == 0U || dimensions[3] == 0U ||
-          z_index >= dimensions[2] || channel_index >= dimensions[3]) {
-        callback_error = QStringLiteral("the requested ISMRMRD image z/channel index is outside its standard axes");
-        return false;
+      for (const auto dimension : kImageDimensions) {
+        const auto dimension_index = image_dimension_index(dimension);
+        if (dimensions[dimension_index] == 0U) {
+          callback_error = QStringLiteral("an ISMRMRD image has an empty standard pixel dimension");
+          return false;
+        }
+        if (!image_axis_is_selected(request.axes, dimension) &&
+            image_coordinate_value(request.coordinate, dimension) >= dimensions[dimension_index]) {
+          callback_error = QStringLiteral("a requested fixed image dimension value is outside its standard extent");
+          return false;
+        }
       }
 
       const auto bytes_per_value = image_value_bytes(pixels.data_type);
@@ -957,56 +1821,155 @@ bool make_image_presentation(InspectionSession& session, const QString& series_i
         return false;
       }
 
-      const auto extent =
-        make_display_extent(dimensions[0], dimensions[1], kImageMaximumDimension, kImageMaximumPixels);
+      const auto source_width = dimensions[image_dimension_index(request.axes.x)];
+      const auto source_height = dimensions[image_dimension_index(request.axes.y)];
+      const auto extent = make_display_extent(source_width, source_height, kImageMaximumDimension, kImageMaximumPixels);
       if (!extent.has_value()) {
         callback_error = QStringLiteral("ISMRMRD image cannot produce a bounded display extent");
         return false;
       }
 
-      std::vector<double> magnitudes;
-      magnitudes.reserve(static_cast<std::size_t>(extent->width) * static_cast<std::size_t>(extent->height));
-      presentation.csv_columns = {QStringLiteral("x"), QStringLiteral("y"), QStringLiteral("magnitude")};
+      const auto display_pixels = static_cast<std::size_t>(extent->width) * static_cast<std::size_t>(extent->height);
+      std::vector<double> real_values;
+      std::vector<double> imaginary_values;
+      real_values.reserve(display_pixels);
+      imaginary_values.reserve(display_pixels);
       for (int display_y = 0; display_y < extent->height; ++display_y) {
-        const auto y = source_index_for_display(display_y, extent->height, dimensions[1]);
+        const auto y = source_index_for_display(display_y, extent->height, source_height);
         for (int display_x = 0; display_x < extent->width; ++display_x) {
-          const auto x = source_index_for_display(display_x, extent->width, dimensions[0]);
-          const auto index =
-            x + static_cast<std::size_t>(dimensions[0]) *
-                  (y + static_cast<std::size_t>(dimensions[1]) *
-                         (static_cast<std::size_t>(z_index) +
-                          static_cast<std::size_t>(dimensions[2]) * static_cast<std::size_t>(channel_index)));
-          const auto magnitude = image_magnitude(pixels, index);
-          magnitudes.push_back(magnitude);
-          if (presentation.csv_rows.size() < static_cast<qsizetype>(kMaximumExportRows)) {
-            presentation.csv_rows.append({QString::number(x), QString::number(y), QString::number(magnitude, 'g', 12)});
-          }
+          const auto x = source_index_for_display(display_x, extent->width, source_width);
+          auto sample_coordinate = request.coordinate;
+          set_image_coordinate_value(sample_coordinate, request.axes.x, static_cast<std::uint16_t>(x));
+          set_image_coordinate_value(sample_coordinate, request.axes.y, static_cast<std::uint16_t>(y));
+          const auto index = image_linear_index(dimensions, sample_coordinate);
+          const auto sample = image_sample_components(pixels, index);
+          real_values.push_back(sample.real);
+          imaginary_values.push_back(sample.imaginary);
         }
       }
 
+      auto effective_settings = request.display_settings;
+      if (!image_data_type_is_complex(pixels.data_type) &&
+          arrshow_display_component_requires_complex(effective_settings.component)) {
+        // arrShow's lockImagAndPhase moves a real input from Im/Com/Pha back
+        // to Real rather than inventing a zero-imaginary complex display.
+        effective_settings.component = ArrShowDisplayComponent::real;
+      }
+
       QString render_error;
-      AppliedDisplayWindow applied_window;
-      presentation.image = render_magnitudes(magnitudes, *extent, requested_window, &applied_window, render_error);
-      if (presentation.image.isNull()) {
+      ArrShowDisplayResult display_result;
+      if (!render_arrshow_display(real_values, imaginary_values, extent->width, extent->height, effective_settings,
+                                  display_result, render_error)) {
         callback_error = render_error;
         return false;
       }
-      presentation.dimensions = dimensions;
-      presentation.source_minimum = applied_window.source_minimum;
-      presentation.source_maximum = applied_window.source_maximum;
-      presentation.applied_window_center = applied_window.center;
-      presentation.applied_window_width = applied_window.width;
-      presentation.auto_window = !requested_window.has_value();
-      presentation.summary = image_summary(record, dimensions, z_index, channel_index);
-      presentation.details = image_details(record, dimensions, z_index, channel_index, source_description(session));
+      presentation.image = display_result.image;
+
+      presentation.csv_columns = {
+        QStringLiteral("axis_x_coordinate"), QStringLiteral("axis_y_coordinate"), QStringLiteral("real"),
+        QStringLiteral("imaginary"),         QStringLiteral("magnitude"),         QStringLiteral("phase_degrees"),
+        QStringLiteral("phase_radians")};
+      const auto colour_encoded = effective_settings.component == ArrShowDisplayComponent::complex ||
+                                  effective_settings.component == ArrShowDisplayComponent::phase;
+      if (colour_encoded) {
+        presentation.csv_columns.append({QStringLiteral("red"), QStringLiteral("green"), QStringLiteral("blue")});
+      }
+      for (int display_y = 0; display_y < extent->height; ++display_y) {
+        const auto y = source_index_for_display(display_y, extent->height, source_height);
+        for (int display_x = 0; display_x < extent->width; ++display_x) {
+          if (presentation.csv_rows.size() >= static_cast<qsizetype>(kMaximumExportRows)) {
+            break;
+          }
+          const auto x = source_index_for_display(display_x, extent->width, source_width);
+          const auto display_index = static_cast<std::size_t>(display_y) * static_cast<std::size_t>(extent->width) +
+                                     static_cast<std::size_t>(display_x);
+          const auto real = real_values[display_index];
+          const auto imaginary = imaginary_values[display_index];
+          const auto phase_radians = std::atan2(imaginary, real);
+          QStringList row{QString::number(x),
+                          QString::number(y),
+                          QString::number(real, 'g', 12),
+                          QString::number(imaginary, 'g', 12),
+                          QString::number(std::hypot(real, imaginary), 'g', 12),
+                          QString::number(phase_radians * 180.0 / std::numbers::pi_v<double>, 'g', 12),
+                          QString::number(phase_radians, 'g', 12)};
+          if (colour_encoded) {
+            const auto colour = presentation.image.pixel(display_x, display_y);
+            row.append(
+              {QString::number(qRed(colour)), QString::number(qGreen(colour)), QString::number(qBlue(colour))});
+          }
+          presentation.csv_rows.append(row);
+        }
+        if (presentation.csv_rows.size() >= static_cast<qsizetype>(kMaximumExportRows)) {
+          break;
+        }
+      }
+
+      presentation.source_dimensions = dimensions;
+      presentation.axes = request.axes;
+      presentation.coordinate = request.coordinate;
+      presentation.component = effective_settings.component;
+      presentation.display_settings = effective_settings;
+      arrshow_set_active_window_value(presentation.display_settings, display_result.source_minimum,
+                                      display_result.source_maximum, display_result.applied_window_center,
+                                      display_result.applied_window_width);
+      presentation.source_minimum = display_result.source_minimum;
+      presentation.source_maximum = display_result.source_maximum;
+      presentation.applied_window_center = display_result.applied_window_center;
+      presentation.applied_window_width = display_result.applied_window_width;
+      presentation.window_persistence = display_result.window_persistence;
+      presentation.summary =
+        image_summary(record, dimensions, request.axes, request.coordinate, effective_settings.component);
+      presentation.summary +=
+        QStringLiteral("\narrShow display: %1; range %2; C/W = %3 / %4.")
+          .arg(arrshow_display_component_semantics(effective_settings.component),
+               arrshow_range_calculation_label(effective_settings.range_calculation, effective_settings.percentile))
+          .arg(display_result.applied_window_center, 0, 'g', 8)
+          .arg(display_result.applied_window_width, 0, 'g', 8);
+      presentation.details = image_details(record, dimensions, request.axes, request.coordinate,
+                                           effective_settings.component, source_description(session));
+      QJsonObject source_grid;
+      source_grid.insert(QStringLiteral("axis_x_dimension"), image_dimension_identifier_text(request.axes.x));
+      source_grid.insert(QStringLiteral("axis_y_dimension"), image_dimension_identifier_text(request.axes.y));
+      source_grid.insert(QStringLiteral("width"), static_cast<int>(source_width));
+      source_grid.insert(QStringLiteral("height"), static_cast<int>(source_height));
+      presentation.details.insert(QStringLiteral("source_grid"), source_grid);
       presentation.details.insert(QStringLiteral("display_width"), extent->width);
       presentation.details.insert(QStringLiteral("display_height"), extent->height);
-      presentation.details.insert(QStringLiteral("source_minimum"), applied_window.source_minimum);
-      presentation.details.insert(QStringLiteral("source_maximum"), applied_window.source_maximum);
+      presentation.details.insert(QStringLiteral("display_engine"), QStringLiteral("arrshow-port"));
+      presentation.details.insert(QStringLiteral("range_calculation"),
+                                  arrshow_range_calculation_identifier(effective_settings.range_calculation));
+      presentation.details.insert(QStringLiteral("range_percentile"), effective_settings.percentile);
+      presentation.details.insert(QStringLiteral("phase_representation"),
+                                  arrshow_phase_representation_identifier(effective_settings.phase_representation));
+      presentation.details.insert(QStringLiteral("source_minimum"), display_result.source_minimum);
+      presentation.details.insert(QStringLiteral("source_maximum"), display_result.source_maximum);
       presentation.details.insert(QStringLiteral("window_mode"),
-                                  requested_window.has_value() ? QStringLiteral("manual") : QStringLiteral("auto"));
-      presentation.details.insert(QStringLiteral("window_center"), applied_window.center);
-      presentation.details.insert(QStringLiteral("window_width"), applied_window.width);
+                                  arrshow_window_persistence_identifier(display_result.window_persistence));
+      presentation.details.insert(QStringLiteral("window_center"), display_result.applied_window_center);
+      presentation.details.insert(QStringLiteral("window_width"), display_result.applied_window_width);
+      if (colour_encoded) {
+        presentation.details.insert(QStringLiteral("phase_colormap"), QStringLiteral("arrshow-martin-phase-256"));
+        presentation.details.insert(
+          QStringLiteral("csv_colour_columns"),
+          QStringLiteral("C/W-dependent RGB visualization derivative; raw image CSV columns remain source values"));
+      }
+      if (effective_settings.component == ArrShowDisplayComponent::complex) {
+        presentation.details.insert(QStringLiteral("colour_mapping"),
+                                    QStringLiteral("arrshow-martin-phase-times-magnitude-window"));
+        presentation.details.insert(QStringLiteral("brightness_window_component"), QStringLiteral("magnitude"));
+      } else if (effective_settings.component == ArrShowDisplayComponent::phase) {
+        presentation.details.insert(QStringLiteral("phase_unit"),
+                                    arrshow_phase_representation_identifier(effective_settings.phase_representation));
+      }
+      if (effective_settings.component != request.display_settings.component) {
+        presentation.details.insert(QStringLiteral("requested_display_component"),
+                                    arrshow_display_component_identifier(request.display_settings.component));
+        presentation.details.insert(QStringLiteral("component_fallback"),
+                                    QStringLiteral("real-source-uses-arrshow-real"));
+      }
+      presentation.details.insert(QStringLiteral("csv_rows_returned"), static_cast<int>(presentation.csv_rows.size()));
+      presentation.details.insert(QStringLiteral("csv_truncated"), display_pixels > kMaximumExportRows);
       return true;
     },
     reader_error);
@@ -1067,6 +2030,72 @@ bool load_pipeline_presentation(const QString& file_path, PipelinePresentation& 
   presentation.csv_columns = {QStringLiteral("node_id"), QStringLiteral("provider_alias"),
                               QStringLiteral("operator_id"), QStringLiteral("canonical_configuration")};
 
+  for (const auto& ingress : pipeline.ingress_ports()) {
+    presentation.graph_nodes.append(
+      {.key = pipeline_graph_node_key(QStringLiteral("ingress"), ingress.id),
+       .kind = PipelineGraphNodeKind::ingress,
+       .title = QStringLiteral("Ingress: %1").arg(to_qstring(ingress.id)),
+       .detail = QStringLiteral("%1 → %2.%3")
+                   .arg(to_qstring(ingress.type), to_qstring(ingress.to.node), to_qstring(ingress.to.port))});
+  }
+
+  for (const auto& node : pipeline.nodes()) {
+    presentation.graph_nodes.append({.key = pipeline_graph_node_key(QStringLiteral("node"), node.id),
+                                     .kind = PipelineGraphNodeKind::operator_node,
+                                     .title = to_qstring(node.id),
+                                     .detail = QStringLiteral("Provider alias: %1\nOperator: %2")
+                                                 .arg(to_qstring(node.provider_alias), to_qstring(node.operator_id))});
+  }
+
+  for (const auto& egress : pipeline.egress_ports()) {
+    presentation.graph_nodes.append(
+      {.key = pipeline_graph_node_key(QStringLiteral("egress"), egress.id),
+       .kind = PipelineGraphNodeKind::egress,
+       .title = QStringLiteral("Egress: %1").arg(to_qstring(egress.id)),
+       .detail = QStringLiteral("%1.%2 → %3")
+                   .arg(to_qstring(egress.from.node), to_qstring(egress.from.port), to_qstring(egress.type))});
+  }
+
+  for (const auto& ingress : pipeline.ingress_ports()) {
+    presentation.graph_edges.append({.id = to_qstring(ingress.id),
+                                     .kind = PipelineGraphEdgeKind::ingress,
+                                     .source_key = pipeline_graph_node_key(QStringLiteral("ingress"), ingress.id),
+                                     .source_port = to_qstring(ingress.id),
+                                     .target_key = pipeline_graph_node_key(QStringLiteral("node"), ingress.to.node),
+                                     .target_port = to_qstring(ingress.to.port)});
+  }
+
+  for (const auto& edge : pipeline.edges()) {
+    presentation.graph_edges.append({.id = to_qstring(edge.id),
+                                     .kind = PipelineGraphEdgeKind::data,
+                                     .source_key = pipeline_graph_node_key(QStringLiteral("node"), edge.from.node),
+                                     .source_port = to_qstring(edge.from.port),
+                                     .target_key = pipeline_graph_node_key(QStringLiteral("node"), edge.to.node),
+                                     .target_port = to_qstring(edge.to.port)});
+  }
+
+  for (const auto& calibration : pipeline.calibration_bindings()) {
+    for (const auto& consumer : calibration.consumers) {
+      presentation.graph_edges.append(
+        {.id = QStringLiteral("%1:%2.%3")
+                 .arg(to_qstring(calibration.id), to_qstring(consumer.node), to_qstring(consumer.port)),
+         .kind = PipelineGraphEdgeKind::calibration,
+         .source_key = pipeline_graph_node_key(QStringLiteral("node"), calibration.producer.node),
+         .source_port = to_qstring(calibration.producer.port),
+         .target_key = pipeline_graph_node_key(QStringLiteral("node"), consumer.node),
+         .target_port = to_qstring(consumer.port)});
+    }
+  }
+
+  for (const auto& egress : pipeline.egress_ports()) {
+    presentation.graph_edges.append({.id = to_qstring(egress.id),
+                                     .kind = PipelineGraphEdgeKind::egress,
+                                     .source_key = pipeline_graph_node_key(QStringLiteral("node"), egress.from.node),
+                                     .source_port = to_qstring(egress.from.port),
+                                     .target_key = pipeline_graph_node_key(QStringLiteral("egress"), egress.id),
+                                     .target_port = to_qstring(egress.id)});
+  }
+
   QJsonArray nodes;
   for (const auto& node : pipeline.nodes()) {
     presentation.csv_rows.append({to_qstring(node.id), to_qstring(node.provider_alias), to_qstring(node.operator_id),
@@ -1092,8 +2121,31 @@ bool load_pipeline_presentation(const QString& file_path, PipelinePresentation& 
     parameters.append(item);
   }
 
+  QJsonArray graph_nodes;
+  for (const auto& node : presentation.graph_nodes) {
+    QJsonObject item;
+    item.insert(QStringLiteral("key"), node.key);
+    item.insert(QStringLiteral("kind"), pipeline_graph_node_kind_name(node.kind));
+    item.insert(QStringLiteral("title"), node.title);
+    item.insert(QStringLiteral("detail"), node.detail);
+    graph_nodes.append(item);
+  }
+
+  QJsonArray graph_edges;
+  for (const auto& edge : presentation.graph_edges) {
+    QJsonObject item;
+    item.insert(QStringLiteral("id"), edge.id);
+    item.insert(QStringLiteral("kind"), pipeline_graph_edge_kind_name(edge.kind));
+    item.insert(QStringLiteral("source_key"), edge.source_key);
+    item.insert(QStringLiteral("source_port"), edge.source_port);
+    item.insert(QStringLiteral("target_key"), edge.target_key);
+    item.insert(QStringLiteral("target_port"), edge.target_port);
+    graph_edges.append(item);
+  }
+
   presentation.details.insert(QStringLiteral("artifact_kind"), QStringLiteral("visualization-derivative"));
   presentation.details.insert(QStringLiteral("view"), QStringLiteral("pipeline"));
+  presentation.details.insert(QStringLiteral("graph_kind"), QStringLiteral("authored-dag"));
   presentation.details.insert(QStringLiteral("source"), trimmed_path);
   presentation.details.insert(QStringLiteral("pipeline_id"), to_qstring(pipeline.id()));
   presentation.details.insert(QStringLiteral("display_name"), to_qstring(pipeline.display_name()));
@@ -1103,6 +2155,8 @@ bool load_pipeline_presentation(const QString& file_path, PipelinePresentation& 
   presentation.details.insert(QStringLiteral("allowed_profiles"), profiles);
   presentation.details.insert(QStringLiteral("parameters"), parameters);
   presentation.details.insert(QStringLiteral("nodes"), nodes);
+  presentation.details.insert(QStringLiteral("graph_nodes"), graph_nodes);
+  presentation.details.insert(QStringLiteral("graph_edges"), graph_edges);
   presentation.details.insert(QStringLiteral("edge_count"), static_cast<int>(pipeline.edges().size()));
   presentation.details.insert(QStringLiteral("ingress_count"), static_cast<int>(pipeline.ingress_ports().size()));
   presentation.details.insert(QStringLiteral("egress_count"), static_cast<int>(pipeline.egress_ports().size()));
