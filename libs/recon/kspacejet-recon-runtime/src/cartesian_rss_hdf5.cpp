@@ -757,7 +757,7 @@ struct CalibrationRoute final {
   const auto pipeline_document =
     "{\"kind\":\"PipelineDefinition\",\"pipeline\":{\"id\":\"org.kspacejet.cartesian-rss\","
     "\"display_name\":\"Cartesian RSS reconstruction\"},\"input_profile\":{\"kind\":\"ismrmrd-hdf5\","
-    "\"dataset_group\":\"dataset\"},\"allowed_profiles\":[\"offline-reference\"],"
+    "\"container\":{\"mode\":\"auto\"}},\"allowed_profiles\":[\"offline-reference\"],"
     "\"parameters\":{},\"provider_requirements\":[" +
     provider_requirements + "],\"nodes\":[" + nodes + "],\"edges\":[" + edges + "],\"bindings\":{\"ingress\":[" +
     ingress +

@@ -365,28 +365,93 @@ constexpr std::int64_t kMaximumExactJsonInteger = 9'007'199'254'740'991LL;
   return ProviderSelection{.alias = std::move(alias).value(), .provider_id = std::move(provider_id).value()};
 }
 
+[[nodiscard]] Status validate_standard_container_path(const std::string_view value, const std::string_view path) {
+  if (value.size() < 2U || value.front() != '/') {
+    return validation_error(path, "must be a non-root absolute HDF5 container path");
+  }
+  if (value.back() == '/') {
+    return validation_error(path, "must not have a trailing separator");
+  }
+
+  std::size_t segment_begin = 1U;
+  while (segment_begin < value.size()) {
+    const auto separator = value.find('/', segment_begin);
+    const auto segment_end = separator == std::string_view::npos ? value.size() : separator;
+    const auto segment = value.substr(segment_begin, segment_end - segment_begin);
+    if (segment.empty()) {
+      return validation_error(path, "must not contain redundant separators");
+    }
+    if (segment == "." || segment == "..") {
+      return validation_error(path, "must not contain '.' or '..' path segments");
+    }
+    if (segment.starts_with("ksj_")) {
+      return validation_error(path, "must not select a private 'ksj_*' path segment");
+    }
+    if (separator == std::string_view::npos) {
+      break;
+    }
+    segment_begin = separator + 1U;
+  }
+  return Status::Ok();
+}
+
 [[nodiscard]] Result<PipelineInputProfile> parse_input_profile(const Json& value, const std::string_view path) {
-  const auto status = validate_object_keys(value, path, {"kind", "dataset_group"}, {"kind", "dataset_group"});
+  if (value.is_object() && value.contains("dataset_group")) {
+    return validation_error(std::string(path) + ".dataset_group",
+                            "is a removed legacy field; use the closed 'container' selector");
+  }
+  const auto status = validate_object_keys(value, path, {"kind", "container"}, {"kind", "container"});
   if (!status.ok()) {
     return status;
   }
   auto kind = require_string(value, "kind", path);
-  auto dataset_group = require_bounded_string(value, "dataset_group", path, 128U);
   if (!kind.ok()) {
     return kind.status();
-  }
-  if (!dataset_group.ok()) {
-    return dataset_group.status();
   }
   if (kind.value() != "ismrmrd-hdf5") {
     return validation_error(std::string(path) + ".kind", "must equal 'ismrmrd-hdf5'");
   }
-  if (dataset_group.value() != "dataset") {
-    return validation_error(std::string(path) + ".dataset_group",
-                            "must equal the standard ISMRMRD HDF5 dataset group 'dataset'");
+
+  const auto container_path = std::string(path) + ".container";
+  const auto container_object_status = require_object(value.at("container"), container_path);
+  if (!container_object_status.ok()) {
+    return container_object_status;
   }
+  auto mode = require_string(value.at("container"), "mode", container_path);
+  if (!mode.ok()) {
+    return mode.status();
+  }
+
+  if (mode.value() == "auto") {
+    const auto auto_status = validate_object_keys(value.at("container"), container_path, {"mode"}, {"mode"});
+    if (!auto_status.ok()) {
+      return auto_status;
+    }
+    return PipelineInputProfile{.kind = PipelineInputProfileKind::ismrmrd_hdf5,
+                                .container_mode = PipelineInputContainerMode::automatic,
+                                .container_path = std::nullopt};
+  }
+  if (mode.value() != "explicit") {
+    return validation_error(container_path + ".mode", "must equal 'auto' or 'explicit'");
+  }
+
+  const auto explicit_status =
+    validate_object_keys(value.at("container"), container_path, {"mode", "path"}, {"mode", "path"});
+  if (!explicit_status.ok()) {
+    return explicit_status;
+  }
+  auto explicit_path = require_bounded_string(value.at("container"), "path", container_path, 1024U);
+  if (!explicit_path.ok()) {
+    return explicit_path.status();
+  }
+  const auto path_status = validate_standard_container_path(explicit_path.value(), container_path + ".path");
+  if (!path_status.ok()) {
+    return path_status;
+  }
+
   return PipelineInputProfile{.kind = PipelineInputProfileKind::ismrmrd_hdf5,
-                              .dataset_group = std::move(dataset_group).value()};
+                              .container_mode = PipelineInputContainerMode::explicit_path,
+                              .container_path = std::move(explicit_path).value()};
 }
 
 [[nodiscard]] Result<PipelineParameterType> parse_parameter_type(const Json& value, const std::string_view path) {

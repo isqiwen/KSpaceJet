@@ -65,7 +65,7 @@ namespace {
 {
   "kind": "PipelineDefinition",
   "pipeline": {"id": "org.example.calibrated-reconstruction", "display_name": "Calibrated reconstruction"},
-  "input_profile": {"kind": "ismrmrd-hdf5", "dataset_group": "dataset"},
+  "input_profile": {"kind": "ismrmrd-hdf5", "container": {"mode": "auto"}},
   "allowed_profiles": ["offline-reference", "bounded-reconstruction-graph"],
   "parameters": {},
   "provider_requirements": [
@@ -101,7 +101,8 @@ TEST(KSpaceJetReconGraphPipelineDefinition, ParsesTypedCartesianImageChainFixtur
 
   EXPECT_EQ(parsed.value().id(), "org.example.cartesian-image");
   EXPECT_EQ(parsed.value().input_profile().kind, ksj::recon::graph::PipelineInputProfileKind::ismrmrd_hdf5);
-  EXPECT_EQ(parsed.value().input_profile().dataset_group, "dataset");
+  EXPECT_EQ(parsed.value().input_profile().container_mode, ksj::recon::graph::PipelineInputContainerMode::automatic);
+  EXPECT_FALSE(parsed.value().input_profile().container_path.has_value());
   EXPECT_TRUE(parsed.value().parameters().empty());
   ASSERT_EQ(parsed.value().nodes().size(), 2U);
   ASSERT_EQ(parsed.value().edges().size(), 1U);
@@ -117,21 +118,63 @@ TEST(KSpaceJetReconGraphPipelineDefinition, ParsesTypedCartesianImageChainFixtur
   EXPECT_EQ(reparsed.value().artifact_digest(), parsed.value().artifact_digest());
 }
 
-TEST(KSpaceJetReconGraphPipelineDefinition, RequiresThePortableStandardIsmrmrdHdf5InputProfile) {
+TEST(KSpaceJetReconGraphPipelineDefinition, ParsesPortableAutomaticAndExplicitStandardContainerSelection) {
   const auto document = read_fixture("valid/pipeline-minimal.json");
-  auto missing = ksj::recon::graph::PipelineDefinition::parse_json(replace_once(document, R"json(  "input_profile": {
-    "kind": "ismrmrd-hdf5",
-    "dataset_group": "dataset"
-  },
-)json",
-                                                                                ""));
-  ASSERT_FALSE(missing.ok());
-  EXPECT_NE(missing.status().message().find("input_profile"), std::string::npos);
+  auto automatic = ksj::recon::graph::PipelineDefinition::parse_json(document);
+  ASSERT_TRUE(automatic.ok()) << automatic.status();
+  EXPECT_EQ(automatic.value().input_profile().container_mode, ksj::recon::graph::PipelineInputContainerMode::automatic);
+  EXPECT_FALSE(automatic.value().input_profile().container_path.has_value());
 
-  auto nonstandard = ksj::recon::graph::PipelineDefinition::parse_json(
-    replace_once(document, "\"dataset_group\": \"dataset\"", "\"dataset_group\": \"alternate\""));
-  ASSERT_FALSE(nonstandard.ok());
-  EXPECT_NE(nonstandard.status().message().find("dataset_group"), std::string::npos);
+  auto explicit_selection =
+    ksj::recon::graph::PipelineDefinition::parse_json(read_fixture("valid/pipeline-explicit-container.json"));
+  ASSERT_TRUE(explicit_selection.ok()) << explicit_selection.status();
+  EXPECT_EQ(explicit_selection.value().input_profile().container_mode,
+            ksj::recon::graph::PipelineInputContainerMode::explicit_path);
+  ASSERT_TRUE(explicit_selection.value().input_profile().container_path.has_value());
+  EXPECT_EQ(*explicit_selection.value().input_profile().container_path, "/dataset_2");
+  EXPECT_NE(explicit_selection.value().artifact_digest(), automatic.value().artifact_digest());
+
+  auto reparsed = ksj::recon::graph::PipelineDefinition::parse_json(explicit_selection.value().canonical_json());
+  ASSERT_TRUE(reparsed.ok()) << reparsed.status();
+  EXPECT_EQ(reparsed.value().artifact_digest(), explicit_selection.value().artifact_digest());
+}
+
+TEST(KSpaceJetReconGraphPipelineDefinition, RejectsNoncanonicalOrPrivateInputContainerSelection) {
+  const auto document = read_fixture("valid/pipeline-minimal.json");
+
+  auto private_container =
+    ksj::recon::graph::PipelineDefinition::parse_json(read_fixture("invalid/pipeline-private-container.json"));
+  ASSERT_FALSE(private_container.ok());
+  EXPECT_NE(private_container.status().message().find("input_profile.container.path"), std::string::npos);
+
+  const auto require_invalid = [&](const std::string_view replacement, const std::string_view expected_path) {
+    auto parsed =
+      ksj::recon::graph::PipelineDefinition::parse_json(replace_once(document, "\"mode\": \"auto\"", replacement));
+    ASSERT_FALSE(parsed.ok());
+    EXPECT_NE(parsed.status().message().find(expected_path), std::string::npos) << parsed.status();
+  };
+
+  auto missing_container =
+    ksj::recon::graph::PipelineDefinition::parse_json(replace_once(document, "\"container\"", "\"selection\""));
+  ASSERT_FALSE(missing_container.ok());
+  EXPECT_NE(missing_container.status().message().find("input_profile"), std::string::npos);
+
+  auto legacy = ksj::recon::graph::PipelineDefinition::parse_json(replace_once(document, R"json("container": {
+      "mode": "auto"
+    })json",
+                                                                               "\"dataset_group\": \"dataset\""));
+  ASSERT_FALSE(legacy.ok());
+  EXPECT_NE(legacy.status().message().find("dataset_group"), std::string::npos);
+
+  require_invalid("\"mode\": \"auto\", \"path\": \"/dataset_2\"", "input_profile.container");
+  require_invalid("\"mode\": \"auto\", \"unknown\": true", "input_profile.container");
+  require_invalid("\"mode\": \"explicit\"", "input_profile.container");
+  require_invalid("\"mode\": \"unknown\"", "input_profile.container.mode");
+  require_invalid("\"mode\": \"explicit\", \"path\": \"dataset_2\"", "input_profile.container.path");
+  require_invalid("\"mode\": \"explicit\", \"path\": \"/dataset//two\"", "input_profile.container.path");
+  require_invalid("\"mode\": \"explicit\", \"path\": \"/dataset/./two\"", "input_profile.container.path");
+  require_invalid("\"mode\": \"explicit\", \"path\": \"/dataset/../two\"", "input_profile.container.path");
+  require_invalid("\"mode\": \"explicit\", \"path\": \"/ksj_pipeline\"", "input_profile.container.path");
 }
 
 TEST(KSpaceJetReconGraphPipelineDefinition, ResolvesTypedDeclaredParametersIntoExactNodeConfiguration) {

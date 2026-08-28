@@ -273,7 +273,7 @@ struct TestInputs final {
 {
   "kind":"PipelineDefinition",
   "pipeline":{"id":"org.example.noncartesian","display_name":"Non-Cartesian join"},
-  "input_profile":{"kind":"ismrmrd-hdf5","dataset_group":"dataset"},
+  "input_profile":{"kind":"ismrmrd-hdf5","container":{"mode":"auto"}},
   "allowed_profiles":["bounded-reconstruction-graph"],
   "parameters":{},
   "provider_requirements":[{"alias":"recon","provider_id":"org.example.recon"}],

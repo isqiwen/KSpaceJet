@@ -199,6 +199,10 @@ MRI acquisition edge 一律是 reliable。若要降采样、合并、丢弃非�
     "id": "org.example.reference-cartesian",
     "display_name": "Reference Cartesian reconstruction"
   },
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "container": {"mode": "auto"}
+  },
   "allowed_profiles": ["offline", "bounded-online"],
   "parameters": {
     "acceleration": {"type": "integer", "minimum": 1, "maximum": 8, "default": 2}
@@ -223,6 +227,28 @@ MRI acquisition edge 一律是 reliable。若要降采样、合并、丢弃非�
   "annotations": {}
 }
 ```
+
+为避免本历史示例误导当前格式，`input_profile` 使用受维护 schema 的现行容器选择
+语义：`container.mode` 只能是 `auto` 或 `explicit`。`auto` 由未来 P2-007 的
+runtime-owned source adapter 在标准 raw-container discovery 后使用，且只在恰有一个
+candidate 时绑定；多个 candidate 不能暗中选择 `/dataset`。显式形式为：
+
+```json
+{
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "container": {
+      "mode": "explicit",
+      "path": "/dataset_2"
+    }
+  }
+}
+```
+
+这里的 `path` 是输入 HDF5 文件内的绝对 container path，而不是 host 文件路径。
+作者化 parser 只验证和 canonicalize 这一 closed selector；它不扫描 HDF5，也不决定
+实际绑定。`dataset_group` 和固定 `dataset` 不是兼容字段。当前格式的权威仍是 checked-in
+schema、源码和 canonical execution ledger，而不是本历史文档。
 
 所有数组均使用稳定 id；对象数组的文档顺序不表达执行顺序。graph compiler 依据 edge、order contract 和执行计划决定合法 firing 顺序。
 
@@ -637,11 +663,15 @@ ScanDescriptor 至少 canonicalize encoding、encoded/recon matrix、FOV、traje
 
 ### 6.1.1 TargetEnvelope 与 MachinePolicy 的字段所有权
 
-二者均是 pipeline 之外、可审计且有 digest 的输入。这样同一个声明图可以在不同
+完整 typed value 均是 pipeline 之外、可审计且有 digest 的输入。这样同一个声明图可以在不同
 机器和不同 scanner envelope 上得到不同的合法 ExecutionPlan，而不会被作者配置中的
-经验常数锁死。
+经验常数锁死。当前小型 source configuration 尚未有 loader 或 digest，不能替代该 typed value。
 
-| Artifact | 必须提供的约束 | 明确不应出现的内容 |
+> 下表描述的是未来 compiler/verifier 所见的**完整 typed planning value**，不是当前
+> `config/` 下可编辑 JSON 的格式。当前 source configuration 只保留少数外层 ceiling；在
+> P0-006 获得每项 authority 以前，不能以默认值把它扩展为下表的完整对象。
+
+| Typed planning value | 必须提供的约束 | 明确不应出现的内容 |
 | --- | --- | --- |
 | TargetEnvelope | 最大 XML/frame/image/decoder-staging bytes、samples/trajectory/channel-group 上界、最大 acquisition 速率和 burst、最大 active scan、每个动态 key 的有限 cardinality、calibration horizon、公开 ingress arrival envelope、egress/sink 最小 service 假设、最大外部 stall 与 input/output boundary | 某个 Provider 的线程实现细节、任意 DLL 路径、私有 wire credit |
 | MachinePolicy | process/shared/scan memory cap、CPU/backend/provider permit 总量、NUMA domains、允许 memory domain、scheduler/fairness policy 和允许的 execution profile | pipeline node 数、固定 slice/task/shard 数、算法参数或 scanner 私有 metadata |
@@ -650,12 +680,12 @@ TargetEnvelope 的 `max_*` 是输入验证上界，不是“只要写了就一�
 MachinePolicy 与 node planning requirements 共同决定是否有足够资源。compiler 必须将二者用到的
 具体字段和值写入 ExecutionPlan 和 certificate，而不是只保存两个文件名。
 
-`arrival_envelope` 与 `sink_service_assumption` 是独立字段，不能用 TTFI/p99 目标替代。
-前者使用冻结的 recorded paced schedule 或明确的 burst/rate 曲线；后者至少声明 host 可见
-的最低 drain rate、最大暂停时间、慢 sink 的 fail/spool policy 和 transport staging 上界。
-若无法为外部 sink 声明正服务，certificate 只能证明内存安全与 externally blocked
-quiescence，不能证明完成或 delay bound。Provider 的本地 service/work demand 则由 node planning
-requirements 和 MachinePolicy 共同提供，两者均须进入 plan/certificate provenance。
+当前 `config/machine-policy.json` 只写一个 execution profile、host-memory、CPU/I/O 与 GPU
+enablement；`config/target-envelope.json` 只写 XML/acquisition/frame/image、samples、channels
+和 active-scan ceiling。它们刻意不含 `arrival_envelope`、`sink_service_assumption`、calibration、
+NUMA、device 或 scheduler 字段。未来的 public/online profile 若需要 `arrival_envelope` 或
+`sink_service_assumption`，其 owner 必须在 P0-006 中冻结其来源和值，随后由 typed parser 明确
+构造完整 planning value；不得把本地 development config 静默扩展为该对象。
 
 ### 6.2 编译算法
 

@@ -17,8 +17,8 @@ reference material only and cannot create a second artifact authority.
 | <code>resolved-pipeline.schema.json</code> | resolver | Exact Provider bundle, OperatorContract identity, and parameter-expanded node-configuration snapshot. It is deliberately profile-neutral. |
 | <code>scan-facts.schema.json</code> | runtime ISMRMRD preflight | Immutable observed scan facts and identities derived from one validated ISMRMRD XML header and acquisition scan; it is never authored or supplied by a CLI caller. |
 | <code>effective-pipeline-binding.schema.json</code> | runtime/compiler | One resolved pipeline and one ScanFacts identity bound to the complete canonical effective config of every node. It excludes input/output paths, loader/contract material and physical runtime policy. |
-| <code>target-envelope.schema.json</code> | caller/deployment planner | Finite caller-submitted input, local arrival, and local result-delivery envelope; it is not a scanner, session, relay, or network transport contract. |
-| <code>machine-policy.schema.json</code> | deployment | Permitted execution profiles and multi-domain resource capacity. It never specifies scan task counts or queue sizing. |
+| <code>target-envelope.schema.json</code> | development/host configuration | Small source configuration for XML, acquisition, frame, image, samples, channels, and concurrent-scan ceilings. It does not expose arrival, sink-service, calibration, or scanner policy. |
+| <code>machine-policy.schema.json</code> | development/host configuration | Small source configuration for one execution profile plus host memory, CPU/I/O permits, and a GPU enablement switch. It is not a multi-domain ResourceVector or scheduler configuration. |
 | <code>execution-plan.schema.json</code> | scan compiler | Frozen scan-specific generic synchronous graph: explicit ingress/node/egress edges, static calibration artifacts, resolved TypeDescriptors, bounded firing capacity, ResourceVector demand, and finite terminal occurrence count. |
 | <code>verification-record.schema.json</code> | independent verifier | Immutable conclusion about one ExecutionPlan; it carries verified resource/terminal bounds and obligations, not a second graph or admission decision. |
 | <code>admission-record.schema.json</code> | admission controller | Dynamic admitted/rejected decision and, only for admission, the leased ResourceVector. |
@@ -56,6 +56,93 @@ parser/resolver/compiler/verifier/runtime establishes semantic validity at its
 corresponding step. No architecture note, Provider catalog entry, or scaffold
 can substitute for an artifact in this chain.
 
+In that diagram, `TargetEnvelope` and `MachinePolicy` mean typed planning
+values. Their two JSON schemas describe a deliberately smaller **source
+configuration**, not a serialization of the current C++ value model. There is
+no runtime loader yet, so neither checked-in document enters the chain or
+creates an artifact identity automatically.
+
+## Deployment configuration location
+
+`TargetEnvelope` and `MachinePolicy` documents live directly under the root
+[`config/`](../config/) directory as
+[`target-envelope.json`](../config/target-envelope.json) and
+[`machine-policy.json`](../config/machine-policy.json). The checked-in pair is
+a conservative, user-authorized local-development baseline derived from the
+current host; it is not an approved deployment policy or product-capacity
+claim. This directory is not an implicit runtime loader. The schema fixtures
+under `tests/` remain test-only and must not be promoted to deployment defaults.
+A future consumer must use a typed parser and semantic validation, then record
+the exact effective identity together with detected machine capabilities. It
+must reject missing runtime authority rather than silently reintroducing the
+internal resource, arrival, sink, calibration, NUMA, or device fields that the
+source configuration intentionally omits.
+
+The two documents deliberately expose only these values:
+
+| Document | Values a user edits |
+| --- | --- |
+| `machine-policy.json` | `id`, `execution_profile`, host-memory ceiling, CPU permits, I/O slots, GPU enabled/disabled |
+| `target-envelope.json` | `id`, XML/acquisition/frame/image byte ceilings, samples/acquisition, channels/acquisition, active scans |
+
+All other fields are rejected by the schemas. In particular,
+`max_channels_per_acquisition` is a ceiling for this named development target,
+not a framework-wide channel limit or a statement about scanner capability.
+
+### Human-readable configuration quantities
+
+Every byte capacity in these source configurations is a compact binary-unit
+string: `B`, `K`, `M`, `G`, or `T`, such as `"32G"`; `K/M/G/T` mean
+`KiB/MiB/GiB/TiB`. Counts such as CPU permits, samples, channels, and scans
+remain JSON integers. Only unsigned integral quantities are accepted:
+`"32MB"`, `"32 G"`, `"1.5G"`, and bare byte integers are rejected.
+
+A future configuration loader must parse these strings with checked arithmetic,
+reject overflow, and normalize them to exact bytes before creating a typed
+planning value or deriving an artifact digest. Unit spelling is source-document
+ergonomics, never part of an `ExecutionPlan` or `RunRecord` identity.
+
+## Pipeline input-container selection
+
+An `ismrmrd-hdf5` `PipelineDefinition.input_profile` authorizes one raw
+ISMRMRD container selector. It is part of the authored artifact identity; it
+is not an input-file path, a CLI route flag, or an instruction for the parser
+to open an HDF5 file. The only forms are:
+
+```json
+{
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "container": {"mode": "auto"}
+  }
+}
+```
+
+```json
+{
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "container": {
+      "mode": "explicit",
+      "path": "/dataset_2"
+    }
+  }
+}
+```
+
+`auto` delegates selection to the future runtime-owned P2-007 ISMRMRD source
+adapter. That adapter must discover standard raw-container candidates and bind
+only when exactly one is present; zero or multiple candidates are an error,
+never an implicit preference for `/dataset`. `explicit` names one absolute
+HDF5 container path within the input file; the same adapter must verify that it
+is the selected standard raw container. The authored parser only validates and
+canonicalizes this closed selector syntax. It does not discover candidates or
+bind a scan.
+
+`dataset_group` is not a legacy spelling or compatibility field. A Pipeline
+cannot encode a fixed `dataset` convention, a filesystem input/output path, or
+a route-local source option.
+
 ## P2 planning-artifact ownership
 
 The compiler must receive values from their owning boundary, rather than a
@@ -65,7 +152,7 @@ foundation for the user-editable reconstruction entry planned in P2-007.
 
 | Value | Sole owner / creation boundary | May contain | Must not contain | Plan identity field |
 | --- | --- | --- | --- | --- |
-| `PipelineDefinition` | pipeline author | one `ismrmrd-hdf5` input profile, logical graph, Provider/Operator intent, typed parameter defaults, static algorithm configuration, and declared scan-fact selector keys | input/output paths, Provider library/contract paths, raw scan values, or physical runtime policy | indirectly through `ResolvedPipeline` |
+| `PipelineDefinition` | pipeline author | one `ismrmrd-hdf5` input profile with an `auto` or explicit absolute raw-container selector, logical graph, Provider/Operator intent, typed parameter defaults, static algorithm configuration, and declared scan-fact selector keys | input/output paths, Provider library/contract paths, raw scan values, or physical runtime policy | indirectly through `ResolvedPipeline` |
 | `ResolvedPipeline` | controlled Provider resolver | exact authored-pipeline artifact identity, resolved Provider bundle/OperatorContract identities, and parameter-expanded static configuration | requested profile, scan facts, effective config, resource policy, or a second semantic digest | `resolved_pipeline` |
 | `ScanFacts` | runtime-owned ISMRMRD preflight | descriptor/XML identities and observed acquisition/channel/sample/trajectory facts | author configuration, route selection, Provider identity, paths, or resource policy | `scan_facts` |
 | `EffectivePipelineBinding` | runtime/compiler after controlled resolution and ISMRMRD preflight | the bound `ResolvedPipeline` + `ScanFacts` identities and one canonical effective config per node | caller-supplied unrelated identities, Provider handles/paths, loader/contract material, static-algorithm overrides, or physical resource policy | `effective_pipeline_binding` |
@@ -134,13 +221,13 @@ the compiler-derived `ExecutionPlan`; observed scan facts first enter through
 the runtime-owned `ScanFacts` value. `PlanBuildRequest` is only the typed,
 in-memory assembly used to invoke that compiler, not an artifact boundary.
 
-All quantities use canonical JSON integers capped at 9007199254740991
-(2^53 - 1). Canonical artifact identity is SHA-256 with the repository's
-domain-separated canonicalization rules. Provider bundle digests are detached
-integrity inputs. Provider-authored contracts carry only a readable
-registry TypeRef; compiled plans carry the resolved structural descriptor and
-its automatic identity digest. Consumers must not treat a textual TypeRef
-alone as an ABI compatibility rule.
+After a checked configuration parser creates typed planning values, all planning
+quantities use canonical JSON integers capped at 9007199254740991 (2^53 - 1).
+Canonical artifact identity is SHA-256 with the repository's domain-separated
+canonicalization rules. Provider bundle digests are detached integrity inputs.
+Provider-authored contracts carry only a readable registry TypeRef; compiled
+plans carry the resolved structural descriptor and its automatic identity digest.
+Consumers must not treat a textual TypeRef alone as an ABI compatibility rule.
 
 The current execution-plan schema represents only the generic synchronous
 graph: nodes, bounded pools, FIFO data edges, explicit calibration-artifact

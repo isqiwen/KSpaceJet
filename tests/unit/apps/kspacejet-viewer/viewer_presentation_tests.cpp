@@ -490,7 +490,9 @@ void create_empty_root_group(const std::filesystem::path& path, const std::strin
   },
   "input_profile": {
     "kind": "ismrmrd-hdf5",
-    "dataset_group": "dataset"
+    "container": {
+      "mode": "auto"
+    }
   },
   "allowed_profiles": ["offline-reference"],
   "parameters": {},
@@ -3601,9 +3603,13 @@ TEST(KSpaceJetViewerPresentation, ParsesOnlyBoundedPipelineDefinitions) {
   ASSERT_TRUE(ksj::viewer::load_pipeline_presentation(pipeline_path, presentation, error)) << error.toStdString();
   EXPECT_TRUE(presentation.summary.contains(QStringLiteral("Parsed only")));
   EXPECT_TRUE(presentation.summary.contains(QStringLiteral("no Provider resolution")));
+  EXPECT_TRUE(presentation.summary.contains(QStringLiteral("Container selector: auto")));
   EXPECT_TRUE(presentation.canonical_json.contains(QStringLiteral("org.example.viewer-test")));
   EXPECT_EQ(presentation.details.value(QStringLiteral("view")).toString(), QStringLiteral("pipeline"));
   EXPECT_EQ(presentation.details.value(QStringLiteral("input_profile")).toString(), QStringLiteral("ismrmrd-hdf5"));
+  EXPECT_EQ(presentation.details.value(QStringLiteral("container_mode")).toString(), QStringLiteral("auto"));
+  EXPECT_FALSE(presentation.details.contains(QStringLiteral("container_path")));
+  EXPECT_FALSE(presentation.details.contains(QStringLiteral("dataset_group")));
   EXPECT_EQ(presentation.details.value(QStringLiteral("artifact_kind")).toString(),
             QStringLiteral("visualization-derivative"));
   EXPECT_EQ(presentation.details.value(QStringLiteral("graph_kind")).toString(), QStringLiteral("authored-dag"));
@@ -3641,6 +3647,29 @@ TEST(KSpaceJetViewerPresentation, ParsesOnlyBoundedPipelineDefinitions) {
   EXPECT_FALSE(ksj::viewer::load_pipeline_presentation(over_limit_path, presentation, error));
   EXPECT_TRUE(error.contains(QStringLiteral("exceeds the")));
   EXPECT_TRUE(error.contains(QStringLiteral("parser limit")));
+}
+
+TEST(KSpaceJetViewerPresentation, PresentsAnExplicitPipelineContainerSelector) {
+  QTemporaryDir temporary_directory;
+  ASSERT_TRUE(temporary_directory.isValid()) << temporary_directory.errorString().toStdString();
+  const auto pipeline_path =
+    QDir(temporary_directory.path()).filePath(QStringLiteral("pipeline-explicit-container.json"));
+
+  auto definition = QJsonDocument::fromJson(valid_pipeline_definition().toUtf8()).object();
+  auto input_profile = definition.value(QStringLiteral("input_profile")).toObject();
+  QJsonObject container;
+  container.insert(QStringLiteral("mode"), QStringLiteral("explicit"));
+  container.insert(QStringLiteral("path"), QStringLiteral("/dataset_2"));
+  input_profile.insert(QStringLiteral("container"), container);
+  definition.insert(QStringLiteral("input_profile"), input_profile);
+  write_file(pipeline_path, QJsonDocument(definition).toJson(QJsonDocument::Compact));
+
+  ksj::viewer::PipelinePresentation presentation;
+  QString error;
+  ASSERT_TRUE(ksj::viewer::load_pipeline_presentation(pipeline_path, presentation, error)) << error.toStdString();
+  EXPECT_TRUE(presentation.summary.contains(QStringLiteral("Container selector: explicit: /dataset_2")));
+  EXPECT_EQ(presentation.details.value(QStringLiteral("container_mode")).toString(), QStringLiteral("explicit"));
+  EXPECT_EQ(presentation.details.value(QStringLiteral("container_path")).toString(), QStringLiteral("/dataset_2"));
 }
 
 TEST(KSpaceJetViewerPresentation, ExportsOnlyLabelledVisualizationDerivatives) {

@@ -1,0 +1,44 @@
+{
+  "kind": "PipelineDefinition",
+  "pipeline": {
+    "id": "org.example.private-container",
+    "display_name": "Private container selector"
+  },
+  "input_profile": {
+    "kind": "ismrmrd-hdf5",
+    "container": {
+      "mode": "explicit",
+      "path": "/dataset/ksj_pipeline"
+    }
+  },
+  "allowed_profiles": ["offline-reference"],
+  "parameters": {},
+  "provider_requirements": [{"alias": "recon", "provider_id": "org.example.recon"}],
+  "nodes": [
+    {
+      "id": "reconstruct",
+      "operator": {"provider": "recon", "id": "reconstruct"},
+      "config": {}
+    }
+  ],
+  "edges": [],
+  "bindings": {
+    "ingress": [
+      {
+        "id": "kspace",
+        "type": "ksj.kspace-frame",
+        "to": {"node": "reconstruct", "port": "kspace"}
+      }
+    ],
+    "egress": [
+      {
+        "id": "images",
+        "type": "ksj.image-frame",
+        "from": {"node": "reconstruct", "port": "image"}
+      }
+    ],
+    "calibration": [],
+    "merge": []
+  },
+  "annotations": {}
+}

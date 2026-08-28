@@ -556,7 +556,7 @@ struct SemanticFrameState final {
     "\"pipeline\":{\"id\":" +
     json_string(details.pipeline_id) + ",\"display_name\":" + json_string(details.pipeline_display_name) +
     "},"
-    "\"input_profile\":{\"kind\":\"ismrmrd-hdf5\",\"dataset_group\":\"dataset\"},"
+    "\"input_profile\":{\"kind\":\"ismrmrd-hdf5\",\"container\":{\"mode\":\"auto\"}},"
     "\"allowed_profiles\":[\"offline-reference\"],"
     "\"parameters\":{},"
     "\"provider_requirements\":["

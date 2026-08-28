@@ -1,80 +1,43 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.kspacejet.org/machine-policy.schema.json",
-  "title": "KSpaceJet MachinePolicy",
-  "description": "Deployment-owned capacity and profile policy. It declares reusable resource domains, never a pipeline's task count, queue sizing, or scan-specific placement.",
+  "title": "KSpaceJet MachinePolicy source configuration",
+  "description": "A small, human-authored development policy declaring only the execution profile and machine ceilings needed before planning. It is not a ResourceVector serialization, a scheduler configuration, or evidence that GPU execution exists.",
   "type": "object",
   "required": [
     "kind",
-    "machine",
-    "allowed_profiles",
-    "resource_capacity",
-    "numa_domain_count",
-    "allowed_memory_domains",
-    "scheduler_policy"
+    "id",
+    "execution_profile",
+    "limits"
   ],
   "properties": {
     "$schema": {
-      "const": "https://json-schema.org/draft/2020-12/schema"
+      "const": "https://schemas.kspacejet.org/machine-policy.schema.json"
     },
     "kind": {
       "const": "MachinePolicy"
     },
-    "machine": {
-      "$ref": "#/$defs/identity"
+    "id": {
+      "$ref": "#/$defs/qualifiedIdentifier"
     },
-    "allowed_profiles": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": {
-        "$ref": "#/$defs/executionProfile"
-      }
+    "execution_profile": {
+      "const": "offline-reference"
     },
-    "resource_capacity": {
-      "$ref": "#/$defs/resourceVectorCapacity"
-    },
-    "numa_domain_count": {
-      "$ref": "#/$defs/positiveSafeInteger"
-    },
-    "allowed_memory_domains": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": {
-        "enum": [
-          "host",
-          "pinned_host",
-          "device",
-          "shared"
-        ]
-      }
-    },
-    "scheduler_policy": {
-      "enum": [
-        "fifo",
-        "fair",
-        "deadline_aware"
-      ]
+    "limits": {
+      "$ref": "#/$defs/machineLimits"
     }
   },
   "additionalProperties": false,
   "$defs": {
-    "safeInteger": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9007199254740991
-    },
     "positiveSafeInteger": {
       "type": "integer",
       "minimum": 1,
       "maximum": 9007199254740991
     },
-    "identifier": {
+    "positiveByteQuantity": {
+      "description": "A positive exact byte quantity with a compact binary suffix, such as '32G'. K/M/G/T mean KiB/MiB/GiB/TiB.",
       "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
-      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+      "pattern": "^[1-9][0-9]*(?:B|K|M|G|T)$"
     },
     "qualifiedIdentifier": {
       "type": "string",
@@ -82,129 +45,26 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
-    "executionProfile": {
-      "type": "string",
-      "enum": [
-        "offline-reference",
-        "bounded-reconstruction-graph",
-        "provider-development",
-        "embedded-incremental",
-        "isolated-provider-runtime"
-      ]
-    },
-    "identity": {
+    "machineLimits": {
       "type": "object",
       "required": [
-        "id"
+        "max_host_memory_bytes",
+        "max_cpu_permits",
+        "max_io_slots",
+        "gpu_enabled"
       ],
       "properties": {
-        "id": {
-          "$ref": "#/$defs/qualifiedIdentifier"
-        }
-      },
-      "additionalProperties": false
-    },
-    "deviceResourceSlot": {
-      "type": "object",
-      "required": [
-        "device_id",
-        "device_bytes",
-        "gpu_stream_slots",
-        "copy_engine_slots"
-      ],
-      "properties": {
-        "device_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
+        "max_host_memory_bytes": {
+          "$ref": "#/$defs/positiveByteQuantity"
         },
-        "device_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "gpu_stream_slots": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "copy_engine_slots": {
-          "$ref": "#/$defs/safeInteger"
-        }
-      },
-      "additionalProperties": false
-    },
-    "resourceVector": {
-      "type": "object",
-      "required": [
-        "host_normal_bytes",
-        "host_pinned_bytes",
-        "host_hugepage_bytes",
-        "shared_host_bytes",
-        "spool_bytes",
-        "transport_bytes",
-        "descriptor_count",
-        "async_token_count",
-        "cpu_leaf_permits",
-        "backend_gang_permits",
-        "provider_private_permits",
-        "io_slots",
-        "devices"
-      ],
-      "properties": {
-        "host_normal_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "host_pinned_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "host_hugepage_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "shared_host_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "spool_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "transport_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "descriptor_count": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "async_token_count": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "cpu_leaf_permits": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "backend_gang_permits": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "provider_private_permits": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "io_slots": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "devices": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/deviceResourceSlot"
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    "resourceVectorCapacity": {
-      "type": "object",
-      "required": [
-        "domains",
-        "host_total_cap_bytes"
-      ],
-      "properties": {
-        "domains": {
-          "$ref": "#/$defs/resourceVector"
-        },
-        "host_total_cap_bytes": {
+        "max_cpu_permits": {
           "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "max_io_slots": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "gpu_enabled": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

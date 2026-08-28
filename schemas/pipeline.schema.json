@@ -127,17 +127,74 @@
       "type": "object",
       "required": [
         "kind",
-        "dataset_group"
+        "container"
       ],
       "properties": {
         "kind": {
           "const": "ismrmrd-hdf5"
         },
-        "dataset_group": {
-          "const": "dataset"
+        "container": {
+          "$ref": "#/$defs/inputContainerSelection"
         }
       },
       "additionalProperties": false
+    },
+    "inputContainerSelection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "const": "auto"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "mode",
+            "path"
+          ],
+          "properties": {
+            "mode": {
+              "const": "explicit"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 1024,
+              "pattern": "^/[^/].*",
+              "allOf": [
+                {
+                  "not": {
+                    "pattern": "//"
+                  }
+                },
+                {
+                  "not": {
+                    "pattern": "/(?:\\.|\\.\\.)(?:/|$)"
+                  }
+                },
+                {
+                  "not": {
+                    "pattern": "/ksj_[^/]*(?:/|$)"
+                  }
+                },
+                {
+                  "not": {
+                    "pattern": "/$"
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "parameterDefinitions": {
       "type": "object",

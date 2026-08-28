@@ -35,7 +35,7 @@ using ksj::recon::graph::PipelineDefinition;
 {
   "kind": "PipelineDefinition",
   "pipeline": {"id": "org.example.cartesian-image", "display_name": "Cartesian image reconstruction"},
-  "input_profile": {"kind": "ismrmrd-hdf5", "dataset_group": "dataset"},
+  "input_profile": {"kind": "ismrmrd-hdf5", "container": {"mode": "auto"}},
   "allowed_profiles": ["offline-reference"],
   "parameters": {},
   "provider_requirements": [

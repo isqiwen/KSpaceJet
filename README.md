@@ -46,6 +46,19 @@ just workspace-check
 - 提供 Linux x86_64 与 Windows x86_64/MSVC 的构建配置；当前仅 Linux toolchain、
   build 和 install 已有验证证据，Windows 验证仍待实际 Windows 主机完成。
 
+## 配置文件
+
+根目录 `config/` 直接保存两个真实、结构化的开发配置：
+[`machine-policy.json`](config/machine-policy.json) 和
+[`target-envelope.json`](config/target-envelope.json)。前者只写 execution profile、主机内存、
+CPU/I/O 并发和 GPU 开关；后者只写 XML、采集、frame、image、samples、channels 与 scan 并发的
+上限。它们与用户作者化的 `PipelineDefinition` 分离，且当前不会被应用自动加载。
+
+二者都是 development-only 配置，不是产品容量、Gateway 服务或部署策略承诺；测试 fixture
+也不能被当作默认产品配置。字节容量使用紧凑二进制后缀，例如 `32G`、`4M`，其中 `K/M/G/T`
+分别表示 `KiB/MiB/GiB/TiB`；计数仍为 JSON 整数。未来 loader 必须以 checked arithmetic 将容量
+规范化为整数，并在缺少完整运行时 authority 时拒绝，而不是猜测被省略的内部资源策略。
+
 ## 主要模块
 
 - `libs/io/kspacejet-ismrmrd`：ISMRMRD 流式输入 facade，target `KSpaceJet::ismrmrd`。

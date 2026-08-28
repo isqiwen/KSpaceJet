@@ -29,15 +29,27 @@ struct ProviderSelection {
 };
 
 // A PipelineDefinition has exactly one portable, persistent MRI input
-// semantic: standard ISMRMRD HDF5.  A file path is intentionally not part of
-// this authored artifact; the application supplies it when starting a run.
+// semantic: standard ISMRMRD HDF5. A source file path is intentionally not
+// part of this authored artifact; the application supplies it when starting a
+// run.
 enum class PipelineInputProfileKind {
   ismrmrd_hdf5,
 };
 
+// The authored selector identifies the standard HDF5 container to bind once a
+// runtime-owned source has opened the supplied ISMRMRD file. `automatic`
+// delegates selection to that source; `explicit_path` records one canonical
+// absolute standard-container path. It never identifies a local file or a
+// private KSpaceJet group.
+enum class PipelineInputContainerMode {
+  automatic,
+  explicit_path,
+};
+
 struct PipelineInputProfile {
   PipelineInputProfileKind kind = PipelineInputProfileKind::ismrmrd_hdf5;
-  std::string dataset_group;
+  PipelineInputContainerMode container_mode = PipelineInputContainerMode::automatic;
+  std::optional<std::string> container_path;
 };
 
 // Pipeline parameters are a deliberately small, static authoring mechanism.

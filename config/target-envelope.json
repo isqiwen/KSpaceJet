@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schemas.kspacejet.org/target-envelope.schema.json",
+  "kind": "TargetEnvelope",
+  "id": "org.kspacejet.local-development",
+  "limits": {
+    "max_xml_bytes": "64K",
+    "max_acquisition_bytes": "4M",
+    "max_frame_bytes": "256M",
+    "max_image_bytes": "128M",
+    "max_samples_per_acquisition": 8192,
+    "max_channels_per_acquisition": 32,
+    "max_active_scans": 1
+  }
+}

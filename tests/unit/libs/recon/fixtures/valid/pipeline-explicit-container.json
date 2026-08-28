@@ -7,7 +7,8 @@
   "input_profile": {
     "kind": "ismrmrd-hdf5",
     "container": {
-      "mode": "auto"
+      "mode": "explicit",
+      "path": "/dataset_2"
     }
   },
   "allowed_profiles": [

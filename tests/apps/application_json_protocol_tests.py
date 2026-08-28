@@ -7,6 +7,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 
 def require(condition: bool, message: str) -> None:
@@ -178,11 +179,69 @@ def run_pipeline_validation_protocol(ksj: pathlib.Path) -> None:
     require(valid_report.get("valid") is True, f"valid pipeline did not report success: {valid_report!r}")
     profile = valid_report.get("input_profile")
     require(
-        profile == {"kind": "ismrmrd-hdf5", "dataset_group": "dataset"},
+        profile == {"kind": "ismrmrd-hdf5", "container": {"mode": "auto"}},
         f"pipeline validation omitted the ISMRMRD input profile: {valid_report!r}",
     )
     counts = valid_report.get("counts")
     require(isinstance(counts, dict) and counts.get("parameters") == 0, f"pipeline parameter count drifted: {valid_report!r}")
+
+    valid_text_result = subprocess.run(
+        [str(ksj), "pipeline", "validate", str(valid_pipeline), "--format", "text"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    require(valid_text_result.returncode == 0, f"ksj text pipeline validation rejected a valid pipeline: {valid_text_result.stderr}")
+    require(
+        "input profile: ismrmrd-hdf5 (container: auto)" in valid_text_result.stdout,
+        f"ksj text pipeline validation omitted the automatic container selector: {valid_text_result.stdout!r}",
+    )
+
+    explicit_document = json.loads(valid_pipeline.read_text(encoding="utf-8"))
+    explicit_document["input_profile"]["container"] = {"mode": "explicit", "path": "/dataset_2"}
+    legacy_document = json.loads(valid_pipeline.read_text(encoding="utf-8"))
+    legacy_document["input_profile"] = {"kind": "ismrmrd-hdf5", "dataset_group": "dataset"}
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        explicit_pipeline = pathlib.Path(temporary_directory) / "pipeline-explicit-container.json"
+        explicit_pipeline.write_text(json.dumps(explicit_document), encoding="utf-8")
+        explicit_result = subprocess.run(
+            [str(ksj), "pipeline", "validate", str(explicit_pipeline), "--format", "json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        legacy_pipeline = pathlib.Path(temporary_directory) / "pipeline-legacy-dataset-group.json"
+        legacy_pipeline.write_text(json.dumps(legacy_document), encoding="utf-8")
+        legacy_result = subprocess.run(
+            [str(ksj), "pipeline", "validate", str(legacy_pipeline), "--format", "json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    require(
+        explicit_result.returncode == 0,
+        f"ksj pipeline validation rejected an explicit container selector: {explicit_result.stderr}",
+    )
+    explicit_report = parse_json_stdout("ksj pipeline validate explicit container", explicit_result)
+    require(
+        explicit_report.get("input_profile")
+        == {"kind": "ismrmrd-hdf5", "container": {"mode": "explicit", "path": "/dataset_2"}},
+        f"pipeline validation did not preserve the explicit container selector: {explicit_report!r}",
+    )
+    require(legacy_result.returncode == 3, f"legacy pipeline returned {legacy_result.returncode}, expected 3")
+    legacy_report = parse_json_stdout("ksj pipeline validate legacy dataset group", legacy_result)
+    require_core_log("ksj pipeline validate legacy dataset group", legacy_result, "WARN")
+    require(legacy_report.get("valid") is False, f"legacy pipeline unexpectedly passed: {legacy_report!r}")
+    legacy_diagnostics = legacy_report.get("diagnostics")
+    require(
+        isinstance(legacy_diagnostics, list)
+        and legacy_diagnostics
+        and "dataset_group" in str(legacy_diagnostics[0].get("message")),
+        f"legacy field rejection lost its diagnostic: {legacy_report!r}",
+    )
 
     invalid_result = subprocess.run(
         [str(ksj), "pipeline", "validate", str(invalid_pipeline), "--format", "json"],

@@ -19,6 +19,14 @@ The successful report identifies the one ISMRMRD HDF5 input profile, canonical
 PipelineDefinition digest, and declared parameter/graph counts. Neither form is
 a diagnostic log format.
 
+The reported `input_profile.container` is authored selection intent, not a
+result of opening a scan. It is either `{"mode":"auto"}` or
+`{"mode":"explicit","path":"/absolute-hdf5-container"}`. The parser
+accepts only that closed form; it does not search for raw data. P2-007's
+runtime-owned source adapter will discover standard raw-container candidates:
+`auto` requires exactly one candidate, while `explicit` must resolve to the
+named standard raw container. Neither mode gives `/dataset` special status.
+
 ## Create a Provider scaffold
 
 ```bash

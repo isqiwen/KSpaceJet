@@ -1,57 +1,39 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.kspacejet.org/target-envelope.schema.json",
-  "title": "KSpaceJet TargetEnvelope",
-  "description": "Auditable finite input, arrival, and sink-service envelope used by scan-specific planning.",
+  "title": "KSpaceJet TargetEnvelope source configuration",
+  "description": "A small, human-authored development envelope declaring the input, frame, image, and scan ceilings for one supported task class. It is not an arrival-rate, sink-service, calibration, or scanner contract.",
   "type": "object",
   "required": [
     "kind",
-    "envelope",
-    "limits",
-    "arrival_envelope",
-    "sink_service_assumption",
-    "metadata"
+    "id",
+    "limits"
   ],
   "properties": {
     "$schema": {
-      "const": "https://json-schema.org/draft/2020-12/schema"
+      "const": "https://schemas.kspacejet.org/target-envelope.schema.json"
     },
     "kind": {
       "const": "TargetEnvelope"
     },
-    "envelope": {
-      "$ref": "#/$defs/identity"
+    "id": {
+      "$ref": "#/$defs/qualifiedIdentifier"
     },
     "limits": {
-      "$ref": "#/$defs/limits"
-    },
-    "arrival_envelope": {
-      "$ref": "#/$defs/arrivalEnvelope"
-    },
-    "sink_service_assumption": {
-      "$ref": "#/$defs/sinkServiceAssumption"
-    },
-    "metadata": {
-      "$ref": "#/$defs/metadata"
+      "$ref": "#/$defs/targetLimits"
     }
   },
   "additionalProperties": false,
   "$defs": {
-    "safeInteger": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9007199254740991
-    },
     "positiveSafeInteger": {
       "type": "integer",
       "minimum": 1,
       "maximum": 9007199254740991
     },
-    "identifier": {
+    "positiveByteQuantity": {
+      "description": "A positive exact byte quantity with a compact binary suffix, such as '4M'. K/M/G/T mean KiB/MiB/GiB/TiB.",
       "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
-      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+      "pattern": "^[1-9][0-9]*(?:B|K|M|G|T)$"
     },
     "qualifiedIdentifier": {
       "type": "string",
@@ -59,314 +41,38 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
-    "digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$"
-    },
-    "indexField": {
-      "type": "string",
-      "enum": [
-        "encoding",
-        "average",
-        "slice",
-        "contrast",
-        "phase",
-        "repetition",
-        "set",
-        "segment",
-        "channel_group"
-      ]
-    },
-    "metadata": {
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "description": {
-          "type": "string",
-          "maxLength": 4096
-        },
-        "labels": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/identifier"
-          },
-          "additionalProperties": {
-            "type": "string",
-            "maxLength": 256
-          }
-        },
-        "annotations": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/identifier"
-          },
-          "additionalProperties": {
-            "type": "string",
-            "maxLength": 4096
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    "identity": {
-      "type": "object",
-      "required": [
-        "id"
-      ],
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/qualifiedIdentifier"
-        }
-      },
-      "additionalProperties": false
-    },
-    "limits": {
+    "targetLimits": {
       "type": "object",
       "required": [
         "max_xml_bytes",
-        "max_acquisition_charged_bytes",
-        "max_frame_charged_bytes",
-        "max_image_charged_bytes",
-        "max_decoder_staging_bytes",
+        "max_acquisition_bytes",
+        "max_frame_bytes",
+        "max_image_bytes",
         "max_samples_per_acquisition",
-        "max_trajectory_dimensions",
         "max_channels_per_acquisition",
-        "max_channel_groups",
-        "max_active_scans",
-        "max_dynamic_keys_per_projection",
-        "max_calibration_prefix_items_per_key",
-        "max_calibration_prefix_charged_bytes_per_key",
-        "max_calibration_prefix_items_aggregate",
-        "max_calibration_prefix_charged_bytes_aggregate",
-        "max_active_calibration_keys",
-        "max_external_input_stall_us",
-        "max_external_output_stall_us"
+        "max_active_scans"
       ],
       "properties": {
         "max_xml_bytes": {
-          "$ref": "#/$defs/positiveSafeInteger"
+          "$ref": "#/$defs/positiveByteQuantity"
         },
-        "max_acquisition_charged_bytes": {
-          "$ref": "#/$defs/positiveSafeInteger"
+        "max_acquisition_bytes": {
+          "$ref": "#/$defs/positiveByteQuantity"
         },
-        "max_frame_charged_bytes": {
-          "$ref": "#/$defs/positiveSafeInteger"
+        "max_frame_bytes": {
+          "$ref": "#/$defs/positiveByteQuantity"
         },
-        "max_image_charged_bytes": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_decoder_staging_bytes": {
-          "$ref": "#/$defs/positiveSafeInteger"
+        "max_image_bytes": {
+          "$ref": "#/$defs/positiveByteQuantity"
         },
         "max_samples_per_acquisition": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_trajectory_dimensions": {
           "$ref": "#/$defs/positiveSafeInteger"
         },
         "max_channels_per_acquisition": {
           "$ref": "#/$defs/positiveSafeInteger"
         },
-        "max_channel_groups": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
         "max_active_scans": {
           "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_dynamic_keys_per_projection": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/indexField"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/positiveSafeInteger"
-          }
-        },
-        "max_calibration_prefix_items_per_key": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_calibration_prefix_charged_bytes_per_key": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_calibration_prefix_items_aggregate": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_calibration_prefix_charged_bytes_aggregate": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_active_calibration_keys": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_external_input_stall_us": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_external_output_stall_us": {
-          "$ref": "#/$defs/safeInteger"
-        }
-      },
-      "additionalProperties": false
-    },
-    "tokenBucket": {
-      "type": "object",
-      "required": [
-        "kind",
-        "max_items_per_second",
-        "max_charged_bytes_per_second",
-        "max_burst_items",
-        "max_burst_charged_bytes"
-      ],
-      "properties": {
-        "kind": {
-          "const": "token_bucket"
-        },
-        "max_items_per_second": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_charged_bytes_per_second": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_burst_items": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_burst_charged_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        }
-      },
-      "additionalProperties": false
-    },
-    "pacedSchedule": {
-      "type": "object",
-      "required": [
-        "kind",
-        "schedule_digest",
-        "max_items_per_second",
-        "max_charged_bytes_per_second",
-        "max_burst_items",
-        "max_burst_charged_bytes"
-      ],
-      "properties": {
-        "kind": {
-          "const": "paced_schedule"
-        },
-        "schedule_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "max_items_per_second": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_charged_bytes_per_second": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_burst_items": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_burst_charged_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        }
-      },
-      "additionalProperties": false
-    },
-    "piecewiseRateCurve": {
-      "type": "object",
-      "required": [
-        "kind",
-        "segments",
-        "max_items_per_second",
-        "max_charged_bytes_per_second",
-        "max_burst_items",
-        "max_burst_charged_bytes"
-      ],
-      "properties": {
-        "kind": {
-          "const": "piecewise_rate_curve"
-        },
-        "segments": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "required": [
-              "duration_us",
-              "max_items_per_second",
-              "max_charged_bytes_per_second"
-            ],
-            "properties": {
-              "duration_us": {
-                "$ref": "#/$defs/positiveSafeInteger"
-              },
-              "max_items_per_second": {
-                "$ref": "#/$defs/positiveSafeInteger"
-              },
-              "max_charged_bytes_per_second": {
-                "$ref": "#/$defs/positiveSafeInteger"
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "max_items_per_second": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_charged_bytes_per_second": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_burst_items": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "max_burst_charged_bytes": {
-          "$ref": "#/$defs/safeInteger"
-        }
-      },
-      "additionalProperties": false
-    },
-    "arrivalEnvelope": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/tokenBucket"
-        },
-        {
-          "$ref": "#/$defs/pacedSchedule"
-        },
-        {
-          "$ref": "#/$defs/piecewiseRateCurve"
-        }
-      ]
-    },
-    "sinkServiceAssumption": {
-      "type": "object",
-      "required": [
-        "minimum_drain_items_per_second",
-        "minimum_drain_charged_bytes_per_second",
-        "maximum_pause_us",
-        "slow_sink_policy",
-        "max_transport_staging_bytes",
-        "max_spool_charged_bytes"
-      ],
-      "properties": {
-        "minimum_drain_items_per_second": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "minimum_drain_charged_bytes_per_second": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "maximum_pause_us": {
-          "$ref": "#/$defs/safeInteger"
-        },
-        "slow_sink_policy": {
-          "type": "string",
-          "enum": [
-            "fail",
-            "spool"
-          ]
-        },
-        "max_transport_staging_bytes": {
-          "$ref": "#/$defs/positiveSafeInteger"
-        },
-        "max_spool_charged_bytes": {
-          "$ref": "#/$defs/safeInteger"
         }
       },
       "additionalProperties": false

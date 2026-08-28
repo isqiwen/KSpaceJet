@@ -237,6 +237,25 @@ struct DisplayExtent {
   return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
 }
 
+[[nodiscard]] QString pipeline_input_container_mode_name(const ksj::recon::graph::PipelineInputContainerMode mode) {
+  switch (mode) {
+    case ksj::recon::graph::PipelineInputContainerMode::automatic:
+      return QStringLiteral("auto");
+    case ksj::recon::graph::PipelineInputContainerMode::explicit_path:
+      return QStringLiteral("explicit");
+  }
+  return QStringLiteral("unknown");
+}
+
+[[nodiscard]] QString
+pipeline_input_container_selector_description(const ksj::recon::graph::PipelineInputProfile& input_profile) {
+  const auto mode = pipeline_input_container_mode_name(input_profile.container_mode);
+  if (input_profile.container_mode != ksj::recon::graph::PipelineInputContainerMode::explicit_path) {
+    return mode;
+  }
+  return QStringLiteral("%1: %2").arg(mode, to_qstring(input_profile.container_path.value()));
+}
+
 [[nodiscard]] QString source_description(const ksj::viewer::InspectionSession& session) {
   return QStringLiteral("%1 (container %2)").arg(session.source_path(), session.container_path());
 }
@@ -2021,11 +2040,13 @@ bool load_pipeline_presentation(const QString& file_path, PipelinePresentation& 
   }
   const auto& pipeline = parsed.value();
 
+  const auto& input_profile = pipeline.input_profile();
+  const auto container_mode = pipeline_input_container_mode_name(input_profile.container_mode);
   presentation.summary =
-    QStringLiteral("Pipeline %1 (%2)\nInput profile: ismrmrd-hdf5 / %3\nParsed only: no Provider resolution, "
-                   "graph compilation, loading, or execution is performed.")
+    QStringLiteral("Pipeline %1 (%2)\nInput profile: ismrmrd-hdf5\nContainer selector: %3\nParsed only: no Provider "
+                   "resolution, graph compilation, loading, or execution is performed.")
       .arg(to_qstring(pipeline.id()), to_qstring(pipeline.display_name()),
-           to_qstring(pipeline.input_profile().dataset_group));
+           pipeline_input_container_selector_description(input_profile));
   presentation.canonical_json = to_qstring(pipeline.canonical_json());
   presentation.csv_columns = {QStringLiteral("node_id"), QStringLiteral("provider_alias"),
                               QStringLiteral("operator_id"), QStringLiteral("canonical_configuration")};
@@ -2150,7 +2171,10 @@ bool load_pipeline_presentation(const QString& file_path, PipelinePresentation& 
   presentation.details.insert(QStringLiteral("pipeline_id"), to_qstring(pipeline.id()));
   presentation.details.insert(QStringLiteral("display_name"), to_qstring(pipeline.display_name()));
   presentation.details.insert(QStringLiteral("input_profile"), QStringLiteral("ismrmrd-hdf5"));
-  presentation.details.insert(QStringLiteral("dataset_group"), to_qstring(pipeline.input_profile().dataset_group));
+  presentation.details.insert(QStringLiteral("container_mode"), container_mode);
+  if (input_profile.container_path.has_value()) {
+    presentation.details.insert(QStringLiteral("container_path"), to_qstring(input_profile.container_path.value()));
+  }
   presentation.details.insert(QStringLiteral("artifact_digest"), to_qstring(pipeline.artifact_digest().value()));
   presentation.details.insert(QStringLiteral("allowed_profiles"), profiles);
   presentation.details.insert(QStringLiteral("parameters"), parameters);

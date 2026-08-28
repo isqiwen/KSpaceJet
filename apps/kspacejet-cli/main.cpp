@@ -82,6 +82,28 @@ void write_json_string(std::ostream& stream, const std::string_view value) {
   stream.put('"');
 }
 
+[[nodiscard]] std::string_view
+pipeline_input_container_mode_name(const ksj::recon::graph::PipelineInputContainerMode mode) noexcept {
+  switch (mode) {
+    case ksj::recon::graph::PipelineInputContainerMode::automatic:
+      return "auto";
+    case ksj::recon::graph::PipelineInputContainerMode::explicit_path:
+      return "explicit";
+  }
+  return "unknown";
+}
+
+void write_pipeline_input_profile_json(std::ostream& stream,
+                                       const ksj::recon::graph::PipelineInputProfile& input_profile) {
+  stream << "{\"kind\":\"ismrmrd-hdf5\",\"container\":{\"mode\":";
+  write_json_string(stream, pipeline_input_container_mode_name(input_profile.container_mode));
+  if (input_profile.container_mode == ksj::recon::graph::PipelineInputContainerMode::explicit_path) {
+    stream << ",\"path\":";
+    write_json_string(stream, input_profile.container_path.value());
+  }
+  stream << "}}";
+}
+
 void print_help(const OutputFormat format) {
   if (format == OutputFormat::json) {
     std::cout << "{\"schema\":\"ksj.program-help\",\"program\":";
@@ -192,9 +214,9 @@ void print_validation_success(const OutputFormat format, const std::string_view 
     write_json_string(std::cout, definition.id());
     std::cout << ",\"display_name\":";
     write_json_string(std::cout, definition.display_name());
-    std::cout << "},\"input_profile\":{\"kind\":\"ismrmrd-hdf5\",\"dataset_group\":";
-    write_json_string(std::cout, definition.input_profile().dataset_group);
-    std::cout << "},\"canonical_digest\":";
+    std::cout << "},\"input_profile\":";
+    write_pipeline_input_profile_json(std::cout, definition.input_profile());
+    std::cout << ",\"canonical_digest\":";
     write_json_string(std::cout, definition.artifact_digest().value());
     std::cout << ",\"counts\":{\"parameters\":" << definition.parameters().size()
               << ",\"providers\":" << definition.provider_requirements().size()
@@ -205,11 +227,17 @@ void print_validation_success(const OutputFormat format, const std::string_view 
     return;
   }
 
+  const auto& input_profile = definition.input_profile();
   std::cout << "PipelineDefinition is valid\n"
             << "  input: " << input_path << '\n'
             << "  id: " << definition.id() << '\n'
             << "  display name: " << definition.display_name() << '\n'
-            << "  input profile: ismrmrd-hdf5/" << definition.input_profile().dataset_group << '\n'
+            << "  input profile: ismrmrd-hdf5 (container: "
+            << pipeline_input_container_mode_name(input_profile.container_mode);
+  if (input_profile.container_mode == ksj::recon::graph::PipelineInputContainerMode::explicit_path) {
+    std::cout << " " << input_profile.container_path.value();
+  }
+  std::cout << ")\n"
             << "  canonical digest: " << definition.artifact_digest().value() << '\n'
             << "  parameters: " << definition.parameters().size() << '\n'
             << "  providers: " << definition.provider_requirements().size() << '\n'

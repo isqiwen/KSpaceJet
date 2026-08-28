@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schemas.kspacejet.org/machine-policy.schema.json",
+  "kind": "MachinePolicy",
+  "id": "org.kspacejet.local-development",
+  "execution_profile": "offline-reference",
+  "limits": {
+    "max_host_memory_bytes": "32G",
+    "max_cpu_permits": 8,
+    "max_io_slots": 2,
+    "gpu_enabled": false
+  }
+}

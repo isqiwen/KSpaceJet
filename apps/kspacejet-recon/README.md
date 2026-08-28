@@ -22,6 +22,15 @@ compatible scans, but it must not contain per-run input/output paths, DLL/SO
 or contract paths, scan-derived dimensions, or thread/queue/memory settings.
 Those bindings remain runtime-owned.
 
+Its `input_profile` expresses raw-container intent as either
+`{"container":{"mode":"auto"}}` or
+`{"container":{"mode":"explicit","path":"/absolute-hdf5-container"}}`.
+The absolute path is an HDF5 container path inside the selected input file, not
+a host filesystem path. The future P2-007 runtime source adapter, rather than
+the authored parser, discovers standard raw-container candidates: `auto`
+requires exactly one, and `explicit` binds the named standard raw container.
+There is no fixed `/dataset` convention in `PipelineDefinition`.
+
 This root-command interface is planned as `P2-007`; its required resolver,
 scan-fact binding, verifier, and RunRecord prerequisites are not accepted yet.
 Until then, the three commands below are development-only route facades: their
@@ -48,9 +57,11 @@ ksj-recon cartesian-rss \
   --coil-combine-contract /absolute/path/to/coil_combine_rss.json
 ```
 
-`--output` must name one `.mrd` file. `--dataset` defaults to `dataset`.
-`--format text|json` selects only the command result printed to stdout; it
-does not select an image-file format.
+`--output` must name one `.mrd` file. The temporary route-local `--dataset`
+option still defaults to `dataset`; it is not the authored
+`input_profile.container` selector and will be replaced with the P2-007 source
+adapter. `--format text|json` selects only the command result printed to
+stdout; it does not select an image-file format.
 
 ### Optional conditioning branches
 

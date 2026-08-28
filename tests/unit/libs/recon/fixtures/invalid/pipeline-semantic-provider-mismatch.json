@@ -6,7 +6,9 @@
   },
   "input_profile": {
     "kind": "ismrmrd-hdf5",
-    "dataset_group": "dataset"
+    "container": {
+      "mode": "auto"
+    }
   },
   "allowed_profiles": [
     "offline-reference",
